@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+"""Import generic JSON/JSONL tool-event logs into compiler artifact schema.
+
+Usage:
+    ./import_eventlog events.jsonl --policy policy.json | ./compile - -v
+    ./import_eventlog events.json --policy policy.json -o artifacts/
+    cat events.jsonl | ./import_eventlog - --policy policy.json | ./compile - -e
+
+Accepted input:
+    - JSONL: one JSON object per line.
+    - JSON array: [{...event...}, ...]
+    - JSON object with an "events" array.
+
+The importer looks for tool/function-call shaped events with fields such as:
+    type/event: "tool_call" | "function_call" | "tool_use"
+    tool_name/name/tool: "stripe.charges.create"
+    id/call_id/tool_call_id/action_id: "call_..."
+    timestamp/executed_at/start_time/created_at: "2026-05-14T17:01:30Z"
+    arguments/input/parameters/args: {...}
+
+This is intentionally a permissive adapter. It converts common event-log
+shapes into the stricter receipt compiler artifact schema, but it still fails
+closed when no evidence-backed execution timestamp is present.
+"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import json
+import sys
+import uuid
+from pathlib import Path
+from typing import Any
+
+
+def _epoch_to_utc(epoch_seconds: int | float) -> str:
+    return datetime.fromtimestamp(epoch_seconds, timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _normalize_timestamp(raw: Any) -> str | None:
+    """Normalize common UTC timestamp forms to compiler format when possible."""
+    if isinstance(raw, (int, float)):
+        return _epoch_to_utc(raw)
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+
+    s = raw.strip()
+    candidate = s[:-1] + "+00:00" if s.endswith("Z") else s
+    try:
+        dt = datetime.fromisoformat(candidate)
+    except ValueError:
+        return s
+    if dt.tzinfo is None:
+        return s
+    return dt.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _decode_json_maybe(raw: Any) -> Any:
+    if isinstance(raw, str):
+        if not raw.strip():
+            return {}
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {"_raw": raw}
+    if raw is None:
+        return {}
+    return raw
+
+
+def _read_input(path_arg: str) -> str:
+    if path_arg == "-":
+        return sys.stdin.read()
+    path = Path(path_arg)
+    if not path.is_file():
+        print(f"ERROR: event log file {path_arg} not found", file=sys.stderr)
+        sys.exit(1)
+    return path.read_text(encoding="utf-8")
+
+
+def _load_events(path_arg: str) -> list[dict[str, Any]]:
+    raw = _read_input(path_arg)
+    stripped = raw.strip()
+    if not stripped:
+        print("ERROR: event log is empty", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        payload = None
+
+    if isinstance(payload, list):
+        events = payload
+    elif isinstance(payload, dict) and isinstance(payload.get("events"), list):
+        events = payload["events"]
+    elif isinstance(payload, dict):
+        events = [payload]
+    else:
+        events = []
+        for lineno, line in enumerate(raw.splitlines(), start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError as exc:
+                print(f"ERROR: invalid JSONL at line {lineno}: {exc}", file=sys.stderr)
+                sys.exit(1)
+            events.append(event)
+
+    if not all(isinstance(event, dict) for event in events):
+        print("ERROR: every event must be a JSON object", file=sys.stderr)
+        sys.exit(1)
+    return events
+
+
+def _load_policy(path_arg: str) -> dict[str, Any]:
+    path = Path(path_arg)
+    if not path.is_file():
+        print(f"ERROR: policy file {path_arg} not found", file=sys.stderr)
+        sys.exit(1)
+    try:
+        policy = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        print(f"ERROR: invalid JSON in policy: {exc}", file=sys.stderr)
+        sys.exit(1)
+    if not isinstance(policy, dict):
+        print("ERROR: policy JSON root must be an object", file=sys.stderr)
+        sys.exit(1)
+    return policy
+
+
+def _lower_text(value: Any) -> str:
+    return str(value).lower() if value is not None else ""
+
+
+def _event_kind(event: dict[str, Any]) -> str:
+    for key in ("type", "event", "event_type", "kind", "name"):
+        val = event.get(key)
+        if isinstance(val, str):
+            return val.lower()
+    return ""
+
+
+def _nested_get(obj: Any, *path: str) -> Any:
+    cur = obj
+    for key in path:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(key)
+    return cur
+
+
+def _tool_name(event: dict[str, Any]) -> str:
+    candidates = [
+        event.get("tool_name"),
+        event.get("tool"),
+        event.get("function_name"),
+        _nested_get(event, "function", "name"),
+        _nested_get(event, "tool", "name"),
+        event.get("name"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate and candidate not in {"tool_call", "function_call", "tool_use"}:
+            return candidate
+    return "unknown_tool"
+
+
+def _action_id(event: dict[str, Any]) -> str:
+    for key in ("action_id", "call_id", "tool_call_id", "id", "run_id", "span_id"):
+        val = event.get(key)
+        if isinstance(val, str) and val:
+            return val
+    return f"call_{uuid.uuid4().hex[:12]}"
+
+
+def _arguments(event: dict[str, Any]) -> Any:
+    candidates = [
+        event.get("parameters"),
+        event.get("arguments"),
+        event.get("input"),
+        event.get("inputs"),
+        event.get("args"),
+        event.get("payload"),
+        _nested_get(event, "function", "arguments"),
+        _nested_get(event, "tool", "arguments"),
+    ]
+    for candidate in candidates:
+        if candidate not in (None, "", {}, []):
+            return _decode_json_maybe(candidate)
+    return {}
+
+
+def _timestamp(event: dict[str, Any], override: str | None) -> str:
+    if override:
+        normalized = _normalize_timestamp(override)
+        assert normalized is not None
+        return normalized
+    for key in ("executed_at", "timestamp", "created_at", "start_time", "time", "ts"):
+        normalized = _normalize_timestamp(event.get(key))
+        if normalized:
+            return normalized
+    raise ValueError(
+        "no execution timestamp found in tool event; pass --executed-at with an "
+        "evidence-backed ISO 8601 UTC timestamp"
+    )
+
+
+def _is_tool_call_event(event: dict[str, Any]) -> bool:
+    kind = _event_kind(event)
+    if any(token in kind for token in ("tool_call", "function_call", "tool_use", "tool.invocation")):
+        return True
+    if "tool" in kind and not any(token in kind for token in ("result", "output", "end")):
+        return True
+    if any(key in event for key in ("tool_name", "tool_call_id", "call_id", "function_name")):
+        return True
+    if isinstance(event.get("function"), dict) and event["function"].get("name"):
+        return True
+    return False
+
+
+def _extract_tool_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [event for event in events if _is_tool_call_event(event)]
+
+
+def _build_authorization(policy: dict[str, Any]) -> dict[str, Any]:
+    grant_id = policy.get("grant_id", f"grant-{uuid.uuid4().hex[:8]}")
+    return {
+        "authorization": {
+            "grant_id": grant_id,
+            "principal": policy.get("principal", "unknown"),
+            "delegated_to": policy.get("delegated_to", "unknown"),
+            "scope": policy.get("scope", []),
+            "grant_valid_from": policy.get("grant_valid_from", ""),
+            "grant_valid_until": policy.get("grant_valid_until", ""),
+            "revoked_at": policy.get("revoked_at", None),
+            "issuer": policy.get("issuer", "policy_file"),
+            "grant_context": policy.get("grant_context", ""),
+        }
+    }
+
+
+def _event_to_artifacts(
+    event: dict[str, Any],
+    policy: dict[str, Any],
+    executed_at_override: str | None = None,
+) -> dict[str, Any]:
+    action_id = _action_id(event)
+    tool_name = _tool_name(event)
+    executed_at = _timestamp(event, executed_at_override)
+    return {
+        **_build_authorization(policy),
+        "parsed_actions": [
+            {
+                "action_id": action_id,
+                "tool": tool_name,
+                "executed_at": executed_at,
+                "source_kind": event.get("source_kind", "model_output"),
+                "parameters": _arguments(event),
+            }
+        ],
+        "tool_call": {
+            "action_id": action_id,
+            "tool_name": tool_name,
+            "tool_version": event.get("tool_version", "generic-event-log"),
+            "invocation_context": {
+                "source": "generic_event_log",
+                "event_type": _event_kind(event),
+            },
+        },
+    }
+
+
+def _write_artifacts(out_dir: Path, merged: dict[str, Any]) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "authorization.json").write_text(
+        json.dumps({"authorization": merged["authorization"]}, indent=2),
+        encoding="utf-8",
+    )
+    (out_dir / "parsed_actions.json").write_text(
+        json.dumps({"parsed_actions": merged["parsed_actions"]}, indent=2),
+        encoding="utf-8",
+    )
+    (out_dir / "tool_call.json").write_text(
+        json.dumps({"tool_call": merged["tool_call"]}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Import generic JSON/JSONL tool-event log into compiler artifact schema.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="One-liner:  ./import_eventlog events.jsonl --policy policy.json | ./compile - -v",
+    )
+    parser.add_argument("event_log", help="JSON/JSONL event log file, or - for stdin")
+    parser.add_argument("--policy", "-p", required=True, help="Authorization policy JSON file")
+    parser.add_argument("--executed-at", "-t", help="Override execution timestamp (ISO 8601 UTC)")
+    parser.add_argument("--action-index", "-i", type=int, default=0, help="Which tool event to compile")
+    parser.add_argument("--out", "-o", type=Path, help="Write artifact files to this directory")
+    parser.add_argument("--all", "-a", action="store_true", help="Write one artifact directory per tool event")
+    args = parser.parse_args()
+
+    events = _load_events(args.event_log)
+    policy = _load_policy(args.policy)
+    tool_events = _extract_tool_events(events)
+    if not tool_events:
+        print("ERROR: no tool/function-call events found", file=sys.stderr)
+        return 1
+
+    indices = list(range(len(tool_events))) if args.all else [args.action_index]
+    if args.all and not args.out:
+        print("ERROR: --all requires --out so each action has a separate artifact directory", file=sys.stderr)
+        return 1
+
+    for idx in indices:
+        if idx >= len(tool_events):
+            print(f"ERROR: action_index {idx} but only {len(tool_events)} tool event(s)", file=sys.stderr)
+            return 1
+        try:
+            merged = _event_to_artifacts(tool_events[idx], policy, args.executed_at)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+
+        if args.out:
+            out_dir = args.out if len(indices) == 1 else args.out / f"action_{idx}"
+            _write_artifacts(out_dir, merged)
+            print(f"  [{idx}] {merged['tool_call']['tool_name']} -> {out_dir}/", file=sys.stderr)
+        else:
+            print(json.dumps(merged, indent=2))
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

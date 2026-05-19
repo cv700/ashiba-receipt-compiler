@@ -1,0 +1,16 @@
+{
+  "authorization": {
+    "grant_id": "grant-zendesk-7f4e2a91",
+    "principal": "user:ops-lead@acmesupport.com",
+    "delegated_to": "agent:helpdesk-triage-v3",
+    "scope": [
+      "helpdesk:tickets:update",
+      "helpdesk:tickets:close"
+    ],
+    "grant_valid_from": "2026-05-15T06:00:00Z",
+    "grant_valid_until": "2026-05-15T18:00:00Z",
+    "revoked_at": null,
+    "issuer": "acme-helpdesk-platform",
+    "grant_context": "Daily triage shift - agent authorized to update and close tickets"
+  }
+}

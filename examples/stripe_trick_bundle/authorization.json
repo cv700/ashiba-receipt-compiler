@@ -1,0 +1,17 @@
+{
+  "authorization": {
+    "grant_id": "grant-stripe-7f2a9e01",
+    "principal": "user:sarah@merchant.io",
+    "delegated_to": "agent:claude-3.5-sonnet",
+    "scope": [
+      "stripe:charges:create",
+      "stripe:charges:read",
+      "stripe:refunds:create"
+    ],
+    "grant_valid_from": "2026-05-14T09:00:00Z",
+    "grant_valid_until": "2026-05-14T17:00:00Z",
+    "revoked_at": null,
+    "issuer": "merchant-cs-platform",
+    "grant_context": "Customer service shift - Sarah's Wednesday queue"
+  }
+}

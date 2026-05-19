@@ -1,0 +1,8 @@
+{
+  "principal": "user:sarah@merchant.io",
+  "delegated_to": "agent:claude-sonnet-4-20250514",
+  "scope": ["stripe:charges:create", "stripe:charges:read", "stripe:refunds:create"],
+  "grant_valid_from": "2026-05-14T09:00:00Z",
+  "grant_valid_until": "2026-05-14T17:00:00Z",
+  "grant_context": "Customer service shift - Sarah's Wednesday queue"
+}

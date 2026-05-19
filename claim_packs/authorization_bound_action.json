@@ -1,0 +1,38 @@
+{
+  "schema_version": "receipt-claim-pack-v0.1",
+  "name": "authorization_bound_action",
+  "description": "Checks whether a tool action was executed under an active authorization grant.",
+  "renderer_family": "cyber_tool_use",
+  "claim": {
+    "id": "claim.authorization_bound_action",
+    "text": "The tool action was executed under an active authorization grant."
+  },
+  "expected_evidence": [
+    "authorization.grant_id",
+    "authorization.grant_valid_from",
+    "authorization.grant_valid_until",
+    "parsed_actions.0.executed_at",
+    "tool_call.action_id"
+  ],
+  "applicability_evidence": [
+    "authorization",
+    "parsed_actions",
+    "tool_call"
+  ],
+  "passes": [
+    "utc_timestamp_format",
+    "expected_evidence_absence",
+    "grant_binding_present",
+    "grant_active_at_event_time",
+    "revocation_before_action",
+    "no_action_from_untrusted_literal",
+    "no_future_evidence"
+  ],
+  "pass_params": {
+    "no_action_from_untrusted_literal": {
+      "forbidden_source_kinds": [
+        "literal_untrusted_text"
+      ]
+    }
+  }
+}

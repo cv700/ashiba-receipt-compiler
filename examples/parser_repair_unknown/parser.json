@@ -1,0 +1,11 @@
+{
+  "parser": {
+    "repair_events": [
+      {
+        "repair_id": "repair-001",
+        "repair_function": "fix_unterminated_json_string",
+        "before_hash": "sha256:aabbcc"
+      }
+    ]
+  }
+}

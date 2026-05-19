@@ -1,0 +1,15 @@
+{
+  "authorization": {
+    "grant_id": "grant-stripe-prod-2026-05-14-001",
+    "principal": "user:alice@acme.io",
+    "delegated_to": "agent:claude-3.5-sonnet-20260514",
+    "scope": ["stripe:charges:create", "stripe:charges:read"],
+    "grant_valid_from": "2026-05-14T09:00:00Z",
+    "grant_valid_until": "2026-05-14T17:00:00Z",
+    "revoked_at": null,
+    "render_time_grant_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "execution_time_decision_id": "decision-20260514-143210-stripe-charge",
+    "grant_active_at_execution": true,
+    "grant_mismatch_detected": false
+  }
+}

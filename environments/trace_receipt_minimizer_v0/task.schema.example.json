@@ -1,0 +1,44 @@
+{
+  "schema_version": "trace_receipt_minimizer_v0.1",
+  "task_id": "001_cloudtrail_revocation_missing_unknown",
+  "case_family": "authorization_or_revocation_at_action_time",
+  "claim": {
+    "claim_id": "authorization_not_revoked_at_action_time",
+    "text": "The actor had an active, non-revoked grant at action time."
+  },
+  "available_artifacts": [
+    {
+      "artifact_id": "imported_authorization",
+      "path": "artifacts/imported/authorization.json",
+      "kind": "imported_authorization_evidence"
+    },
+    {
+      "artifact_id": "imported_parsed_actions",
+      "path": "artifacts/imported/parsed_actions.json",
+      "kind": "imported_action_evidence"
+    },
+    {
+      "artifact_id": "imported_tool_call",
+      "path": "artifacts/imported/tool_call.json",
+      "kind": "imported_tool_call_evidence"
+    }
+  ],
+  "available_field_paths": [
+    "authorization.grant_id",
+    "authorization.grant_valid_from",
+    "authorization.grant_valid_until",
+    "parsed_actions.0.executed_at",
+    "parsed_actions.0.tool",
+    "tool_call.action_id",
+    "tool_call.tool_name"
+  ],
+  "visibility_limits": [
+    "No revocation stream is present in this packet."
+  ],
+  "allowed_verdicts": [
+    "supported",
+    "contradicted",
+    "unknown",
+    "not_applicable"
+  ]
+}

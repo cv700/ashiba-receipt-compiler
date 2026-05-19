@@ -1,0 +1,8 @@
+{
+  "authorization": {
+    "grant_id": "grant-adv-revoked-equal",
+    "grant_valid_from": "2026-05-15T10:00:00Z",
+    "grant_valid_until": "2026-05-15T18:00:00Z",
+    "revoked_at": "2026-05-15T14:32:10Z"
+  }
+}

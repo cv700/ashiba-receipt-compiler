@@ -1,0 +1,10 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "act-adv-offset",
+      "tool": "create_payment_request",
+      "executed_at": "2026-05-15T10:32:10-04:00",
+      "source_kind": "model_output"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "approvals": [
+    {
+      "approval_id": "approval-20260514-approved",
+      "tool_call_id": "cloudtrail-evt-approved",
+      "approved_at": "2026-05-14T17:00:00Z",
+      "decision": "approved",
+      "actor": "ops@example.com"
+    }
+  ]
+}

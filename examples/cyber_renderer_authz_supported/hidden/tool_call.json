@@ -1,0 +1,13 @@
+{
+  "tool_call": {
+    "action_id": "act-cyber-20260514-143210-001",
+    "tool_schema_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "tool_name": "iam.accounts.lock",
+    "tool_version": "2026-04-01",
+    "invocation_context": {
+      "conversation_id": "conv-cyber-renderer-authz-001",
+      "turn_number": 4,
+      "model": "agent-eval-model-001"
+    }
+  }
+}

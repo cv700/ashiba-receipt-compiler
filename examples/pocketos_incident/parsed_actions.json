@@ -1,0 +1,38 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "act-20260412-141523-001",
+      "tool": "railway.db.delete",
+      "executed_at": "2026-04-12T14:15:23Z",
+      "source_kind": "model_output",
+      "source_segment_id": "seg-turn-14-tool-call",
+      "parameters": {
+        "project_id": "pocketos-prod",
+        "database_id": "postgres-prod-main",
+        "confirm_delete": true
+      },
+      "response": {
+        "status": "deleted",
+        "returned_at": "2026-04-12T14:15:25Z"
+      }
+    },
+    {
+      "action_id": "act-20260412-141553-002",
+      "tool": "railway.backups.delete",
+      "executed_at": "2026-04-12T14:15:53Z",
+      "source_kind": "model_output",
+      "source_segment_id": "seg-turn-14-tool-call-2",
+      "parameters": {
+        "project_id": "pocketos-prod",
+        "database_id": "postgres-prod-main",
+        "backup_ids": ["bkp-20260411-auto", "bkp-20260410-auto", "bkp-20260409-auto"],
+        "confirm_delete": true
+      },
+      "response": {
+        "status": "deleted",
+        "backups_removed": 3,
+        "returned_at": "2026-04-12T14:15:55Z"
+      }
+    }
+  ]
+}

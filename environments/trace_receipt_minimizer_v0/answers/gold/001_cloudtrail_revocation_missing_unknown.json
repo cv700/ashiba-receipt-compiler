@@ -1,0 +1,32 @@
+{
+  "task_id": "001_cloudtrail_revocation_missing_unknown",
+  "claim_id": "authorization_not_revoked_at_action_time",
+  "selected_evidence_refs": [
+    "artifacts/imported/authorization.json",
+    "artifacts/imported/parsed_actions.json",
+    "artifacts/imported/tool_call.json"
+  ],
+  "selected_field_paths": [
+    "authorization.grant_id",
+    "authorization.grant_valid_from",
+    "authorization.grant_valid_until",
+    "parsed_actions.0.executed_at",
+    "parsed_actions.0.tool",
+    "tool_call.action_id",
+    "tool_call.tool_name"
+  ],
+  "verdict": "unknown",
+  "basis": "The grant window covers the CloudTrail action time, but authorization.revoked_at is missing, so non-revocation at action time is not established.",
+  "missing_evidence": [
+    {
+      "path": "authorization.revoked_at",
+      "why_it_matters": "It separates an explicitly non-revoked grant from absent revocation state."
+    }
+  ],
+  "boundary": [
+    "The revocation state is absent for this grant, so the packet stops at unknown for non-revocation."
+  ],
+  "do_not_claim": [
+    "Do not claim the action was authorized or not revoked without a revocation-state field or stream."
+  ]
+}

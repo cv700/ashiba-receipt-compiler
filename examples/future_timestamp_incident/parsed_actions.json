@@ -1,0 +1,15 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "act-backup-001",
+      "tool": "database.backup.create",
+      "executed_at": "2026-05-15T14:00:00Z",
+      "source_kind": "model_output",
+      "parameters": {
+        "database": "production_main",
+        "backup_type": "full",
+        "compression": "zstd"
+      }
+    }
+  ]
+}

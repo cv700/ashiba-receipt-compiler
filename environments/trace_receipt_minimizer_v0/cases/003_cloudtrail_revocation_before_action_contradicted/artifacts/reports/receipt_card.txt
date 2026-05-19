@@ -1,0 +1,20 @@
+Receipt Card
+Claim: claim.authorization_bound_action: The tool action was executed under an active authorization grant.
+Verdict: contradicted
+Basis: grant revoked at 2026-05-14T17:05:00Z before action at 2026-05-14T17:12:08Z
+Evidence present:
+  - authorization.grant_id
+  - authorization.grant_valid_from
+  - authorization.grant_valid_until
+  - parsed_actions.0.executed_at
+  - tool_call.action_id
+Evidence missing:
+  - (none)
+Boundary / does-not-support:
+  - This receipt does not support claims about other executions, general system reliability, or behavior under different conditions.
+  - This receipt does not support the claim because supplied evidence conflicts with it.
+Unsupported inferences:
+  - That the action was semantically correct or desirable.
+  - That the model intended the action.
+  - That authorization behavior was the same in other runs.
+  - That the system is secure, safe, certified, or generally reliable.

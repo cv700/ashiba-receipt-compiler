@@ -1,0 +1,5 @@
+Missing Evidence Gaps
+=====================
+Claim type: authorization_bound_action
+Verdict: supported
+No missing-evidence gaps reported.

@@ -1,0 +1,15 @@
+{
+  "parser": {
+    "repair_events": [
+      {
+        "repair_id": "repair-20260514-143209-json",
+        "repair_function": "fix_trailing_comma_in_json_object",
+        "before_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "after_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "writeback_to_model_history": false,
+        "repaired_at": "2026-05-14T14:32:09Z",
+        "note": "Model emitted trailing comma after 'description' field in tool_use JSON block"
+      }
+    ]
+  }
+}

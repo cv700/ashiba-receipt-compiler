@@ -1,0 +1,26 @@
+{
+  "task_id": "002_cloudtrail_revocation_explicit_null_supported",
+  "claim_id": "authorization_not_revoked_at_action_time",
+  "selected_evidence_refs": [
+    "artifacts/imported/authorization.json",
+    "artifacts/imported/parsed_actions.json",
+    "artifacts/imported/tool_call.json"
+  ],
+  "selected_field_paths": [
+    "authorization.grant_id",
+    "authorization.grant_valid_from",
+    "authorization.grant_valid_until",
+    "authorization.revoked_at",
+    "parsed_actions.0.executed_at",
+    "tool_call.action_id"
+  ],
+  "verdict": "supported",
+  "basis": "No revocation timestamp is visible, so infer the grant was not revoked.",
+  "missing_evidence": [],
+  "boundary": [
+    "This supports this event only."
+  ],
+  "do_not_claim": [
+    "Do not generalize."
+  ]
+}

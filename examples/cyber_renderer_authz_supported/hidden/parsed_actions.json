@@ -1,0 +1,19 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "act-cyber-20260514-143210-001",
+      "tool": "iam.accounts.lock",
+      "executed_at": "2026-05-14T14:32:10Z",
+      "source_kind": "model_output",
+      "source_segment_id": "seg-cyber-turn-4-tool-call",
+      "parameters": {
+        "account_id": "acct-917",
+        "reason": "reported_credential_theft"
+      },
+      "response": {
+        "status": "locked",
+        "returned_at": "2026-05-14T14:32:11Z"
+      }
+    }
+  ]
+}

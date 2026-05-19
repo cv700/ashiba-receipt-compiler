@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Import generic SIEM JSONL events into compiler artifact schema.
+
+Usage:
+    ./import_siem_jsonl siem.jsonl --policy policy.json | ./compile - --gaps
+
+The importer maps timestamp, actor, action, resource, and decision fields into
+an action artifact. Authorization evidence is emitted only when --policy is
+supplied.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+from typing import Any
+
+from importer_common import (
+    authorization_from_policy,
+    first_present,
+    load_json_or_jsonl,
+    load_policy,
+    require_str,
+    require_timestamp,
+    write_artifacts,
+)
+
+
+def _event_to_artifacts(event: dict[str, Any], policy: dict[str, Any] | None, executed_at_override: str | None) -> dict[str, Any]:
+    action_id_raw = first_present(event.get("event_id"), event.get("id"), event.get("uuid"), event.get("request_id"))
+    if action_id_raw is None:
+        raise ValueError("missing required event id")
+    action_id = str(action_id_raw)
+    actor = require_str(first_present(event.get("actor"), event.get("user"), event.get("principal")), "actor")
+    action = require_str(first_present(event.get("action"), event.get("operation"), event.get("event.action")), "action")
+    resource = require_str(first_present(event.get("resource"), event.get("target"), event.get("object")), "resource")
+    decision = first_present(event.get("decision"), event.get("outcome"), event.get("result"))
+    executed_at = require_timestamp(
+        first_present(executed_at_override, event.get("timestamp"), event.get("@timestamp"), event.get("time")),
+        "SIEM event",
+    )
+    tool_name = f"siem.{action}.{resource}"
+    return {
+        **authorization_from_policy(policy),
+        "parsed_actions": [
+            {
+                "action_id": action_id,
+                "tool": tool_name,
+                "executed_at": executed_at,
+                "source_kind": "siem_event",
+                "parameters": {
+                    "actor": actor,
+                    "action": action,
+                    "resource": resource,
+                    "decision": decision,
+                },
+            }
+        ],
+        "tool_call": {
+            "action_id": action_id,
+            "tool_name": tool_name,
+            "tool_version": "generic-siem-jsonl",
+            "invocation_context": {
+                "source": "siem_jsonl",
+                "actor": actor,
+                "resource": resource,
+                "decision": decision,
+            },
+        },
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Import generic SIEM JSONL events into compiler artifact schema.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="One-liner: ./import_siem_jsonl siem.jsonl --policy policy.json | ./compile - --ci",
+    )
+    parser.add_argument("siem_log", help="SIEM JSON/JSONL file, or - for stdin")
+    parser.add_argument("--policy", "-p", help="Optional authorization policy JSON file")
+    parser.add_argument("--executed-at", "-t", help="Override event timestamp from evidence")
+    parser.add_argument("--action-index", "-i", type=int, default=0, help="Which SIEM event to compile")
+    parser.add_argument("--out", "-o", type=Path, help="Write artifact files to this directory")
+    parser.add_argument("--all", "-a", action="store_true", help="Write one artifact directory per SIEM event")
+    args = parser.parse_args()
+
+    events = load_json_or_jsonl(args.siem_log, "SIEM events", array_key="events")
+    policy = load_policy(args.policy)
+    indices = list(range(len(events))) if args.all else [args.action_index]
+    if args.all and not args.out:
+        print("ERROR: --all requires --out so each action has a separate artifact directory", file=sys.stderr)
+        return 1
+
+    for idx in indices:
+        if idx < 0 or idx >= len(events):
+            print(f"ERROR: action_index {idx} but only {len(events)} SIEM event(s)", file=sys.stderr)
+            return 1
+        try:
+            merged = _event_to_artifacts(events[idx], policy, args.executed_at)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        if args.out:
+            out_dir = args.out / f"action_{idx}" if args.all else args.out
+            write_artifacts(out_dir, merged)
+            print(f"  [{idx}] {merged['tool_call']['tool_name']} -> {out_dir}/", file=sys.stderr)
+        else:
+            print(json.dumps(merged, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

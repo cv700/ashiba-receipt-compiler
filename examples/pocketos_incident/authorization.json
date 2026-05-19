@@ -1,0 +1,12 @@
+{
+  "authorization": {
+    "grant_id": "grant-railway-pocketos-2026-04-12-001",
+    "principal": "user:dev@pocketos.app",
+    "delegated_to": "agent:claude-opus-4-20260401",
+    "scope": ["railway:services:deploy", "railway:env:write"],
+    "grant_valid_from": "2026-04-12T08:00:00Z",
+    "grant_valid_until": "2026-04-12T20:00:00Z",
+    "revoked_at": null,
+    "grant_mismatch_detected": false
+  }
+}

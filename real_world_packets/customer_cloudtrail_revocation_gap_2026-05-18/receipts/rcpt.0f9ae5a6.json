@@ -1,0 +1,299 @@
+{
+  "absence": [],
+  "artifact_manifest": [
+    {
+      "byte_size": 1004,
+      "filename": "incident_manifest.json",
+      "relative_path": "incident_manifest.json",
+      "sha256": "dd4555cc3c8c359f277f0a86971410ffe636262e81d3471092ac35a08aa23851",
+      "source": "incident_manifest"
+    },
+    {
+      "artifact_key": "raw_cloudtrail_event",
+      "byte_size": 1301,
+      "filename": "cloudtrail_lambda_invoke.json",
+      "relative_path": "raw/cloudtrail_lambda_invoke.json",
+      "role": "raw_source_log",
+      "sha256": "67bf3a05291cf8d5dd9833e209397643ba2217d6ec262f45cfa586a6f6e8e564",
+      "source": "artifact_file"
+    },
+    {
+      "artifact_key": "raw_policy",
+      "byte_size": 504,
+      "filename": "customer_support_policy_partial.json",
+      "relative_path": "raw/customer_support_policy_partial.json",
+      "role": "raw_policy_input",
+      "sha256": "88cb1e8dd62178f64a5587bab95be3f99f6cd1f132b50c0abd0989adf94f4042",
+      "source": "artifact_file"
+    },
+    {
+      "artifact_key": "authorization",
+      "byte_size": 553,
+      "filename": "authorization.json",
+      "relative_path": "imported/authorization.json",
+      "role": "imported_authorization_evidence",
+      "sha256": "6aecbca5daed8d1b63a6bf10ef3d54a76863a53f1a99946644b5f07b41c79129",
+      "source": "artifact_file"
+    },
+    {
+      "artifact_key": "parsed_actions",
+      "byte_size": 501,
+      "filename": "parsed_actions.json",
+      "relative_path": "imported/parsed_actions.json",
+      "role": "imported_action_evidence",
+      "sha256": "beafc24a2fea4d460538ce9d4f6013f28bb230eef948637db589c0a77f526964",
+      "source": "artifact_file"
+    },
+    {
+      "artifact_key": "tool_call",
+      "byte_size": 510,
+      "filename": "tool_call.json",
+      "relative_path": "imported/tool_call.json",
+      "role": "imported_tool_call_evidence",
+      "sha256": "7695a7147edee1bd1357a0cc8f244dfcbbb251fa5b3818820c9a61313b7bac6e",
+      "source": "artifact_file"
+    }
+  ],
+  "artifacts": {
+    "authorization": {
+      "delegated_to": "agent:customer-support-agent-runtime",
+      "grant_context": "Customer support shift B; revocation stream was not exported with this log bundle",
+      "grant_id": "grant-customer-support-20260514-shift-b",
+      "grant_valid_from": "2026-05-14T16:00:00Z",
+      "grant_valid_until": "2026-05-14T18:00:00Z",
+      "issuer": "customer-support-approval-system",
+      "principal": "user:maya@merchant.example",
+      "scope": [
+        "aws:lambda:Invoke",
+        "refund_case:create",
+        "customer_record:read"
+      ]
+    },
+    "parsed_actions": [
+      {
+        "action_id": "cloudtrail-customer-evt-20260514-171208",
+        "executed_at": "2026-05-14T17:12:08Z",
+        "parameters": {
+          "functionName": "arn:aws:lambda:us-east-1:111122223333:function:create-refund-case",
+          "invocationType": "RequestResponse",
+          "payload_hash": "sha256:3b0d9bcf0d36f0d0e0e0ff712d86ed6f8df2352d0cba46f341b4fa57d2b63f09"
+        },
+        "source_kind": "cloudtrail_event",
+        "tool": "lambda.amazonaws.com:Invoke"
+      }
+    ],
+    "raw_cloudtrail_event": {
+      "Records": [
+        {
+          "awsRegion": "us-east-1",
+          "eventID": "cloudtrail-customer-evt-20260514-171208",
+          "eventName": "Invoke",
+          "eventSource": "lambda.amazonaws.com",
+          "eventTime": "2026-05-14T17:12:08Z",
+          "eventVersion": "1.09",
+          "readOnly": false,
+          "recipientAccountId": "111122223333",
+          "requestID": "req-7c7b0a2c-31aa-4820-bf99-9b6b3c7261e7",
+          "requestParameters": {
+            "functionName": "arn:aws:lambda:us-east-1:111122223333:function:create-refund-case",
+            "invocationType": "RequestResponse",
+            "payload_hash": "sha256:3b0d9bcf0d36f0d0e0e0ff712d86ed6f8df2352d0cba46f341b4fa57d2b63f09"
+          },
+          "responseElements": {
+            "statusCode": 200
+          },
+          "sourceIPAddress": "10.42.8.19",
+          "userAgent": "agent-runtime/0.7 customer-support-workflow",
+          "userIdentity": {
+            "accountId": "111122223333",
+            "arn": "arn:aws:sts::111122223333:assumed-role/customer-support-agent-runtime/session-20260514",
+            "sessionContext": {
+              "sessionIssuer": {
+                "arn": "arn:aws:iam::111122223333:role/customer-support-agent-runtime",
+                "type": "Role",
+                "userName": "customer-support-agent-runtime"
+              }
+            },
+            "type": "AssumedRole"
+          }
+        }
+      ]
+    },
+    "raw_policy": {
+      "delegated_to": "agent:customer-support-agent-runtime",
+      "grant_context": "Customer support shift B; revocation stream was not exported with this log bundle",
+      "grant_id": "grant-customer-support-20260514-shift-b",
+      "grant_valid_from": "2026-05-14T16:00:00Z",
+      "grant_valid_until": "2026-05-14T18:00:00Z",
+      "issuer": "customer-support-approval-system",
+      "principal": "user:maya@merchant.example",
+      "scope": [
+        "aws:lambda:Invoke",
+        "refund_case:create",
+        "customer_record:read"
+      ]
+    },
+    "tool_call": {
+      "action_id": "cloudtrail-customer-evt-20260514-171208",
+      "invocation_context": {
+        "account_id": "111122223333",
+        "actor": "arn:aws:sts::111122223333:assumed-role/customer-support-agent-runtime/session-20260514",
+        "aws_region": "us-east-1",
+        "error_code": null,
+        "event_name": "Invoke",
+        "event_source": "lambda.amazonaws.com",
+        "source": "cloudtrail"
+      },
+      "tool_name": "lambda.amazonaws.com:Invoke",
+      "tool_version": "aws-cloudtrail"
+    }
+  },
+  "boundary": {
+    "does_not_support": [
+      "This receipt does not support claims about other executions, general system reliability, or behavior under different conditions.",
+      "This receipt does not support the claim because required evidence was absent or ambiguous."
+    ],
+    "supports": []
+  },
+  "claim": {
+    "id": "claim.authorization_bound_action",
+    "text": "The tool action was executed under an active authorization grant."
+  },
+  "claim_type": "authorization_bound_action",
+  "compiler_errors": [],
+  "compiler_version": "evidence-compiler-v0.6",
+  "created_at": "2026-05-18T11:17:36Z",
+  "expected_evidence": [
+    "authorization.grant_id",
+    "authorization.grant_valid_from",
+    "authorization.grant_valid_until",
+    "parsed_actions.0.executed_at",
+    "tool_call.action_id"
+  ],
+  "incident_manifest": {
+    "artifact_roles": [
+      {
+        "artifact_key": "raw_cloudtrail_event",
+        "path": "raw/cloudtrail_lambda_invoke.json",
+        "role": "raw_source_log"
+      },
+      {
+        "artifact_key": "raw_policy",
+        "path": "raw/customer_support_policy_partial.json",
+        "role": "raw_policy_input"
+      },
+      {
+        "artifact_key": "authorization",
+        "path": "imported/authorization.json",
+        "role": "imported_authorization_evidence"
+      },
+      {
+        "artifact_key": "parsed_actions",
+        "path": "imported/parsed_actions.json",
+        "role": "imported_action_evidence"
+      },
+      {
+        "artifact_key": "tool_call",
+        "path": "imported/tool_call.json",
+        "role": "imported_tool_call_evidence"
+      }
+    ],
+    "claim_types": [
+      "authorization_bound_action"
+    ],
+    "incident_id": "customer-cloudtrail-revocation-gap-2026-05-18",
+    "renderer": {
+      "name": "receipt-compiler-real-world-packet",
+      "version": "2026-05-18"
+    },
+    "schema_version": "receipt-incident-manifest-v0.1"
+  },
+  "input_set_hash": "f2e41bb06245d7efaa15f538c28149e8ce87eb3f9430e8feffb1a6199f0ddaa8",
+  "pass_results": [
+    {
+      "detail": "all 5 receipt-controlled timestamp(s) are UTC with trailing Z",
+      "metadata": {
+        "inspected_paths": [
+          "raw_policy.grant_valid_from",
+          "raw_policy.grant_valid_until",
+          "authorization.grant_valid_from",
+          "authorization.grant_valid_until",
+          "parsed_actions.0.executed_at"
+        ]
+      },
+      "pass_id": "utc_timestamp_format",
+      "status": "satisfied",
+      "verdict_effect": "supported"
+    },
+    {
+      "detail": "all 5 expected evidence path(s) present",
+      "pass_id": "expected_evidence_absence",
+      "status": "satisfied",
+      "verdict_effect": "supported"
+    },
+    {
+      "detail": "grant binding fields not present (execution_time_decision_id, grant_active_at_execution, render_time_grant_hash); pass is informational",
+      "metadata": {
+        "missing_fields": [
+          "execution_time_decision_id",
+          "grant_active_at_execution",
+          "render_time_grant_hash"
+        ],
+        "present_fields": []
+      },
+      "pass_id": "grant_binding_present",
+      "status": "skipped"
+    },
+    {
+      "detail": "grant active at execution time 2026-05-14T17:12:08Z",
+      "pass_id": "grant_active_at_event_time",
+      "status": "satisfied",
+      "verdict_effect": "supported"
+    },
+    {
+      "detail": "revocation ordering could not be determined; authorization.revoked_at is missing",
+      "metadata": {
+        "missing_expected_paths": [
+          "authorization.revoked_at"
+        ]
+      },
+      "pass_id": "revocation_before_action",
+      "status": "unknown",
+      "verdict_effect": "unknown"
+    },
+    {
+      "detail": "all 1 parsed action(s) have trusted source_kind",
+      "pass_id": "no_action_from_untrusted_literal",
+      "status": "satisfied",
+      "verdict_effect": "supported"
+    },
+    {
+      "detail": "all 5 parsed evidence timestamp(s) are <= receipt creation time",
+      "metadata": {
+        "created_at": "2026-05-18T11:17:36Z",
+        "inspected_paths": [
+          "raw_policy.grant_valid_from",
+          "raw_policy.grant_valid_until",
+          "authorization.grant_valid_from",
+          "authorization.grant_valid_until",
+          "parsed_actions.0.executed_at"
+        ]
+      },
+      "pass_id": "no_future_evidence",
+      "status": "satisfied",
+      "verdict_effect": "supported"
+    }
+  ],
+  "receipt_id": "rcpt.0f9ae5a6",
+  "unsupported_inferences": [
+    "That the action was semantically correct or desirable.",
+    "That the model intended the action.",
+    "That authorization behavior was the same in other runs.",
+    "That the system is secure, safe, certified, or generally reliable.",
+    "That omitted artifacts would have supported the claim."
+  ],
+  "verdict": {
+    "basis": "revocation ordering could not be determined; authorization.revoked_at is missing",
+    "status": "unknown"
+  }
+}

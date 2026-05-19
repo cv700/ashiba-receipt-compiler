@@ -1,0 +1,14 @@
+{
+  "grant_id": "grant-customer-support-20260514-shift-b",
+  "principal": "user:maya@merchant.example",
+  "delegated_to": "agent:customer-support-agent-runtime",
+  "scope": [
+    "aws:lambda:Invoke",
+    "refund_case:create",
+    "customer_record:read"
+  ],
+  "grant_valid_from": "2026-05-14T16:00:00Z",
+  "grant_valid_until": "2026-05-14T18:00:00Z",
+  "issuer": "customer-support-approval-system",
+  "grant_context": "Customer support shift B; revocation stream was not exported with this log bundle"
+}

@@ -1,0 +1,16 @@
+{
+  "authorization": {
+    "grant_id": "grant-snowflake-a3d91c07",
+    "principal": "user:analyst@dataco.io",
+    "delegated_to": "agent:cortex-analyst-v2",
+    "scope": [
+      "warehouse:query:execute",
+      "warehouse:query:read_results"
+    ],
+    "grant_valid_from": "2026-03-11T08:00:00Z",
+    "grant_valid_until": "2026-03-11T20:00:00Z",
+    "revoked_at": null,
+    "issuer": "dataco-cortex-platform",
+    "grant_context": "Analyst daily warehouse access - scheduled reporting shift"
+  }
+}

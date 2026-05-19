@@ -1,0 +1,22 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "act-20260514-143210-001",
+      "tool": "stripe.charges.create",
+      "executed_at": "2026-05-14T14:32:10Z",
+      "source_kind": "model_output",
+      "source_segment_id": "seg-turn-7-tool-call",
+      "parameters": {
+        "amount": 4999,
+        "currency": "usd",
+        "customer": "cus_OxR4PkQtTnSUvM",
+        "description": "Monthly subscription renewal - Pro plan"
+      },
+      "response": {
+        "charge_id": "ch_3Pp2v8K9",
+        "status": "succeeded",
+        "returned_at": "2026-05-14T14:32:11Z"
+      }
+    }
+  ]
+}

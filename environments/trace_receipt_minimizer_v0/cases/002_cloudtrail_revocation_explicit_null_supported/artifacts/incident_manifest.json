@@ -1,0 +1,38 @@
+{
+  "schema_version": "receipt-incident-manifest-v0.1",
+  "incident_id": "trm-002-cloudtrail-revocation-explicit-null-supported",
+  "claim_types": [
+    "authorization_bound_action"
+  ],
+  "renderer": {
+    "name": "trace-receipt-minimizer-v0",
+    "version": "2026-05-18"
+  },
+  "artifact_roles": [
+    {
+      "path": "raw/cloudtrail_lambda_invoke.json",
+      "artifact_key": "raw_cloudtrail_event",
+      "role": "raw_source_log"
+    },
+    {
+      "path": "raw/customer_support_policy.json",
+      "artifact_key": "raw_policy",
+      "role": "raw_policy_input"
+    },
+    {
+      "path": "imported/authorization.json",
+      "artifact_key": "authorization",
+      "role": "imported_authorization_evidence"
+    },
+    {
+      "path": "imported/parsed_actions.json",
+      "artifact_key": "parsed_actions",
+      "role": "imported_action_evidence"
+    },
+    {
+      "path": "imported/tool_call.json",
+      "artifact_key": "tool_call",
+      "role": "imported_tool_call_evidence"
+    }
+  ]
+}

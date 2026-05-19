@@ -1,0 +1,46 @@
+{
+  "schema_version": "receipt-incident-manifest-v0.1",
+  "incident_id": "cyber-renderer-authz-001",
+  "description": "Renderer-shaped cyber tool-use incident with raw trace, agent-visible observation, and hidden verifier evidence.",
+  "claim_types": [
+    "authorization_bound_action"
+  ],
+  "renderer": {
+    "name": "prime-intellect-style-cyber-renderer-sim",
+    "version": "0.1",
+    "observation_path": "rendered/rendered_observation.json",
+    "boundary": "The renderer creates the visible agent observation from raw runtime data; the receipt compiler evaluates hidden evidence artifacts that are not exposed as reward text."
+  },
+  "artifact_roles": [
+    {
+      "path": "raw/tool_runtime_log.json",
+      "artifact_key": "raw_tool_runtime_log",
+      "role": "raw_trace",
+      "description": "Raw runtime span export before renderer projection."
+    },
+    {
+      "path": "rendered/rendered_observation.json",
+      "artifact_key": "rendered_observation",
+      "role": "agent_observation",
+      "description": "Renderer output visible to an evaluated agent."
+    },
+    {
+      "path": "hidden/authorization.json",
+      "artifact_key": "authorization",
+      "role": "hidden_evidence",
+      "description": "Hidden authorization state used by deterministic verifier passes."
+    },
+    {
+      "path": "hidden/parsed_actions.json",
+      "artifact_key": "parsed_actions",
+      "role": "hidden_evidence",
+      "description": "Hidden normalized tool actions used by deterministic verifier passes."
+    },
+    {
+      "path": "hidden/tool_call.json",
+      "artifact_key": "tool_call",
+      "role": "hidden_evidence",
+      "description": "Hidden tool-call binding evidence used by deterministic verifier passes."
+    }
+  ]
+}

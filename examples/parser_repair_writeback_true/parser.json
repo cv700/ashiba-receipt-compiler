@@ -1,0 +1,15 @@
+{
+  "parser": {
+    "repair_events": [
+      {
+        "repair_id": "repair-20260516-xml-tag",
+        "repair_function": "close_unclosed_xml_tag",
+        "before_hash": "sha256:a3f7c0e91d4b8256f1e0a9c4d7b3e8f5210694a8c3d7e1f0b5a2c8d6e4f9a1b3",
+        "after_hash": "sha256:d8e2f4a7b1c5093d6e8f2a4b7c1d5e9f3a6b8c0d2e4f7a9b1c3d5e8f0a2b4c6",
+        "writeback_to_model_history": true,
+        "repaired_at": "2026-05-16T02:14:07Z",
+        "note": "Agent emitted <tool_use> with unclosed <parameters> tag in XML tool call. Parser inserted </parameters> before forwarding. Repaired output was written back to model conversation history - model now sees a well-formed version it did not produce."
+      }
+    ]
+  }
+}

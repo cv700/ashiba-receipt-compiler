@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""Import AWS CloudTrail-style JSON into compiler artifact schema.
+
+Usage:
+    ./import_cloudtrail cloudtrail.json --policy policy.json | ./compile - --gaps
+
+The importer maps one CloudTrail event into parsed action and tool-call
+artifacts. Authorization evidence is emitted only when --policy is supplied.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+from typing import Any
+
+from importer_common import (
+    authorization_from_policy,
+    first_present,
+    load_json,
+    load_policy,
+    nested_get,
+    require_str,
+    require_timestamp,
+    write_artifacts,
+)
+
+
+def _records(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict) and isinstance(payload.get("Records"), list):
+        records = payload["Records"]
+    elif isinstance(payload, list):
+        records = payload
+    else:
+        records = [payload]
+    if not all(isinstance(record, dict) for record in records):
+        raise ValueError("every CloudTrail record must be a JSON object")
+    return records
+
+
+def _event_to_artifacts(event: dict[str, Any], policy: dict[str, Any] | None, executed_at_override: str | None) -> dict[str, Any]:
+    event_source = require_str(event.get("eventSource"), "eventSource")
+    event_name = require_str(event.get("eventName"), "eventName")
+    action_id = require_str(first_present(event.get("eventID"), event.get("requestID"), event.get("eventId")), "eventID")
+    executed_at = require_timestamp(first_present(executed_at_override, event.get("eventTime")), "eventTime")
+    tool_name = f"{event_source}:{event_name}"
+    return {
+        **authorization_from_policy(policy),
+        "parsed_actions": [
+            {
+                "action_id": action_id,
+                "tool": tool_name,
+                "executed_at": executed_at,
+                "source_kind": "cloudtrail_event",
+                "parameters": event.get("requestParameters", {}),
+            }
+        ],
+        "tool_call": {
+            "action_id": action_id,
+            "tool_name": tool_name,
+            "tool_version": "aws-cloudtrail",
+            "invocation_context": {
+                "source": "cloudtrail",
+                "event_source": event_source,
+                "event_name": event_name,
+                "aws_region": event.get("awsRegion"),
+                "account_id": nested_get(event, "userIdentity", "accountId"),
+                "actor": nested_get(event, "userIdentity", "arn"),
+                "error_code": event.get("errorCode"),
+            },
+        },
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Import AWS CloudTrail-style JSON into compiler artifact schema.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="One-liner: ./import_cloudtrail cloudtrail.json --policy policy.json | ./compile - --ci",
+    )
+    parser.add_argument("cloudtrail", help="CloudTrail JSON file, or - for stdin")
+    parser.add_argument("--policy", "-p", help="Optional authorization policy JSON file")
+    parser.add_argument("--executed-at", "-t", help="Override event timestamp from evidence")
+    parser.add_argument("--action-index", "-i", type=int, default=0, help="Which CloudTrail record to compile")
+    parser.add_argument("--out", "-o", type=Path, help="Write artifact files to this directory")
+    parser.add_argument("--all", "-a", action="store_true", help="Write one artifact directory per CloudTrail record")
+    args = parser.parse_args()
+
+    try:
+        records = _records(load_json(args.cloudtrail, "CloudTrail"))
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    policy = load_policy(args.policy)
+
+    indices = list(range(len(records))) if args.all else [args.action_index]
+    if args.all and not args.out:
+        print("ERROR: --all requires --out so each action has a separate artifact directory", file=sys.stderr)
+        return 1
+
+    for idx in indices:
+        if idx < 0 or idx >= len(records):
+            print(f"ERROR: action_index {idx} but only {len(records)} CloudTrail record(s)", file=sys.stderr)
+            return 1
+        try:
+            merged = _event_to_artifacts(records[idx], policy, args.executed_at)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        if args.out:
+            out_dir = args.out / f"action_{idx}" if args.all else args.out
+            write_artifacts(out_dir, merged)
+            print(f"  [{idx}] {merged['tool_call']['tool_name']} -> {out_dir}/", file=sys.stderr)
+        else:
+            print(json.dumps(merged, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

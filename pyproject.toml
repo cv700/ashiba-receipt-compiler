@@ -1,0 +1,9 @@
+[project]
+name = "ashiba-receipt-compiler"
+version = "0.0.1"
+description = "Local-first prototype scanner and receipt compiler for bounded operational claims."
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.py_compile]
+note = "This project intentionally uses only the Python standard library."

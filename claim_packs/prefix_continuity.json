@@ -1,0 +1,31 @@
+{
+  "schema_version": "receipt-claim-pack-v0.1",
+  "name": "prefix_continuity",
+  "description": "Checks whether the next prompt preserves the previous prompt plus completion token prefix.",
+  "renderer_family": "agent_trace_integrity",
+  "claim": {
+    "id": "claim.prefix_continuity",
+    "text": "The next prompt preserves the exact token prefix from the previous prompt plus completion."
+  },
+  "expected_evidence": [
+    "token_sequences.previous_prompt_tokens",
+    "token_sequences.completion_tokens",
+    "token_sequences.next_prompt_tokens"
+  ],
+  "applicability_evidence": [
+    "token_sequences"
+  ],
+  "passes": [
+    "utc_timestamp_format",
+    "expected_evidence_absence",
+    "prefix_continuity",
+    "no_future_evidence"
+  ],
+  "pass_params": {
+    "prefix_continuity": {
+      "previous_key": "token_sequences.previous_prompt_tokens",
+      "completion_key": "token_sequences.completion_tokens",
+      "next_key": "token_sequences.next_prompt_tokens"
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"event_id":"siem-evt-01HX","timestamp":"2026-05-14T17:01:30Z","actor":"agent:ops-runner","action":"stripe.charge.create","resource":"customer:cust_123","decision":"allowed","source":"siem-fixture"}

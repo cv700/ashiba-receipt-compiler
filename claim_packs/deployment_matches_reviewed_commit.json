@@ -1,0 +1,29 @@
+{
+  "schema_version": "receipt-claim-pack-v0.1",
+  "name": "deployment_matches_reviewed_commit",
+  "description": "Checks whether a deployment used the same commit that was approved in review.",
+  "renderer_family": "deployment_provenance",
+  "claim": {
+    "id": "claim.deployment_matches_reviewed_commit",
+    "text": "The deployed commit matches the reviewed and approved commit."
+  },
+  "expected_evidence": [
+    "deployment.deployment_id",
+    "deployment.commit_sha",
+    "deployment.deployed_at",
+    "review.commit_sha",
+    "review.decision",
+    "review.approved_at"
+  ],
+  "applicability_evidence": [
+    "deployment",
+    "review"
+  ],
+  "passes": [
+    "utc_timestamp_format",
+    "expected_evidence_absence",
+    "deployment_matches_reviewed_commit",
+    "no_future_evidence"
+  ],
+  "pass_params": {}
+}

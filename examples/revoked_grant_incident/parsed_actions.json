@@ -1,0 +1,16 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "act-shopify-cancel-7742",
+      "tool": "shopify.orders.cancel",
+      "executed_at": "2026-05-15T15:31:45Z",
+      "source_kind": "model_output",
+      "params": {
+        "order_id": "gid://shopify/Order/5765410201744",
+        "reason": "customer_changed_mind",
+        "restock": true,
+        "notify_customer": true
+      }
+    }
+  ]
+}

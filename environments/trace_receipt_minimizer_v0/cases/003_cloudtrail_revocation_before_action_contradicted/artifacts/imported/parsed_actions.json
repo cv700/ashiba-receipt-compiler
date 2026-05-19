@@ -1,0 +1,15 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "cloudtrail-customer-evt-20260514-171208",
+      "executed_at": "2026-05-14T17:12:08Z",
+      "parameters": {
+        "functionName": "arn:aws:lambda:us-east-1:111122223333:function:create-refund-case",
+        "invocationType": "RequestResponse",
+        "payload_hash": "sha256:3b0d9bcf0d36f0d0e0e0ff712d86ed6f8df2352d0cba46f341b4fa57d2b63f09"
+      },
+      "source_kind": "cloudtrail_event",
+      "tool": "lambda.amazonaws.com:Invoke"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "token_sequences": {
+    "previous_prompt_tokens": [1, 2, 3, 4, 5],
+    "completion_tokens": [6, 7, 8],
+    "next_prompt_tokens": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  }
+}

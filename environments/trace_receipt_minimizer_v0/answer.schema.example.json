@@ -1,0 +1,32 @@
+{
+  "task_id": "001_cloudtrail_revocation_missing_unknown",
+  "claim_id": "authorization_not_revoked_at_action_time",
+  "selected_evidence_refs": [
+    "artifacts/imported/authorization.json",
+    "artifacts/imported/parsed_actions.json",
+    "artifacts/imported/tool_call.json"
+  ],
+  "selected_field_paths": [
+    "authorization.grant_id",
+    "authorization.grant_valid_from",
+    "authorization.grant_valid_until",
+    "parsed_actions.0.executed_at",
+    "parsed_actions.0.tool",
+    "tool_call.action_id",
+    "tool_call.tool_name"
+  ],
+  "verdict": "unknown",
+  "basis": "authorization.revoked_at is missing.",
+  "missing_evidence": [
+    {
+      "path": "authorization.revoked_at",
+      "why_it_matters": "separates explicitly non-revoked grants from unobserved revocation state"
+    }
+  ],
+  "boundary": [
+    "This answer does not support that the grant was not revoked before action time."
+  ],
+  "do_not_claim": [
+    "Do not claim the action was authorized when revocation state is absent."
+  ]
+}

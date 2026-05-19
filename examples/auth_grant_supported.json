@@ -1,0 +1,33 @@
+{
+  "claim": {
+    "id": "claim.authorization_bound_action",
+    "text": "The tool action was executed under an active authorization grant."
+  },
+  "expected_evidence": [
+    "authorization.grant_id",
+    "authorization.grant_valid_from",
+    "authorization.grant_valid_until",
+    "parsed_actions.0.executed_at",
+    "tool_call.action_id"
+  ],
+  "artifacts": {
+    "authorization": {
+      "grant_id": "grant-abc-123",
+      "grant_valid_from": "2026-05-15T10:00:00Z",
+      "grant_valid_until": "2026-05-15T18:00:00Z",
+      "revoked_at": null
+    },
+    "parsed_actions": [
+      {
+        "action_id": "act-001",
+        "tool": "create_payment_request",
+        "executed_at": "2026-05-15T14:32:10Z",
+        "source_kind": "model_output"
+      }
+    ],
+    "tool_call": {
+      "action_id": "act-001",
+      "tool_schema_hash": "sha256:abc123"
+    }
+  }
+}

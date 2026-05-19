@@ -1,0 +1,15 @@
+{
+  "authorization": {
+    "grant_id": "grant-shopify-fh-20260516",
+    "grant_valid_from": "2026-05-15T09:00:00Z",
+    "grant_valid_until": "2026-05-15T18:00:00Z",
+    "principal": "user:merchant@fashionhouse.co",
+    "delegated_to": "agent:claude-3.5-sonnet",
+    "scope": [
+      "shopify:orders:update",
+      "shopify:orders:cancel"
+    ],
+    "revoked_at": "2026-05-15T15:30:00Z",
+    "revocation_reason": "agent_making_errors"
+  }
+}

@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""Import Anthropic API responses into compiler artifact schema.
+
+Usage:
+    ./import_anthropic response.json --policy policy.json | ./compile - -v
+    ./import_anthropic response.json --policy policy.json -o artifacts/
+    ./import_anthropic response.json --policy policy.json -o artifacts/ && ./compile artifacts/ -e
+
+    # Pipe mode (response on stdin):
+    cat response.json | ./import_anthropic - --policy policy.json | ./compile - -v
+
+    # Full one-liner:
+    ./import_anthropic response.json --policy policy.json | ./compile - -v
+
+The policy file is the one thing you write. It's 6 fields:
+    {
+        "principal": "user:sarah@company.io",
+        "delegated_to": "agent:claude-sonnet-4-20250514",
+        "scope": ["stripe:charges:create", "stripe:refunds:create"],
+        "grant_valid_from": "2026-05-14T09:00:00Z",
+        "grant_valid_until": "2026-05-14T17:00:00Z",
+        "grant_context": "Customer service shift"
+    }
+
+The importer extracts tool_use blocks from the Anthropic response and
+produces the compiler's artifact schema (authorization + parsed_actions +
+tool_call). Everything else is automatic.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import uuid
+from pathlib import Path
+from typing import Any
+
+
+# ---------------------------------------------------------------------------
+# Anthropic response parsing
+# ---------------------------------------------------------------------------
+
+def _extract_tool_uses(response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract tool_use content blocks from an Anthropic Messages API response."""
+    content = response.get("content", [])
+    if not isinstance(content, list):
+        return []
+    return [block for block in content if isinstance(block, dict) and block.get("type") == "tool_use"]
+
+
+def _infer_executed_at(response: dict[str, Any], override: str | None = None) -> str:
+    """Determine the execution timestamp.
+
+    Priority:
+    1. Explicit --executed-at override
+    2. Response-level 'created_at' field (if present, some wrappers add this)
+
+    Missing execution time fails closed. The importer must not invent evidence.
+    """
+    if override:
+        return override
+
+    # Some logging wrappers add a timestamp to the response
+    for key in ("created_at", "timestamp", "created", "request_timestamp"):
+        val = response.get(key)
+        if isinstance(val, str) and "T" in val:
+            return val
+
+    raise ValueError(
+        "no execution timestamp found in response; pass --executed-at with an "
+        "evidence-backed ISO 8601 UTC timestamp"
+    )
+
+
+def _tool_use_to_parsed_action(
+    tool_use: dict[str, Any],
+    executed_at: str,
+    index: int,
+) -> dict[str, Any]:
+    """Convert one Anthropic tool_use block into a parsed_action."""
+    tool_name = tool_use.get("name", f"unknown_tool_{index}")
+    tool_id = tool_use.get("id", f"toolu_{uuid.uuid4().hex[:12]}")
+
+    return {
+        "action_id": tool_id,
+        "tool": tool_name,
+        "executed_at": executed_at,
+        "source_kind": "model_output",
+        "parameters": tool_use.get("input", {}),
+    }
+
+
+def _build_tool_call(
+    tool_use: dict[str, Any],
+    response: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the tool_call artifact from the response metadata."""
+    tool_id = tool_use.get("id", "")
+
+    invocation_context: dict[str, Any] = {
+        "model": response.get("model", "unknown"),
+    }
+
+    # Extract what we can from the response
+    if response.get("id"):
+        invocation_context["request_id"] = response["id"]
+    usage = response.get("usage", {})
+    if usage:
+        invocation_context["input_tokens"] = usage.get("input_tokens")
+        invocation_context["output_tokens"] = usage.get("output_tokens")
+
+    return {
+        "tool_call": {
+            "action_id": tool_id,
+            "tool_name": tool_use.get("name", ""),
+            "tool_version": "anthropic-messages-api",
+            "invocation_context": invocation_context,
+        }
+    }
+
+
+def _build_authorization(policy: dict[str, Any]) -> dict[str, Any]:
+    """Build the authorization artifact from the policy file."""
+    grant_id = policy.get("grant_id", f"grant-{uuid.uuid4().hex[:8]}")
+
+    return {
+        "authorization": {
+            "grant_id": grant_id,
+            "principal": policy.get("principal", "unknown"),
+            "delegated_to": policy.get("delegated_to", "unknown"),
+            "scope": policy.get("scope", []),
+            "grant_valid_from": policy.get("grant_valid_from", ""),
+            "grant_valid_until": policy.get("grant_valid_until", ""),
+            "revoked_at": policy.get("revoked_at", None),
+            "issuer": policy.get("issuer", "policy_file"),
+            "grant_context": policy.get("grant_context", ""),
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def import_response(
+    response: dict[str, Any],
+    policy: dict[str, Any],
+    executed_at_override: str | None = None,
+    action_index: int = 0,
+) -> dict[str, Any]:
+    """Convert an Anthropic response + policy into compiler artifact schema.
+
+    Returns a single merged dict suitable for piping to ./compile via stdin.
+    If the response has multiple tool_use blocks, use action_index to select one,
+    or omit to compile the first (most common case for single-action verification).
+    """
+    tool_uses = _extract_tool_uses(response)
+    if not tool_uses:
+        print("ERROR: no tool_use blocks found in response", file=sys.stderr)
+        sys.exit(1)
+
+    if action_index >= len(tool_uses):
+        print(f"ERROR: action_index {action_index} but only {len(tool_uses)} tool_use blocks", file=sys.stderr)
+        sys.exit(1)
+
+    tool_use = tool_uses[action_index]
+    executed_at = _infer_executed_at(response, executed_at_override)
+
+    # Build artifacts
+    authorization = _build_authorization(policy)
+    parsed_action = _tool_use_to_parsed_action(tool_use, executed_at, action_index)
+    tool_call = _build_tool_call(tool_use, response)
+
+    # Merge into single artifact object
+    merged = {
+        **authorization,
+        "parsed_actions": [parsed_action],
+        **tool_call,
+    }
+
+    return merged
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Import Anthropic API response into compiler artifact schema.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="One-liner:  ./import_anthropic response.json --policy policy.json | ./compile - -v",
+    )
+    parser.add_argument("response", help="Anthropic API response JSON file, or - for stdin")
+    parser.add_argument("--policy", "-p", required=True, help="Authorization policy JSON file")
+    parser.add_argument("--executed-at", "-t", help="Override execution timestamp (ISO 8601 UTC)")
+    parser.add_argument("--action-index", "-i", type=int, default=0,
+                        help="Which tool_use block to compile (default: 0, the first)")
+    parser.add_argument("--out", "-o", type=Path, help="Write artifact files to this directory")
+    parser.add_argument("--all", "-a", action="store_true",
+                        help="Compile all tool_use blocks (writes one action set per block)")
+    args = parser.parse_args()
+
+    # Load response
+    if args.response == "-":
+        response_raw = sys.stdin.read()
+    else:
+        response_path = Path(args.response)
+        if not response_path.is_file():
+            print(f"ERROR: {args.response} not found", file=sys.stderr)
+            return 1
+        response_raw = response_path.read_text(encoding="utf-8")
+
+    try:
+        response = json.loads(response_raw)
+    except json.JSONDecodeError as e:
+        print(f"ERROR: invalid JSON in response: {e}", file=sys.stderr)
+        return 1
+
+    # Load policy
+    policy_path = Path(args.policy)
+    if not policy_path.is_file():
+        print(f"ERROR: policy file {args.policy} not found", file=sys.stderr)
+        return 1
+    try:
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        print(f"ERROR: invalid JSON in policy: {e}", file=sys.stderr)
+        return 1
+
+    # Import
+    tool_uses = _extract_tool_uses(response)
+    if not tool_uses:
+        print("ERROR: no tool_use blocks found in response", file=sys.stderr)
+        return 1
+
+    if args.all:
+        indices = list(range(len(tool_uses)))
+    else:
+        indices = [args.action_index]
+
+    for idx in indices:
+        try:
+            merged = import_response(response, policy, args.executed_at, action_index=idx)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+
+        if args.out:
+            # Write to directory
+            out_dir = args.out if len(indices) == 1 else args.out / f"action_{idx}"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "authorization.json").write_text(
+                json.dumps({"authorization": merged["authorization"]}, indent=2),
+                encoding="utf-8",
+            )
+            (out_dir / "parsed_actions.json").write_text(
+                json.dumps({"parsed_actions": merged["parsed_actions"]}, indent=2),
+                encoding="utf-8",
+            )
+            (out_dir / "tool_call.json").write_text(
+                json.dumps({"tool_call": merged["tool_call"]}, indent=2),
+                encoding="utf-8",
+            )
+            if len(indices) == 1:
+                print(f"Artifacts written to {out_dir}/", file=sys.stderr)
+            else:
+                print(f"  [{idx}] {tool_uses[idx].get('name', '?')} -> {out_dir}/", file=sys.stderr)
+        else:
+            # Stdout (for piping to ./compile)
+            print(json.dumps(merged, indent=2))
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

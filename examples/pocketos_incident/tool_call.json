@@ -1,0 +1,14 @@
+{
+  "tool_call": {
+    "action_id": "act-20260412-141523-001",
+    "tool_schema_hash": "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069",
+    "tool_name": "railway.db.delete",
+    "tool_version": "2026-03-15",
+    "invocation_context": {
+      "conversation_id": "conv-20260412-pocketos-credential-fix",
+      "turn_number": 14,
+      "model": "claude-opus-4-20260401",
+      "user_prompt_summary": "Fix the credential mismatch between staging and production Railway services"
+    }
+  }
+}

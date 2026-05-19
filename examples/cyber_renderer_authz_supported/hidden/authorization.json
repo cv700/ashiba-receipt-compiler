@@ -1,0 +1,17 @@
+{
+  "authorization": {
+    "grant_id": "grant-cyber-prod-2026-05-14-001",
+    "principal": "user:oncall@acme.io",
+    "delegated_to": "agent:cyber-eval-runner-001",
+    "scope": [
+      "iam:accounts:lock",
+      "iam:accounts:read"
+    ],
+    "grant_valid_from": "2026-05-14T14:00:00Z",
+    "grant_valid_until": "2026-05-14T15:00:00Z",
+    "revoked_at": null,
+    "render_time_grant_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "execution_time_decision_id": "decision-cyber-20260514-143210",
+    "grant_active_at_execution": true
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "workflow_run": {
+    "id": "gha-run-20260514-1",
+    "name": "deploy-production",
+    "head_sha": "8f4f0f3ec07a9e6a51c4f8d8f6a0d1f2b3c4d5e6",
+    "updated_at": "2026-05-14T17:20:00Z",
+    "actor": {
+      "login": "release-bot"
+    }
+  },
+  "deployment": {
+    "id": "deploy-prod-20260514",
+    "environment": "production",
+    "commit_sha": "8f4f0f3ec07a9e6a51c4f8d8f6a0d1f2b3c4d5e6",
+    "deployed_at": "2026-05-14T17:20:00Z"
+  },
+  "review": {
+    "commit_sha": "8f4f0f3ec07a9e6a51c4f8d8f6a0d1f2b3c4d5e6",
+    "decision": "approved",
+    "approved_at": "2026-05-14T16:55:00Z",
+    "reviewer": "alex@example.com"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "authorization": {
+    "delegated_to": "agent:customer-support-agent-runtime",
+    "grant_context": "Customer support shift B; revocation stream shows the grant was revoked before the action",
+    "grant_id": "grant-customer-support-20260514-shift-b",
+    "grant_valid_from": "2026-05-14T16:00:00Z",
+    "grant_valid_until": "2026-05-14T18:00:00Z",
+    "issuer": "customer-support-approval-system",
+    "principal": "user:maya@merchant.example",
+    "revoked_at": "2026-05-14T17:05:00Z",
+    "scope": [
+      "aws:lambda:Invoke",
+      "refund_case:create",
+      "customer_record:read"
+    ]
+  }
+}

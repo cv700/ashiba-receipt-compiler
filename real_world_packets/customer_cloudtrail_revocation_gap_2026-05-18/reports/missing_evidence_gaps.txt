@@ -1,0 +1,9 @@
+Missing Evidence Gaps
+=====================
+Claim type: authorization_bound_action
+Verdict: unknown
+- missing expected path: authorization.revoked_at
+  claim affected: claim.authorization_bound_action: The tool action was executed under an active authorization grant.
+  why it matters: separates an explicitly non-revoked grant from an unobserved revocation state
+  instrumentation/log field: Log revoked_at as ISO 8601 UTC when revoked, or explicit null when checked and not revoked.
+  verdict effect: unknown, not contradicted

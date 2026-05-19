@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""Import OpenTelemetry JSON/JSONL spans into compiler artifact schema.
+
+Usage:
+    ./import_otel spans.jsonl --policy policy.json | ./compile - --gaps
+    ./import_otel trace.json --out artifacts/
+
+The importer selects client/tool-like spans, preserves evidence timestamps from
+the span, and never creates authorization evidence unless --policy is supplied.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+from typing import Any
+
+from importer_common import (
+    authorization_from_policy,
+    decode_json_maybe,
+    first_present,
+    load_json_or_jsonl,
+    load_policy,
+    nested_get,
+    require_str,
+    require_timestamp,
+    write_artifacts,
+)
+
+
+def _otel_value(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return value
+    for key in ("stringValue", "intValue", "doubleValue", "boolValue"):
+        if key in value:
+            return value[key]
+    if "arrayValue" in value and isinstance(value["arrayValue"], dict):
+        return [_otel_value(item) for item in value["arrayValue"].get("values", [])]
+    if "kvlistValue" in value and isinstance(value["kvlistValue"], dict):
+        return {
+            item.get("key", ""): _otel_value(item.get("value"))
+            for item in value["kvlistValue"].get("values", [])
+            if isinstance(item, dict)
+        }
+    if "value" in value:
+        return _otel_value(value["value"])
+    return value
+
+
+def _attributes(span: dict[str, Any]) -> dict[str, Any]:
+    raw = span.get("attributes", {})
+    if isinstance(raw, dict):
+        return raw
+    attrs: dict[str, Any] = {}
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            key = item.get("key")
+            if isinstance(key, str) and key:
+                attrs[key] = _otel_value(item.get("value"))
+    return attrs
+
+
+def _walk_dicts(obj: Any) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    if isinstance(obj, dict):
+        found.append(obj)
+        for value in obj.values():
+            found.extend(_walk_dicts(value))
+    elif isinstance(obj, list):
+        for value in obj:
+            found.extend(_walk_dicts(value))
+    return found
+
+
+def _extract_spans(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    spans = []
+    for record in records:
+        for obj in _walk_dicts(record):
+            if isinstance(obj.get("spanId") or obj.get("span_id"), str) and isinstance(obj.get("name"), str):
+                spans.append(obj)
+    return spans
+
+
+def _is_action_span(span: dict[str, Any]) -> bool:
+    attrs = _attributes(span)
+    if any(key in attrs for key in ("tool.name", "gen_ai.tool.name", "function.name", "db.system", "http.method")):
+        return True
+    kind = str(span.get("kind", "")).lower()
+    if "client" in kind or "producer" in kind:
+        return True
+    name = str(span.get("name", "")).lower()
+    return any(token in name for token in ("tool", "function", "invoke", "deploy", "exec"))
+
+
+def _timestamp(span: dict[str, Any], attrs: dict[str, Any], override: str | None) -> str:
+    if override:
+        return require_timestamp(override, "--executed-at")
+    return require_timestamp(
+        first_present(
+            span.get("startTimeUnixNano"),
+            span.get("start_time_unix_nano"),
+            span.get("startTime"),
+            span.get("start_time"),
+            attrs.get("event.time"),
+            attrs.get("timestamp"),
+        ),
+        "span start",
+    )
+
+
+def _span_to_artifacts(span: dict[str, Any], policy: dict[str, Any] | None, executed_at_override: str | None) -> dict[str, Any]:
+    attrs = _attributes(span)
+    action_id = require_str(
+        first_present(
+            attrs.get("tool.call_id"),
+            attrs.get("gen_ai.tool.call.id"),
+            attrs.get("action_id"),
+            span.get("spanId"),
+            span.get("span_id"),
+        ),
+        "span action id",
+    )
+    tool_name = require_str(
+        first_present(
+            attrs.get("tool.name"),
+            attrs.get("gen_ai.tool.name"),
+            attrs.get("function.name"),
+            span.get("name"),
+        ),
+        "span tool name",
+    )
+    executed_at = _timestamp(span, attrs, executed_at_override)
+    parameters = decode_json_maybe(first_present(attrs.get("tool.arguments"), attrs.get("arguments"), attrs.get("input"), attrs))
+    return {
+        **authorization_from_policy(policy),
+        "parsed_actions": [
+            {
+                "action_id": action_id,
+                "tool": tool_name,
+                "executed_at": executed_at,
+                "source_kind": "opentelemetry_span",
+                "parameters": parameters,
+            }
+        ],
+        "tool_call": {
+            "action_id": action_id,
+            "tool_name": tool_name,
+            "tool_version": "opentelemetry-span",
+            "invocation_context": {
+                "source": "opentelemetry",
+                "trace_id": first_present(span.get("traceId"), span.get("trace_id")),
+                "span_id": first_present(span.get("spanId"), span.get("span_id")),
+                "parent_span_id": first_present(span.get("parentSpanId"), span.get("parent_span_id")),
+                "service_name": first_present(
+                    nested_get(span, "resource", "attributes", "service.name"),
+                    attrs.get("service.name"),
+                ),
+            },
+        },
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Import OpenTelemetry span JSON/JSONL into compiler artifact schema.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="One-liner: ./import_otel spans.jsonl --policy policy.json | ./compile - --card",
+    )
+    parser.add_argument("spans", help="OpenTelemetry JSON/JSONL file, or - for stdin")
+    parser.add_argument("--policy", "-p", help="Optional authorization policy JSON file")
+    parser.add_argument("--executed-at", "-t", help="Override execution timestamp from evidence")
+    parser.add_argument("--action-index", "-i", type=int, default=0, help="Which action span to compile")
+    parser.add_argument("--out", "-o", type=Path, help="Write artifact files to this directory")
+    parser.add_argument("--all", "-a", action="store_true", help="Write one artifact directory per action span")
+    args = parser.parse_args()
+
+    records = load_json_or_jsonl(args.spans, "OpenTelemetry spans")
+    policy = load_policy(args.policy)
+    action_spans = [span for span in _extract_spans(records) if _is_action_span(span)]
+    if not action_spans:
+        print("ERROR: no action-like OpenTelemetry spans found", file=sys.stderr)
+        return 1
+
+    indices = list(range(len(action_spans))) if args.all else [args.action_index]
+    if args.all and not args.out:
+        print("ERROR: --all requires --out so each action has a separate artifact directory", file=sys.stderr)
+        return 1
+
+    for idx in indices:
+        if idx < 0 or idx >= len(action_spans):
+            print(f"ERROR: action_index {idx} but only {len(action_spans)} action span(s)", file=sys.stderr)
+            return 1
+        try:
+            merged = _span_to_artifacts(action_spans[idx], policy, args.executed_at)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        if args.out:
+            out_dir = args.out / f"action_{idx}" if args.all else args.out
+            write_artifacts(out_dir, merged)
+            print(f"  [{idx}] {merged['tool_call']['tool_name']} -> {out_dir}/", file=sys.stderr)
+        else:
+            print(json.dumps(merged, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

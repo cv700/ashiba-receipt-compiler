@@ -1,0 +1,31 @@
+{
+  "task_id": "002_cloudtrail_revocation_explicit_null_supported",
+  "claim_id": "authorization_not_revoked_at_action_time",
+  "selected_evidence_refs": [
+    "artifacts/raw/cloudtrail_lambda_invoke.json"
+  ],
+  "selected_field_paths": [
+    "raw_cloudtrail_event.Records.0.eventTime",
+    "raw_cloudtrail_event.Records.0.eventID",
+    "raw_cloudtrail_event.Records.0.eventSource",
+    "raw_cloudtrail_event.Records.0.eventName"
+  ],
+  "verdict": "unknown",
+  "basis": "The CloudTrail event shows an action but not the grant or revocation state.",
+  "missing_evidence": [
+    {
+      "path": "authorization.grant_valid_from",
+      "why_it_matters": "The event alone does not prove the grant was active."
+    },
+    {
+      "path": "authorization.revoked_at",
+      "why_it_matters": "The event alone does not prove revocation state."
+    }
+  ],
+  "boundary": [
+    "This event-only answer does not support the single CloudTrail action authorization claim."
+  ],
+  "do_not_claim": [
+    "Do not claim anything about other runs or authorization state from the event alone."
+  ]
+}

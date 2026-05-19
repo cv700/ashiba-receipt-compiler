@@ -1,0 +1,28 @@
+{
+  "task_id": "003_cloudtrail_revocation_before_action_contradicted",
+  "claim_id": "authorization_not_revoked_at_action_time",
+  "selected_evidence_refs": [
+    "artifacts/imported/authorization.json",
+    "artifacts/imported/parsed_actions.json",
+    "artifacts/imported/tool_call.json"
+  ],
+  "selected_field_paths": [
+    "authorization.grant_id",
+    "authorization.grant_valid_from",
+    "authorization.grant_valid_until",
+    "authorization.revoked_at",
+    "parsed_actions.0.executed_at",
+    "parsed_actions.0.tool",
+    "tool_call.action_id",
+    "tool_call.tool_name"
+  ],
+  "verdict": "contradicted",
+  "basis": "The grant was revoked at 2026-05-14T17:05:00Z before the action at 2026-05-14T17:12:08Z.",
+  "missing_evidence": [],
+  "boundary": [
+    "The packet shows the grant was revoked before action time for this CloudTrail event."
+  ],
+  "do_not_claim": [
+    "Do not claim anything about other runs, other grants, or later reinstatement."
+  ]
+}

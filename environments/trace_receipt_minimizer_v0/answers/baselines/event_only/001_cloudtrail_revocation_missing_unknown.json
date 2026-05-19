@@ -1,0 +1,31 @@
+{
+  "task_id": "001_cloudtrail_revocation_missing_unknown",
+  "claim_id": "authorization_not_revoked_at_action_time",
+  "selected_evidence_refs": [
+    "artifacts/raw/cloudtrail_lambda_invoke.json"
+  ],
+  "selected_field_paths": [
+    "raw_cloudtrail_event.Records.0.eventTime",
+    "raw_cloudtrail_event.Records.0.eventID",
+    "raw_cloudtrail_event.Records.0.eventSource",
+    "raw_cloudtrail_event.Records.0.eventName"
+  ],
+  "verdict": "unknown",
+  "basis": "The CloudTrail event shows an action but no authorization or revocation evidence.",
+  "missing_evidence": [
+    {
+      "path": "authorization.grant_valid_from",
+      "why_it_matters": "The event alone does not prove the grant was active."
+    },
+    {
+      "path": "authorization.revoked_at",
+      "why_it_matters": "The event alone does not prove revocation state."
+    }
+  ],
+  "boundary": [
+    "The revocation state is absent from the selected event-only evidence."
+  ],
+  "do_not_claim": [
+    "Do not claim the action was authorized or not revoked from the event alone."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "tool_call": {
+    "action_id": "act-20260514-143210-001",
+    "tool_schema_hash": "sha256:a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456",
+    "tool_name": "stripe.charges.create",
+    "tool_version": "2026-04-01",
+    "invocation_context": {
+      "conversation_id": "conv-20260514-alice-billing",
+      "turn_number": 7,
+      "model": "claude-3.5-sonnet-20260514"
+    }
+  }
+}

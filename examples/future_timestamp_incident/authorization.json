@@ -1,0 +1,11 @@
+{
+  "authorization": {
+    "grant_id": "grant-db-backup-7f2a",
+    "grant_valid_from": "2026-05-15T08:00:00Z",
+    "grant_valid_until": "2026-05-15T20:00:00Z",
+    "granted_to": "agent:db-maintenance-cron",
+    "granted_by": "operator:infra-team",
+    "scope": "database.backup.*",
+    "revoked_at": null
+  }
+}

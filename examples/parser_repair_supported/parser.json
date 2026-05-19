@@ -1,0 +1,14 @@
+{
+  "parser": {
+    "repair_events": [
+      {
+        "repair_id": "repair-001",
+        "repair_function": "fix_unterminated_json_string",
+        "before_hash": "sha256:aabbcc",
+        "after_hash": "sha256:ddeeff",
+        "writeback_to_model_history": true,
+        "repaired_at": "2026-05-15T12:05:30Z"
+      }
+    ]
+  }
+}

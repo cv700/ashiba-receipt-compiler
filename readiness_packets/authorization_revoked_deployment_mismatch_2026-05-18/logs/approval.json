@@ -1,0 +1,9 @@
+{
+  "approval": {
+    "approval_id": "approval-20260514-1705",
+    "tool_call_id": "cloudtrail-evt-01HXrevoked",
+    "approved_at": "2026-05-14T17:05:00Z",
+    "decision": "approved",
+    "actor": "ops@example.com"
+  }
+}

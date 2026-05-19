@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""Import GitHub Actions workflow/job evidence into deployment provenance artifacts.
+
+Usage:
+    ./import_github_actions workflow.json --policy review_policy.json | ./compile - --card
+
+JSON payloads and simple key=value job logs are accepted. The importer emits
+deployment/review artifacts for the deployment_matches_reviewed_commit claim.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+from typing import Any
+
+from importer_common import first_present, load_policy, nested_get, read_text, require_str, require_timestamp, write_artifacts
+
+
+def _parse_key_value_log(raw: str) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip().lower().replace("-", "_")
+        value = value.strip()
+        if key and value:
+            out[key] = value
+    return out
+
+
+def _load_payload(path_arg: str) -> dict[str, Any]:
+    raw = read_text(path_arg, "GitHub Actions")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        payload = _parse_key_value_log(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("GitHub Actions input must be a JSON object or key=value log")
+    return payload
+
+
+def _review_from_policy(policy: dict[str, Any] | None) -> dict[str, Any]:
+    if not policy:
+        return {}
+    review = policy.get("review") if isinstance(policy.get("review"), dict) else policy
+    out = {}
+    mapping = {
+        "commit_sha": ("commit_sha", "reviewed_commit_sha", "head_sha"),
+        "decision": ("decision", "review_decision"),
+        "approved_at": ("approved_at", "review_approved_at"),
+        "reviewer": ("reviewer", "actor"),
+    }
+    for dest, keys in mapping.items():
+        value = first_present(*(review.get(key) for key in keys))
+        if value is not None:
+            out[dest] = value
+    return out
+
+
+def _payload_review(payload: dict[str, Any], policy: dict[str, Any] | None) -> dict[str, Any]:
+    review = payload.get("review") if isinstance(payload.get("review"), dict) else {}
+    out = _review_from_policy(policy)
+    for key, value in {
+        "commit_sha": first_present(
+            review.get("commit_sha"),
+            payload.get("review_commit_sha"),
+            payload.get("reviewed_commit_sha"),
+        ),
+        "decision": first_present(review.get("decision"), payload.get("review_decision")),
+        "approved_at": first_present(review.get("approved_at"), payload.get("review_approved_at")),
+        "reviewer": first_present(review.get("reviewer"), payload.get("reviewer")),
+    }.items():
+        if value is not None:
+            out[key] = value
+    return out
+
+
+def _payload_to_artifacts(payload: dict[str, Any], policy: dict[str, Any] | None, deployed_at_override: str | None) -> dict[str, Any]:
+    workflow_run = payload.get("workflow_run") if isinstance(payload.get("workflow_run"), dict) else {}
+    job = payload.get("job") if isinstance(payload.get("job"), dict) else {}
+    deployment = payload.get("deployment") if isinstance(payload.get("deployment"), dict) else {}
+
+    deployment_id_raw = first_present(deployment.get("id"), payload.get("deployment_id"), job.get("id"), workflow_run.get("id"))
+    if deployment_id_raw is None:
+        raise ValueError("missing required deployment id")
+    deployment_id = str(deployment_id_raw)
+    commit_sha = require_str(
+        first_present(
+            deployment.get("commit_sha"),
+            deployment.get("sha"),
+            payload.get("commit_sha"),
+            payload.get("github_sha"),
+            workflow_run.get("head_sha"),
+            job.get("head_sha"),
+        ),
+        "deployment commit sha",
+    )
+    commit_sha = str(commit_sha)
+    deployed_at = require_timestamp(
+        first_present(
+            deployed_at_override,
+            deployment.get("deployed_at"),
+            deployment.get("created_at"),
+            payload.get("deployed_at"),
+            payload.get("completed_at"),
+            workflow_run.get("updated_at"),
+            job.get("completed_at"),
+        ),
+        "deployment time",
+    )
+    review = _payload_review(payload, policy)
+    return {
+        "deployment": {
+            "deployment_id": deployment_id,
+            "commit_sha": commit_sha,
+            "deployed_at": deployed_at,
+            "environment": first_present(deployment.get("environment"), payload.get("environment")),
+            "workflow": first_present(payload.get("workflow"), workflow_run.get("name"), job.get("name")),
+            "actor": first_present(payload.get("actor"), nested_get(workflow_run, "actor", "login")),
+        },
+        "review": review,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Import GitHub Actions workflow/job evidence into deployment provenance artifacts.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="One-liner: ./import_github_actions workflow.json --policy review.json | ./compile - --ci",
+    )
+    parser.add_argument("workflow_log", help="GitHub Actions JSON/key=value log, or - for stdin")
+    parser.add_argument("--policy", "-p", help="Optional review policy/evidence JSON file")
+    parser.add_argument("--deployed-at", "-t", help="Override deployment timestamp from evidence")
+    parser.add_argument("--out", "-o", type=Path, help="Write artifact files to this directory")
+    args = parser.parse_args()
+
+    try:
+        payload = _load_payload(args.workflow_log)
+        merged = _payload_to_artifacts(payload, load_policy(args.policy), args.deployed_at)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    if args.out:
+        write_artifacts(args.out, merged)
+        print(f"deployment -> {args.out}/", file=sys.stderr)
+    else:
+        print(json.dumps(merged, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

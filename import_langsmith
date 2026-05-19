@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""Import LangSmith-style trace exports into compiler artifact schema.
+
+Usage:
+    ./import_langsmith trace.json --policy policy.json | ./compile - -v
+    ./import_langsmith trace.json --policy policy.json -o artifacts/
+
+Accepted input:
+    - A single run object with nested child_runs.
+    - A JSON array of run objects.
+    - A JSON object with "runs" or "child_runs".
+
+The importer recursively finds runs with run_type == "tool" and converts the
+selected run into authorization + parsed_actions + tool_call artifacts. It is
+schema-tolerant because real trace exports vary, but it still fails closed when
+the selected tool run lacks an evidence-backed timestamp.
+"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import json
+import sys
+import uuid
+from pathlib import Path
+from typing import Any
+
+
+def _epoch_to_utc(epoch_seconds: int | float) -> str:
+    return datetime.fromtimestamp(epoch_seconds, timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _normalize_timestamp(raw: Any) -> str | None:
+    if isinstance(raw, (int, float)):
+        return _epoch_to_utc(raw)
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    s = raw.strip()
+    candidate = s[:-1] + "+00:00" if s.endswith("Z") else s
+    try:
+        dt = datetime.fromisoformat(candidate)
+    except ValueError:
+        return s
+    if dt.tzinfo is None:
+        return s
+    return dt.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _decode_json_maybe(raw: Any) -> Any:
+    if isinstance(raw, str):
+        if not raw.strip():
+            return {}
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {"_raw": raw}
+    if raw is None:
+        return {}
+    return raw
+
+
+def _load_json(path_arg: str, label: str) -> Any:
+    if path_arg == "-":
+        raw = sys.stdin.read()
+    else:
+        path = Path(path_arg)
+        if not path.is_file():
+            print(f"ERROR: {label} file {path_arg} not found", file=sys.stderr)
+            sys.exit(1)
+        raw = path.read_text(encoding="utf-8")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"ERROR: invalid JSON in {label}: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _load_policy(path_arg: str) -> dict[str, Any]:
+    policy = _load_json(path_arg, "policy")
+    if not isinstance(policy, dict):
+        print("ERROR: policy JSON root must be an object", file=sys.stderr)
+        sys.exit(1)
+    return policy
+
+
+def _walk_dicts(obj: Any) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    if isinstance(obj, dict):
+        found.append(obj)
+        for value in obj.values():
+            found.extend(_walk_dicts(value))
+    elif isinstance(obj, list):
+        for value in obj:
+            found.extend(_walk_dicts(value))
+    return found
+
+
+def _is_tool_run(run: dict[str, Any]) -> bool:
+    run_type = str(run.get("run_type", "")).lower()
+    if run_type == "tool":
+        return True
+    if str(run.get("type", "")).lower() == "tool":
+        return True
+    dotted = str(run.get("dotted_order", "")).lower()
+    return "tool" in dotted and bool(run.get("inputs"))
+
+
+def _extract_tool_runs(payload: Any) -> list[dict[str, Any]]:
+    return [run for run in _walk_dicts(payload) if _is_tool_run(run)]
+
+
+def _nested_get(obj: Any, *path: str) -> Any:
+    cur = obj
+    for key in path:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(key)
+    return cur
+
+
+def _tool_name(run: dict[str, Any]) -> str:
+    candidates = [
+        run.get("name"),
+        run.get("serialized_name"),
+        _nested_get(run, "serialized", "name"),
+        _nested_get(run, "serialized", "kwargs", "name"),
+        _nested_get(run, "extra", "name"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    return "unknown_tool"
+
+
+def _action_id(run: dict[str, Any]) -> str:
+    for key in ("id", "run_id", "trace_id"):
+        val = run.get(key)
+        if isinstance(val, str) and val:
+            return val
+    return f"run_{uuid.uuid4().hex[:12]}"
+
+
+def _timestamp(run: dict[str, Any], override: str | None) -> str:
+    if override:
+        normalized = _normalize_timestamp(override)
+        assert normalized is not None
+        return normalized
+    for key in ("start_time", "created_at", "timestamp", "execution_time", "time"):
+        normalized = _normalize_timestamp(run.get(key))
+        if normalized:
+            return normalized
+    raise ValueError(
+        "no execution timestamp found in selected tool run; pass --executed-at "
+        "with an evidence-backed ISO 8601 UTC timestamp"
+    )
+
+
+def _parameters(run: dict[str, Any]) -> Any:
+    for key in ("inputs", "input", "arguments", "args", "parameters"):
+        value = run.get(key)
+        if value not in (None, "", {}, []):
+            return _decode_json_maybe(value)
+    return {}
+
+
+def _build_authorization(policy: dict[str, Any]) -> dict[str, Any]:
+    grant_id = policy.get("grant_id", f"grant-{uuid.uuid4().hex[:8]}")
+    return {
+        "authorization": {
+            "grant_id": grant_id,
+            "principal": policy.get("principal", "unknown"),
+            "delegated_to": policy.get("delegated_to", "unknown"),
+            "scope": policy.get("scope", []),
+            "grant_valid_from": policy.get("grant_valid_from", ""),
+            "grant_valid_until": policy.get("grant_valid_until", ""),
+            "revoked_at": policy.get("revoked_at", None),
+            "issuer": policy.get("issuer", "policy_file"),
+            "grant_context": policy.get("grant_context", ""),
+        }
+    }
+
+
+def _run_to_artifacts(run: dict[str, Any], policy: dict[str, Any], executed_at_override: str | None) -> dict[str, Any]:
+    action_id = _action_id(run)
+    tool_name = _tool_name(run)
+    executed_at = _timestamp(run, executed_at_override)
+    return {
+        **_build_authorization(policy),
+        "parsed_actions": [
+            {
+                "action_id": action_id,
+                "tool": tool_name,
+                "executed_at": executed_at,
+                "source_kind": "model_output",
+                "parameters": _parameters(run),
+            }
+        ],
+        "tool_call": {
+            "action_id": action_id,
+            "tool_name": tool_name,
+            "tool_version": "langsmith-trace-export",
+            "invocation_context": {
+                "source": "langsmith",
+                "run_id": action_id,
+                "parent_run_id": run.get("parent_run_id"),
+                "trace_id": run.get("trace_id"),
+                "session_id": run.get("session_id"),
+            },
+        },
+    }
+
+
+def _write_artifacts(out_dir: Path, merged: dict[str, Any]) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "authorization.json").write_text(
+        json.dumps({"authorization": merged["authorization"]}, indent=2),
+        encoding="utf-8",
+    )
+    (out_dir / "parsed_actions.json").write_text(
+        json.dumps({"parsed_actions": merged["parsed_actions"]}, indent=2),
+        encoding="utf-8",
+    )
+    (out_dir / "tool_call.json").write_text(
+        json.dumps({"tool_call": merged["tool_call"]}, indent=2),
+        encoding="utf-8",
+    )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Import LangSmith-style trace export into compiler artifact schema.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="One-liner:  ./import_langsmith trace.json --policy policy.json | ./compile - -v",
+    )
+    parser.add_argument("trace", help="LangSmith-style trace JSON file, or - for stdin")
+    parser.add_argument("--policy", "-p", required=True, help="Authorization policy JSON file")
+    parser.add_argument("--executed-at", "-t", help="Override execution timestamp (ISO 8601 UTC)")
+    parser.add_argument("--action-index", "-i", type=int, default=0, help="Which tool run to compile")
+    parser.add_argument("--out", "-o", type=Path, help="Write artifact files to this directory")
+    parser.add_argument("--all", "-a", action="store_true", help="Write one artifact directory per tool run")
+    args = parser.parse_args()
+
+    payload = _load_json(args.trace, "trace")
+    policy = _load_policy(args.policy)
+    tool_runs = _extract_tool_runs(payload)
+    if not tool_runs:
+        print("ERROR: no tool runs found in trace", file=sys.stderr)
+        return 1
+
+    indices = list(range(len(tool_runs))) if args.all else [args.action_index]
+    if args.all and not args.out:
+        print("ERROR: --all requires --out so each action has a separate artifact directory", file=sys.stderr)
+        return 1
+
+    for idx in indices:
+        if idx >= len(tool_runs):
+            print(f"ERROR: action_index {idx} but only {len(tool_runs)} tool run(s)", file=sys.stderr)
+            return 1
+        try:
+            merged = _run_to_artifacts(tool_runs[idx], policy, args.executed_at)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+
+        if args.out:
+            out_dir = args.out if len(indices) == 1 else args.out / f"action_{idx}"
+            _write_artifacts(out_dir, merged)
+            print(f"  [{idx}] {merged['tool_call']['tool_name']} -> {out_dir}/", file=sys.stderr)
+        else:
+            print(json.dumps(merged, indent=2))
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

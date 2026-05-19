@@ -1,0 +1,25 @@
+{
+  "trace_id": "trace-cyber-renderer-authz-001",
+  "source": "runtime_span_export",
+  "events": [
+    {
+      "event_id": "evt-001",
+      "event_type": "authorization_grant_loaded",
+      "observed_at": "2026-05-14T14:31:55Z",
+      "grant_id": "grant-cyber-prod-2026-05-14-001"
+    },
+    {
+      "event_id": "evt-002",
+      "event_type": "tool_call_rendered",
+      "observed_at": "2026-05-14T14:32:08Z",
+      "action_id": "act-cyber-20260514-143210-001"
+    },
+    {
+      "event_id": "evt-003",
+      "event_type": "tool_call_executed",
+      "observed_at": "2026-05-14T14:32:10Z",
+      "action_id": "act-cyber-20260514-143210-001",
+      "decision_id": "decision-cyber-20260514-143210"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "task_id": "001_cloudtrail_revocation_missing_unknown",
+  "claim_id": "authorization_not_revoked_at_action_time",
+  "selected_evidence_refs": [
+    "artifacts/imported/authorization.json",
+    "artifacts/imported/parsed_actions.json",
+    "artifacts/imported/tool_call.json"
+  ],
+  "selected_field_paths": [
+    "authorization.grant_id",
+    "authorization.grant_valid_from",
+    "authorization.grant_valid_until",
+    "parsed_actions.0.executed_at",
+    "tool_call.action_id"
+  ],
+  "verdict": "supported",
+  "basis": "The action occurred inside the grant window.",
+  "missing_evidence": [],
+  "boundary": [
+    "This supports only this single CloudTrail action."
+  ],
+  "do_not_claim": [
+    "Do not claim anything about other runs."
+  ]
+}

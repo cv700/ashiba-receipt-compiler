@@ -1,0 +1,27 @@
+{
+  "schema_version": "receipt-claim-pack-v0.1",
+  "name": "human_approval_before_external_side_effect",
+  "description": "Checks whether a human approval was logged before an external side-effect action.",
+  "renderer_family": "external_side_effect_control",
+  "claim": {
+    "id": "claim.human_approval_before_external_side_effect",
+    "text": "A human approval was recorded before the external side-effect action executed."
+  },
+  "expected_evidence": [
+    "approval.approved_at",
+    "approval.decision",
+    "approval.actor",
+    "parsed_actions.0.executed_at",
+    "tool_call.action_id"
+  ],
+  "applicability_evidence": [
+    "approval"
+  ],
+  "passes": [
+    "utc_timestamp_format",
+    "expected_evidence_absence",
+    "human_approval_before_action",
+    "no_future_evidence"
+  ],
+  "pass_params": {}
+}

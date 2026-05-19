@@ -1,0 +1,21 @@
+{
+  "Records": [
+    {
+      "eventVersion": "1.09",
+      "userIdentity": {
+        "type": "AssumedRole",
+        "arn": "arn:aws:sts::111122223333:assumed-role/agent-runtime/session-1",
+        "accountId": "111122223333"
+      },
+      "eventTime": "2026-05-14T17:01:30Z",
+      "eventSource": "lambda.amazonaws.com",
+      "eventName": "Invoke",
+      "awsRegion": "us-east-1",
+      "eventID": "cloudtrail-evt-01HXstripeCharge",
+      "requestParameters": {
+        "functionName": "charge-customer",
+        "payload_hash": "sha256:cloudtrailpayload"
+      }
+    }
+  ]
+}

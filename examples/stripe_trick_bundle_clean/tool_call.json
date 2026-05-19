@@ -1,0 +1,14 @@
+{
+  "tool_call": {
+    "action_id": "act-stripe-c4e81b3d",
+    "tool_name": "stripe.charges.create",
+    "tool_version": "2024-12-18.acacia",
+    "tool_schema_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "invocation_context": {
+      "conversation_id": "conv_8f3a1d6e-2b7c-4e91-a5d0-9c4f7e2b1a3d",
+      "turn_number": 14,
+      "model": "claude-3-5-sonnet-20241022",
+      "request_id": "req_01JHx7kPm2nQwR9sT4vU"
+    }
+  }
+}

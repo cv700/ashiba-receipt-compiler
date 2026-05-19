@@ -1,0 +1,31 @@
+{
+  "id": "resp_01HXopenaiReceiptDemo",
+  "object": "response",
+  "created_at": "2026-05-14T17:01:30Z",
+  "model": "gpt-5.1",
+  "output": [
+    {
+      "id": "msg_01HXopenaiText",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "I will process the replacement order now."
+        }
+      ]
+    },
+    {
+      "id": "fc_01HXopenaiFunction",
+      "type": "function_call",
+      "call_id": "call_01HXopenaiStripeCharge",
+      "name": "stripe.charges.create",
+      "arguments": "{\"amount\":2499,\"currency\":\"usd\",\"customer\":\"cus_R8kPl2mNvTqX7w\",\"description\":\"Replacement order - defective item return\",\"metadata\":{\"ticket_id\":\"CS-44219\",\"agent_session\":\"sess_openai_42\"}}"
+    }
+  ],
+  "usage": {
+    "input_tokens": 2810,
+    "output_tokens": 144,
+    "total_tokens": 2954
+  }
+}

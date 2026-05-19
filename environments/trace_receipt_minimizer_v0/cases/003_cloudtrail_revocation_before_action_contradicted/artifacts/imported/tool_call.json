@@ -1,0 +1,16 @@
+{
+  "tool_call": {
+    "action_id": "cloudtrail-customer-evt-20260514-171208",
+    "invocation_context": {
+      "account_id": "111122223333",
+      "actor": "arn:aws:sts::111122223333:assumed-role/customer-support-agent-runtime/session-20260514",
+      "aws_region": "us-east-1",
+      "error_code": null,
+      "event_name": "Invoke",
+      "event_source": "lambda.amazonaws.com",
+      "source": "cloudtrail"
+    },
+    "tool_name": "lambda.amazonaws.com:Invoke",
+    "tool_version": "aws-cloudtrail"
+  }
+}

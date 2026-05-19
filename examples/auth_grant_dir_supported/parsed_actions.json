@@ -1,0 +1,10 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "act-001",
+      "tool": "create_payment_request",
+      "executed_at": "2026-05-15T14:32:10Z",
+      "source_kind": "model_output"
+    }
+  ]
+}

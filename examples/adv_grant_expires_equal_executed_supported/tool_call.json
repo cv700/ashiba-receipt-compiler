@@ -1,0 +1,6 @@
+{
+  "tool_call": {
+    "action_id": "act-adv-expiry-equal",
+    "tool_schema_hash": "sha256:advexpiryequal"
+  }
+}

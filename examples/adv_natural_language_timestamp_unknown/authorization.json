@@ -1,0 +1,8 @@
+{
+  "authorization": {
+    "grant_id": "grant-adv-natural-language",
+    "grant_valid_from": "yesterday morning",
+    "grant_valid_until": "2026-05-15T18:00:00Z",
+    "revoked_at": null
+  }
+}

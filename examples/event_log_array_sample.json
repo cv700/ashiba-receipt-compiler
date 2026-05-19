@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "event": "assistant_message",
+      "timestamp": "2026-05-14T17:01:24Z",
+      "message": "I will process the replacement order now."
+    },
+    {
+      "event": "function_call",
+      "created_at": "2026-05-14T17:01:30.500Z",
+      "call_id": "evt_call_01HXarrayStripeCharge",
+      "function": {
+        "name": "stripe.charges.create",
+        "arguments": "{\"amount\":2499,\"currency\":\"usd\",\"customer\":\"cus_R8kPl2mNvTqX7w\",\"description\":\"Replacement order - defective item return\",\"metadata\":{\"ticket_id\":\"CS-44219\",\"agent_session\":\"sess_eventarray_42\"}}"
+      }
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "tool_call": {
+    "action_id": "act-adv-natural-language",
+    "tool_schema_hash": "sha256:advnaturallanguage"
+  }
+}

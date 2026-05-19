@@ -1,0 +1,38 @@
+{
+  "Records": [
+    {
+      "eventVersion": "1.09",
+      "userIdentity": {
+        "type": "AssumedRole",
+        "arn": "arn:aws:sts::111122223333:assumed-role/agent-runtime/session-4",
+        "accountId": "111122223333"
+      },
+      "eventTime": "2026-05-14T17:01:30Z",
+      "eventSource": "lambda.amazonaws.com",
+      "eventName": "Invoke",
+      "awsRegion": "us-east-1",
+      "eventID": "cloudtrail-evt-approved",
+      "requestParameters": {
+        "functionName": "charge-customer",
+        "payload_hash": "sha256:approvedpayload"
+      }
+    },
+    {
+      "eventVersion": "1.09",
+      "userIdentity": {
+        "type": "AssumedRole",
+        "arn": "arn:aws:sts::111122223333:assumed-role/agent-runtime/session-4",
+        "accountId": "111122223333"
+      },
+      "eventTime": "2026-05-14T17:03:12Z",
+      "eventSource": "lambda.amazonaws.com",
+      "eventName": "Invoke",
+      "awsRegion": "us-east-1",
+      "eventID": "cloudtrail-evt-missing-approval",
+      "requestParameters": {
+        "functionName": "refund-customer",
+        "payload_hash": "sha256:missingapprovalpayload"
+      }
+    }
+  ]
+}

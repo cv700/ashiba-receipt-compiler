@@ -1,0 +1,28 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "act-wh-query-8b2e4f01",
+      "tool": "warehouse.query.execute",
+      "executed_at": "2026-03-11T14:22:10Z",
+      "source_kind": "model_output",
+      "parameters": {
+        "sql": "SELECT customer_id, region, revenue_ytd FROM analytics.customer_summary WHERE quarter = '2026-Q1'",
+        "warehouse": "ANALYTICS_WH",
+        "role": "ANALYST_ROLE",
+        "timeout_seconds": 120
+      }
+    },
+    {
+      "action_id": "act-wh-export-9c3f5a12",
+      "tool": "warehouse.export.external",
+      "executed_at": "2026-03-11T14:22:55Z",
+      "source_kind": "model_output",
+      "parameters": {
+        "sql": "COPY INTO 's3://dataco-approved-exports/q1-report/' FROM analytics.customer_summary",
+        "warehouse": "ANALYTICS_WH",
+        "role": "ANALYST_ROLE",
+        "destination": "s3://dataco-approved-exports/q1-report/"
+      }
+    }
+  ]
+}

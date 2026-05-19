@@ -1,0 +1,315 @@
+{
+  "schema_version": "receipt-gallery-manifest-v1",
+  "compiler_version": "evidence-compiler-v0.6",
+  "summary": {
+    "expected_directories": 24,
+    "expected_receipts": 25,
+    "expected_verdict_counts": {
+      "supported": 6,
+      "contradicted": 8,
+      "unknown": 10,
+      "not_applicable": 1
+    },
+    "expected_compiler_errors": 0
+  },
+  "examples": [
+    {
+      "directory": "adv_grant_expires_equal_executed_supported",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "the grant window is inclusive, but the stricter authorization_bound_action claim now also requires explicit grant-binding evidence before support",
+          "directory_verdict_rationale": "legacy directory name reflects the grant-window edge case; current verdict is unknown because binding evidence is absent"
+        }
+      ]
+    },
+    {
+      "directory": "adv_malformed_timestamp_unknown",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "a malformed receipt-controlled timestamp prevents support; malformed time evidence is unknown, not supported"
+        }
+      ]
+    },
+    {
+      "directory": "adv_natural_language_timestamp_unknown",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "a natural-language timestamp is not ISO 8601 UTC with trailing Z, so the authorization window cannot support the claim"
+        }
+      ]
+    },
+    {
+      "directory": "adv_not_applicable_parser_only",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "not_applicable",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "the artifact class contains no authorization grant, parsed action, or tool-call surface; missing paths would be unknown only after the claim type is instantiated"
+        }
+      ]
+    },
+    {
+      "directory": "adv_offset_timestamp_unknown",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "an offset timestamp without trailing Z is rejected as non-UTC receipt evidence and cannot support the claim"
+        }
+      ]
+    },
+    {
+      "directory": "adv_revoked_equal_executed_contradicted",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "revoked_at equal to executed_at means the grant was revoked at action time and contradicts the active-grant claim"
+        }
+      ]
+    },
+    {
+      "directory": "auth_grant_dir_supported",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "the action executes inside the grant window, but explicit render-time/execution-time grant binding evidence is absent",
+          "directory_verdict_rationale": "legacy directory name reflects the pre-binding semantics; current verdict is unknown under stricter authorization_bound_action semantics"
+        }
+      ]
+    },
+    {
+      "directory": "cyber_renderer_authz_supported",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "incident_manifest declares a renderer-shaped cyber incident with raw trace, agent-visible observation, and hidden authorization evidence; hidden deterministic passes support the active-grant claim"
+        }
+      ]
+    },
+    {
+      "directory": "empty_evidence_incident",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "unknown",
+          "absence_count": 4,
+          "compiler_error_count": 0,
+          "rationale": "authorization artifact presence triggers the claim type, but required grant and action evidence is missing; missing expected evidence is unknown, not contradicted"
+        }
+      ]
+    },
+    {
+      "directory": "future_timestamp_incident",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "the artifacts contain a receipt-controlled timestamp later than receipt creation time"
+        }
+      ]
+    },
+    {
+      "directory": "mixed_actions_incident",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "at least one parsed action derives from an untrusted literal source"
+        }
+      ]
+    },
+    {
+      "directory": "parser_repair_supported",
+      "expected_receipts": [
+        {
+          "claim_type": "parser_repair_visibility",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "parser repair provenance and explicit writeback decision are present"
+        }
+      ]
+    },
+    {
+      "directory": "parser_repair_unknown",
+      "expected_receipts": [
+        {
+          "claim_type": "parser_repair_visibility",
+          "verdict": "unknown",
+          "absence_count": 2,
+          "compiler_error_count": 0,
+          "rationale": "missing expected evidence is unknown, not contradicted"
+        }
+      ]
+    },
+    {
+      "directory": "parser_repair_writeback_true",
+      "expected_receipts": [
+        {
+          "claim_type": "parser_repair_visibility",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "parser repair event includes provenance and an explicit true writeback decision"
+        }
+      ]
+    },
+    {
+      "directory": "pocketos_incident",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "authorization and action evidence are present and inside the grant window, but explicit grant-binding evidence is absent"
+        }
+      ]
+    },
+    {
+      "directory": "prefix_continuity_contradicted",
+      "expected_receipts": [
+        {
+          "claim_type": "prefix_continuity",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "next prompt token sequence diverges from the expected previous prompt plus completion prefix"
+        }
+      ]
+    },
+    {
+      "directory": "prefix_continuity_supported",
+      "expected_receipts": [
+        {
+          "claim_type": "prefix_continuity",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "next prompt preserves the exact previous prompt plus completion token prefix"
+        }
+      ]
+    },
+    {
+      "directory": "prefix_corruption_incident",
+      "expected_receipts": [
+        {
+          "claim_type": "prefix_continuity",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "next prompt contains a corrupted prefix relative to the expected previous prompt plus completion"
+        }
+      ]
+    },
+    {
+      "directory": "prompt_injection_clean",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "the parsed action source is trusted and grant-window evidence is valid, but explicit grant-binding evidence is absent"
+        }
+      ]
+    },
+    {
+      "directory": "prompt_injection_incident",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "parsed action derives from literal untrusted text"
+        }
+      ]
+    },
+    {
+      "directory": "realistic_incident_001",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "authorization evidence supports the tool action under an active grant"
+        },
+        {
+          "claim_type": "parser_repair_visibility",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "parser repair provenance and writeback decision are logged for the same incident"
+        }
+      ]
+    },
+    {
+      "directory": "revoked_grant_incident",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "grant revocation occurs before the action execution timestamp"
+        }
+      ]
+    },
+    {
+      "directory": "stripe_trick_bundle",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "action executes 90 seconds after the authorization grant expires"
+        }
+      ]
+    },
+    {
+      "directory": "stripe_trick_bundle_clean",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "the clean paired case executes inside the authorization grant window, but explicit grant-binding evidence is absent",
+          "directory_verdict_rationale": "legacy directory name reflects the paired grant-window control; current verdict is unknown under stricter binding semantics"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "id": "run_root_01HXlangsmith",
+  "name": "customer-service-agent",
+  "run_type": "chain",
+  "start_time": "2026-05-14T17:01:20.000Z",
+  "trace_id": "trace_01HXlangsmith",
+  "session_id": "session_01HXlangsmith",
+  "child_runs": [
+    {
+      "id": "run_llm_01HXlangsmith",
+      "name": "gpt-5.1",
+      "run_type": "llm",
+      "start_time": "2026-05-14T17:01:21.000Z",
+      "parent_run_id": "run_root_01HXlangsmith",
+      "trace_id": "trace_01HXlangsmith",
+      "outputs": {
+        "text": "I will process the replacement order now."
+      }
+    },
+    {
+      "id": "run_tool_01HXstripeCharge",
+      "name": "stripe.charges.create",
+      "run_type": "tool",
+      "start_time": "2026-05-14T17:01:30.500Z",
+      "parent_run_id": "run_root_01HXlangsmith",
+      "trace_id": "trace_01HXlangsmith",
+      "session_id": "session_01HXlangsmith",
+      "inputs": {
+        "amount": 2499,
+        "currency": "usd",
+        "customer": "cus_R8kPl2mNvTqX7w",
+        "description": "Replacement order - defective item return",
+        "metadata": {
+          "ticket_id": "CS-44219",
+          "agent_session": "sess_langsmith_42"
+        }
+      },
+      "outputs": {
+        "status": "accepted"
+      }
+    }
+  ]
+}

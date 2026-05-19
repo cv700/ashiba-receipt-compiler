@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""One-line evidence compiler.
+
+Usage:
+    ./compile examples/stripe_trick_bundle/
+    ./compile examples/stripe_trick_bundle/ --verdict
+    ./compile examples/stripe_trick_bundle/ --explain
+    ./compile path/to/any/artifact/dir/
+    echo '{"authorization": {...}, "parsed_actions": [...]}' | ./compile -
+
+Accepts:
+    1. A directory of JSON artifact files (auto-detects claim type)
+    2. A single JSON file with all artifacts merged
+    3. Stdin (pipe a JSON object)
+
+Outputs receipt JSON by default. Use --verdict for one word, --explain for human-readable.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+from receipt_compile import (
+    ArtifactLoad,
+    bundle_manifest,
+    claim_types_from_incident_manifest,
+    compile_bundle,
+    compile_claim,
+    detect_applicable_claim_types,
+    load_artifacts_dir_bound,
+)
+from receipt_explain import format_receipts_card, format_receipts_gap_report, missing_evidence_gaps
+
+
+def _load_json_text(raw: str, label: str) -> dict[str, Any]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f"ERROR: invalid JSON from {label}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if not isinstance(data, dict):
+        print(f"ERROR: {label} must be a JSON object", file=sys.stderr)
+        sys.exit(1)
+    return data
+
+
+def _is_v1_bundle(data: dict[str, Any]) -> bool:
+    """Return whether the JSON object is a legacy v1 receipt bundle."""
+    return isinstance(data.get("artifacts"), dict) and (
+        "claim" in data or "expected_evidence" in data
+    )
+
+
+def _load_stdin_bound(tmp_root: Path) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
+    """Load stdin as one source-bound JSON object."""
+    raw = sys.stdin.read()
+    data = _load_json_text(raw, "stdin")
+    source_path = tmp_root / "stdin.json"
+    source_path.write_text(raw, encoding="utf-8")
+    manifest, input_hash = bundle_manifest(source_path)
+    return data, manifest, input_hash
+
+
+def _load_file_bound(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
+    """Load one JSON file and bind the receipt to that exact file."""
+    data = _load_json_text(path.read_text(encoding="utf-8"), str(path))
+    manifest, input_hash = bundle_manifest(path)
+    return data, manifest, input_hash
+
+
+def _select_claim_types(
+    artifacts: dict[str, Any],
+    requested_claim_type: str | None,
+    incident_manifest: dict[str, Any],
+    registry: dict[str, dict[str, Any]],
+) -> list[str]:
+    if requested_claim_type:
+        if requested_claim_type not in registry:
+            print(f"ERROR: unknown claim type: {requested_claim_type}", file=sys.stderr)
+            sys.exit(1)
+        return [requested_claim_type]
+
+    manifest_claim_types = claim_types_from_incident_manifest(incident_manifest, registry)
+    if manifest_claim_types:
+        return manifest_claim_types
+
+    candidates = detect_applicable_claim_types(artifacts, registry)
+    if not candidates:
+        print("ERROR: no applicable claim type detected. Use --claim-type.", file=sys.stderr)
+        sys.exit(1)
+    return candidates
+
+
+def _render_json(receipts: list[dict[str, Any]], pretty: bool) -> str:
+    payload: dict[str, Any] | list[dict[str, Any]]
+    if len(receipts) == 1:
+        payload = receipts[0]
+    else:
+        payload = {"receipts": receipts}
+    return json.dumps(payload, indent=2 if pretty else None)
+
+
+def _print_verdicts(receipts: list[dict[str, Any]]) -> None:
+    if len(receipts) == 1:
+        print(receipts[0]["verdict"]["status"].upper())
+        return
+    for receipt in receipts:
+        print(f"{receipt.get('claim_type', 'bundle')}: {receipt['verdict']['status'].upper()}")
+
+
+def _print_explanations(receipts: list[dict[str, Any]]) -> None:
+    for idx, receipt in enumerate(receipts):
+        if idx:
+            print()
+        prefix = ""
+        if len(receipts) > 1:
+            prefix = f"{receipt.get('claim_type', 'bundle')}: "
+        status = receipt["verdict"]["status"].upper()
+        basis = receipt["verdict"]["basis"]
+        print(f"{prefix}{status}: {basis}")
+        failing = [p for p in receipt["pass_results"] if p.get("status") == "contradicted"]
+        for result in failing:
+            print(f"  [{result['pass_id']}] {result.get('detail', '')}")
+        if not failing:
+            passing = [p for p in receipt["pass_results"] if p.get("status") == "satisfied"]
+            print(f"  {len(passing)} passes satisfied")
+        gaps = missing_evidence_gaps(receipt)
+        if gaps:
+            print("  Missing-evidence guidance:")
+            for gap in gaps:
+                print(f"    - {gap['missing_expected_path']}: {gap['instrumentation_or_log_field']}")
+                print(f"      verdict effect: {gap['verdict_effect']}")
+
+
+def _print_ci_summary(receipts: list[dict[str, Any]]) -> None:
+    for receipt in receipts:
+        label = receipt.get("claim_type") or receipt.get("claim", {}).get("id", "bundle")
+        verdict = receipt.get("verdict", {})
+        print(f"{label}: {verdict.get('status', 'unknown').upper()} - {verdict.get('basis', '')}")
+
+
+def _ci_exit_code(receipts: list[dict[str, Any]], strict_unknown: bool) -> int:
+    has_compiler_errors = any(receipt.get("compiler_errors") for receipt in receipts)
+    has_contradicted = any(receipt.get("verdict", {}).get("status") == "contradicted" for receipt in receipts)
+    has_unknown = any(receipt.get("verdict", {}).get("status") == "unknown" for receipt in receipts)
+    if has_compiler_errors:
+        print("CI ERROR: compiler_errors present", file=sys.stderr)
+        return 1
+    if has_contradicted:
+        print("CI ERROR: contradicted receipt present", file=sys.stderr)
+        return 1
+    if has_unknown and strict_unknown:
+        print("CI ERROR: unknown receipt present and --strict-unknown is set", file=sys.stderr)
+        return 1
+    if has_unknown:
+        print("CI WARNING: unknown receipt present; treating as zero exit by default", file=sys.stderr)
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Compile evidence into a receipt.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("input", nargs="?", default="-",
+                        help="Artifact directory, JSON file, or - for stdin (default: stdin)")
+    parser.add_argument("--claim-type", "-c", help="Claim type (auto-detects if omitted)")
+    parser.add_argument("--claim-packs-dir", type=Path, help="Optional directory of additive JSON claim packs")
+    parser.add_argument("--verdict", "-v", action="store_true", help="Print only the verdict word")
+    parser.add_argument("--explain", "-e", action="store_true", help="Human-readable explanation")
+    parser.add_argument("--gaps", action="store_true", help="Print actionable missing-evidence guidance")
+    parser.add_argument("--card", action="store_true", help="Print a short human receipt card")
+    parser.add_argument("--ci", action="store_true", help="CI mode: nonzero for contradicted or compiler errors")
+    parser.add_argument(
+        "--strict-unknown",
+        action="store_true",
+        help="With --ci, treat unknown receipts as nonzero instead of warnings",
+    )
+    parser.add_argument("--pretty", "-p", action="store_true", help="Pretty-print JSON output")
+    args = parser.parse_args()
+
+    try:
+        from claim_types import build_claim_registry
+
+        registry = build_claim_registry(args.claim_packs_dir)
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    with tempfile.TemporaryDirectory(prefix="compile_") as tmp:
+        tmp_root = Path(tmp)
+        input_path = args.input
+        incident_manifest: dict[str, Any] = {}
+        is_bundle = False
+
+        if input_path == "-":
+            data, manifest, input_hash = _load_stdin_bound(tmp_root)
+            is_bundle = _is_v1_bundle(data)
+            artifacts = data.get("artifacts", {}) if is_bundle else data
+        else:
+            p = Path(input_path)
+            if p.is_dir():
+                try:
+                    loaded: ArtifactLoad = load_artifacts_dir_bound(p)
+                except (OSError, ValueError, json.JSONDecodeError) as exc:
+                    print(f"ERROR: {exc}", file=sys.stderr)
+                    return 1
+                artifacts = loaded.artifacts
+                manifest = loaded.artifact_manifest
+                input_hash = loaded.input_set_hash
+                incident_manifest = loaded.incident_manifest
+            elif p.is_file():
+                data, manifest, input_hash = _load_file_bound(p)
+                is_bundle = _is_v1_bundle(data)
+                artifacts = data.get("artifacts", {}) if is_bundle else data
+            else:
+                print(f"ERROR: {input_path} is not a file or directory", file=sys.stderr)
+                return 1
+
+        if is_bundle:
+            receipts = [
+                compile_bundle(
+                    data,
+                    artifact_manifest=manifest,
+                    input_set_hash=input_hash,
+                ).to_dict()
+            ]
+        else:
+            claim_types = _select_claim_types(artifacts, args.claim_type, incident_manifest, registry)
+            receipts = [
+                compile_claim(
+                    artifacts,
+                    claim_type,
+                    artifact_manifest=manifest,
+                    input_set_hash=input_hash,
+                    incident_manifest=incident_manifest,
+                    claim_types=registry,
+                ).to_dict()
+                for claim_type in claim_types
+            ]
+
+    # Output
+    if args.verdict:
+        _print_verdicts(receipts)
+        return _ci_exit_code(receipts, args.strict_unknown) if args.ci else 0
+
+    if args.explain:
+        _print_explanations(receipts)
+        return _ci_exit_code(receipts, args.strict_unknown) if args.ci else 0
+
+    if args.gaps:
+        print(format_receipts_gap_report(receipts))
+        return _ci_exit_code(receipts, args.strict_unknown) if args.ci else 0
+
+    if args.card:
+        print(format_receipts_card(receipts))
+        return _ci_exit_code(receipts, args.strict_unknown) if args.ci else 0
+
+    if args.ci:
+        _print_ci_summary(receipts)
+        return _ci_exit_code(receipts, args.strict_unknown)
+
+    print(_render_json(receipts, args.pretty))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

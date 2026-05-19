@@ -1,0 +1,33 @@
+{
+  "task_id": "002_cloudtrail_revocation_explicit_null_supported",
+  "expected_verdict": "supported",
+  "required_evidence_refs": [
+    "artifacts/imported/authorization.json",
+    "artifacts/imported/parsed_actions.json",
+    "artifacts/imported/tool_call.json"
+  ],
+  "required_field_paths": [
+    "authorization.grant_id",
+    "authorization.grant_valid_from",
+    "authorization.grant_valid_until",
+    "authorization.revoked_at",
+    "parsed_actions.0.executed_at",
+    "parsed_actions.0.tool",
+    "tool_call.action_id",
+    "tool_call.tool_name"
+  ],
+  "expected_missing_paths": [],
+  "boundary_must_include": [
+    "single CloudTrail action"
+  ],
+  "do_not_claim_must_include": [
+    "other runs"
+  ],
+  "minimal_evidence_sets": [
+    [
+      "artifacts/imported/authorization.json",
+      "artifacts/imported/parsed_actions.json",
+      "artifacts/imported/tool_call.json"
+    ]
+  ]
+}

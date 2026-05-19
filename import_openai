@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""Import OpenAI tool-call responses into compiler artifact schema.
+
+Usage:
+    ./import_openai response.json --policy policy.json | ./compile - -v
+    ./import_openai response.json --policy policy.json -o artifacts/
+    ./import_openai response.json --policy policy.json -o artifacts/ && ./compile artifacts/ -e
+
+    # Pipe mode:
+    cat response.json | ./import_openai - --policy policy.json | ./compile - -v
+
+Supported input shapes:
+    1. Responses API output items:
+       {"output": [{"type": "function_call", "call_id": "...", "name": "...", "arguments": "{...}"}]}
+
+    2. Chat Completions tool calls:
+       {"choices": [{"message": {"tool_calls": [{"id": "...", "function": {"name": "...", "arguments": "{...}"}}]}}]}
+
+The policy file is the same 6-field authorization policy used by
+import_anthropic. The importer extracts the first function/tool call by
+default and emits authorization + parsed_actions + tool_call artifacts.
+"""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import json
+import sys
+import uuid
+from pathlib import Path
+from typing import Any
+
+
+def _epoch_to_utc(epoch_seconds: int | float) -> str:
+    """Convert an evidence-backed epoch timestamp to ISO 8601 UTC with Z."""
+    return datetime.fromtimestamp(epoch_seconds, timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _decode_arguments(raw: Any) -> Any:
+    """Decode OpenAI JSON-encoded arguments when possible."""
+    if isinstance(raw, str):
+        if not raw.strip():
+            return {}
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {"_raw_arguments": raw}
+    if isinstance(raw, dict):
+        return raw
+    if raw is None:
+        return {}
+    return {"_raw_arguments": raw}
+
+
+def _extract_responses_api_calls(response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract function_call items from an OpenAI Responses API response."""
+    output = response.get("output", [])
+    if not isinstance(output, list):
+        return []
+
+    calls = []
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") != "function_call":
+            continue
+        call_id = item.get("call_id") or item.get("id") or f"call_{uuid.uuid4().hex[:12]}"
+        calls.append(
+            {
+                "source": "openai-responses-api",
+                "id": item.get("id", call_id),
+                "call_id": call_id,
+                "name": item.get("name", ""),
+                "arguments": _decode_arguments(item.get("arguments")),
+                "raw": item,
+            }
+        )
+    return calls
+
+
+def _extract_chat_completion_calls(response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract tool_calls from a Chat Completions response."""
+    choices = response.get("choices", [])
+    if not isinstance(choices, list):
+        return []
+
+    calls = []
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message", {})
+        if not isinstance(message, dict):
+            continue
+        tool_calls = message.get("tool_calls", [])
+        if not isinstance(tool_calls, list):
+            continue
+        for tool_call in tool_calls:
+            if not isinstance(tool_call, dict):
+                continue
+            fn = tool_call.get("function", {})
+            if not isinstance(fn, dict):
+                fn = {}
+            call_id = tool_call.get("id") or f"call_{uuid.uuid4().hex[:12]}"
+            calls.append(
+                {
+                    "source": "openai-chat-completions",
+                    "id": tool_call.get("id", call_id),
+                    "call_id": call_id,
+                    "name": fn.get("name") or tool_call.get("name", ""),
+                    "arguments": _decode_arguments(fn.get("arguments", tool_call.get("arguments"))),
+                    "raw": tool_call,
+                }
+            )
+    return calls
+
+
+def _extract_tool_calls(response: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract tool/function calls from supported OpenAI response shapes."""
+    return _extract_responses_api_calls(response) or _extract_chat_completion_calls(response)
+
+
+def _infer_executed_at(response: dict[str, Any], override: str | None = None) -> str:
+    """Determine execution timestamp without inventing evidence.
+
+    Priority:
+    1. Explicit --executed-at override.
+    2. String timestamp fields: created_at, timestamp, request_timestamp.
+    3. Numeric OpenAI timestamp fields: created_at, created.
+    """
+    if override:
+        return override
+
+    for key in ("created_at", "timestamp", "request_timestamp"):
+        val = response.get(key)
+        if isinstance(val, str) and "T" in val:
+            return val
+
+    for key in ("created_at", "created"):
+        val = response.get(key)
+        if isinstance(val, (int, float)):
+            return _epoch_to_utc(val)
+
+    raise ValueError(
+        "no execution timestamp found in response; pass --executed-at with an "
+        "evidence-backed ISO 8601 UTC timestamp"
+    )
+
+
+def _build_authorization(policy: dict[str, Any]) -> dict[str, Any]:
+    """Build the authorization artifact from the policy file."""
+    grant_id = policy.get("grant_id", f"grant-{uuid.uuid4().hex[:8]}")
+    return {
+        "authorization": {
+            "grant_id": grant_id,
+            "principal": policy.get("principal", "unknown"),
+            "delegated_to": policy.get("delegated_to", "unknown"),
+            "scope": policy.get("scope", []),
+            "grant_valid_from": policy.get("grant_valid_from", ""),
+            "grant_valid_until": policy.get("grant_valid_until", ""),
+            "revoked_at": policy.get("revoked_at", None),
+            "issuer": policy.get("issuer", "policy_file"),
+            "grant_context": policy.get("grant_context", ""),
+        }
+    }
+
+
+def _tool_call_to_parsed_action(tool_call: dict[str, Any], executed_at: str) -> dict[str, Any]:
+    """Convert one extracted OpenAI call into a parsed_action."""
+    return {
+        "action_id": tool_call["call_id"],
+        "tool": tool_call.get("name", ""),
+        "executed_at": executed_at,
+        "source_kind": "model_output",
+        "parameters": tool_call.get("arguments", {}),
+    }
+
+
+def _build_tool_call(tool_call: dict[str, Any], response: dict[str, Any]) -> dict[str, Any]:
+    """Build the tool_call artifact from OpenAI response metadata."""
+    invocation_context: dict[str, Any] = {
+        "provider": "openai",
+        "model": response.get("model", "unknown"),
+    }
+    if response.get("id"):
+        invocation_context["response_id"] = response["id"]
+    if response.get("object"):
+        invocation_context["object"] = response["object"]
+    usage = response.get("usage", {})
+    if isinstance(usage, dict) and usage:
+        invocation_context["usage"] = usage
+
+    return {
+        "tool_call": {
+            "action_id": tool_call["call_id"],
+            "tool_name": tool_call.get("name", ""),
+            "tool_version": tool_call.get("source", "openai"),
+            "invocation_context": invocation_context,
+        }
+    }
+
+
+def import_response(
+    response: dict[str, Any],
+    policy: dict[str, Any],
+    executed_at_override: str | None = None,
+    action_index: int = 0,
+) -> dict[str, Any]:
+    """Convert an OpenAI response + policy into compiler artifact schema."""
+    tool_calls = _extract_tool_calls(response)
+    if not tool_calls:
+        print("ERROR: no OpenAI function/tool calls found in response", file=sys.stderr)
+        sys.exit(1)
+
+    if action_index >= len(tool_calls):
+        print(f"ERROR: action_index {action_index} but only {len(tool_calls)} tool call(s)", file=sys.stderr)
+        sys.exit(1)
+
+    tool_call = tool_calls[action_index]
+    executed_at = _infer_executed_at(response, executed_at_override)
+    return {
+        **_build_authorization(policy),
+        "parsed_actions": [_tool_call_to_parsed_action(tool_call, executed_at)],
+        **_build_tool_call(tool_call, response),
+    }
+
+
+def _load_json_arg(path_arg: str, label: str) -> Any:
+    if path_arg == "-":
+        raw = sys.stdin.read()
+    else:
+        path = Path(path_arg)
+        if not path.is_file():
+            print(f"ERROR: {label} file {path_arg} not found", file=sys.stderr)
+            sys.exit(1)
+        raw = path.read_text(encoding="utf-8")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"ERROR: invalid JSON in {label}: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _load_policy(path_arg: str) -> dict[str, Any]:
+    data = _load_json_arg(path_arg, "policy")
+    if not isinstance(data, dict):
+        print("ERROR: policy JSON root must be an object", file=sys.stderr)
+        sys.exit(1)
+    return data
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Import OpenAI tool-call response into compiler artifact schema.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="One-liner:  ./import_openai response.json --policy policy.json | ./compile - -v",
+    )
+    parser.add_argument("response", help="OpenAI response JSON file, or - for stdin")
+    parser.add_argument("--policy", "-p", required=True, help="Authorization policy JSON file")
+    parser.add_argument("--executed-at", "-t", help="Override execution timestamp (ISO 8601 UTC)")
+    parser.add_argument("--action-index", "-i", type=int, default=0,
+                        help="Which tool/function call to compile (default: 0)")
+    parser.add_argument("--out", "-o", type=Path, help="Write artifact files to this directory")
+    parser.add_argument("--all", "-a", action="store_true",
+                        help="Compile all tool/function calls (writes one action set per call when --out is used)")
+    args = parser.parse_args()
+
+    response = _load_json_arg(args.response, "response")
+    if not isinstance(response, dict):
+        print("ERROR: response JSON root must be an object", file=sys.stderr)
+        return 1
+    policy = _load_policy(args.policy)
+
+    tool_calls = _extract_tool_calls(response)
+    if not tool_calls:
+        print("ERROR: no OpenAI function/tool calls found in response", file=sys.stderr)
+        return 1
+
+    indices = list(range(len(tool_calls))) if args.all else [args.action_index]
+    for idx in indices:
+        try:
+            merged = import_response(response, policy, args.executed_at, action_index=idx)
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+
+        if args.out:
+            out_dir = args.out if len(indices) == 1 else args.out / f"action_{idx}"
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / "authorization.json").write_text(
+                json.dumps({"authorization": merged["authorization"]}, indent=2),
+                encoding="utf-8",
+            )
+            (out_dir / "parsed_actions.json").write_text(
+                json.dumps({"parsed_actions": merged["parsed_actions"]}, indent=2),
+                encoding="utf-8",
+            )
+            (out_dir / "tool_call.json").write_text(
+                json.dumps({"tool_call": merged["tool_call"]}, indent=2),
+                encoding="utf-8",
+            )
+            if len(indices) == 1:
+                print(f"Artifacts written to {out_dir}/", file=sys.stderr)
+            else:
+                print(f"  [{idx}] {tool_calls[idx].get('name', '?')} -> {out_dir}/", file=sys.stderr)
+        else:
+            print(json.dumps(merged, indent=2))
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

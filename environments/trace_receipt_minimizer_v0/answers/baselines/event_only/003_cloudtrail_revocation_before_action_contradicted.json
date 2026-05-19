@@ -1,0 +1,27 @@
+{
+  "task_id": "003_cloudtrail_revocation_before_action_contradicted",
+  "claim_id": "authorization_not_revoked_at_action_time",
+  "selected_evidence_refs": [
+    "artifacts/raw/cloudtrail_lambda_invoke.json"
+  ],
+  "selected_field_paths": [
+    "raw_cloudtrail_event.Records.0.eventTime",
+    "raw_cloudtrail_event.Records.0.eventID",
+    "raw_cloudtrail_event.Records.0.eventSource",
+    "raw_cloudtrail_event.Records.0.eventName"
+  ],
+  "verdict": "unknown",
+  "basis": "The CloudTrail event alone does not show the grant revocation timestamp.",
+  "missing_evidence": [
+    {
+      "path": "authorization.revoked_at",
+      "why_it_matters": "The event alone does not prove whether the grant was revoked before action."
+    }
+  ],
+  "boundary": [
+    "This event-only answer cannot show whether the grant was revoked before action."
+  ],
+  "do_not_claim": [
+    "Do not claim anything about other runs or grant validity from the event alone."
+  ]
+}

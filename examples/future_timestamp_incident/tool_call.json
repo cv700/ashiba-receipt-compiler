@@ -1,0 +1,9 @@
+{
+  "tool_call": {
+    "action_id": "act-backup-001",
+    "tool_schema_hash": "sha256:e4d909c290d0fb1ca068ffaddf22cbd0",
+    "backup_completed_at": "2029-05-16T17:00:00Z",
+    "backup_size_bytes": 2147483648,
+    "backup_location": "s3://prod-backups/2026-05-16/full_production_main.zstd"
+  }
+}

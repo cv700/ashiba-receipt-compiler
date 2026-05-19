@@ -1,0 +1,15 @@
+{
+  "grant_id": "grant-real-world-20260514",
+  "principal": "user:sarah@merchant.io",
+  "delegated_to": "agent:ops-runner",
+  "scope": [
+    "stripe:charges:create",
+    "aws:lambda:Invoke",
+    "deploy:production"
+  ],
+  "grant_valid_from": "2026-05-14T16:00:00Z",
+  "grant_valid_until": "2026-05-14T18:00:00Z",
+  "revoked_at": "2026-05-14T17:10:00Z",
+  "issuer": "approval-system",
+  "grant_context": "Readiness scanner fixture with revoked authorization grant"
+}
