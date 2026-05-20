@@ -105,6 +105,21 @@ Important invariant:
 > If the scanner says a claim is not decidable for a packet, the compiler must
 > not emit `supported` for the same claim on that same packet.
 
+## Execution Context
+
+Receipts may include an optional `execution_context` extension object. This is
+domain-specific context for test conditions and anti-gaming disclosures. It is
+not ordinary claim evidence and does not change verdict logic.
+
+If an artifact directory contains `execution_context.json`, the compiler binds
+that file in `artifact_manifest`, stores it as `execution_context`, and keeps it
+out of the normal `artifacts` object used by verdict-determining passes.
+
+The first supported schema is `gpu_goodput_context_v0`, used to disclose limits
+such as node coverage, freshly rebooted nodes, ECC reboot suspects, negligible
+fabric load, missing software stack capture, missing challenge nonce, and
+missing pre-committed probe manifest.
+
 ## Repository Layout
 
 ```text
@@ -150,8 +165,8 @@ find . -type d -name __pycache__ -prune -exec rm -rf {} +
 Expected gallery summary:
 
 ```text
-25 receipts from 24 incident directories
-supported: 6 | contradicted: 8 | unknown: 10 | not_applicable: 1
+26 receipts from 25 incident directories
+supported: 7 | contradicted: 8 | unknown: 10 | not_applicable: 1
 compiler_errors: 0 | validation_errors: 0
 ```
 

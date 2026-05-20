@@ -68,6 +68,7 @@ def run_directory(dir_path: Path, expected_claim_types: list[str] | None = None)
                     artifact_manifest=artifact_manifest,
                     input_set_hash=input_hash,
                     incident_manifest=incident_manifest,
+                    execution_context=loaded.execution_context,
                 )
                 receipt_dict = receipt.to_dict()
                 rows.append({

@@ -58,6 +58,7 @@ class ReceiptIR:
     artifact_manifest: list[dict[str, Any]] = field(default_factory=list)
     input_set_hash: str = ""
     incident_manifest: dict[str, Any] = field(default_factory=dict)
+    execution_context: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_bundle(
@@ -82,6 +83,7 @@ class ReceiptIR:
             artifacts=artifacts,
             artifact_manifest=artifact_manifest or [],
             input_set_hash=input_set_hash,
+            execution_context=bundle.get("execution_context") if isinstance(bundle.get("execution_context"), dict) else {},
         )
 
     @classmethod
@@ -94,6 +96,7 @@ class ReceiptIR:
         artifact_manifest: list[dict[str, Any]] | None = None,
         input_set_hash: str = "",
         incident_manifest: dict[str, Any] | None = None,
+        execution_context: dict[str, Any] | None = None,
     ) -> "ReceiptIR":
         """Create IR from a pre-merged artifacts dict and claim type config."""
         return cls(
@@ -104,6 +107,7 @@ class ReceiptIR:
             artifact_manifest=artifact_manifest or [],
             input_set_hash=input_set_hash,
             incident_manifest=incident_manifest or {},
+            execution_context=execution_context or {},
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -127,4 +131,6 @@ class ReceiptIR:
             out["claim_type"] = self.claim_type
         if self.incident_manifest:
             out["incident_manifest"] = self.incident_manifest
+        if self.execution_context:
+            out["execution_context"] = self.execution_context
         return out

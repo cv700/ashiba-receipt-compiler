@@ -148,6 +148,10 @@ def validate_receipt(receipt: dict[str, Any], source_root: Path | None = None) -
             if claim_types is not None and not isinstance(claim_types, list):
                 errors.append("incident_manifest.claim_types must be a list when present")
 
+    execution_context = receipt.get("execution_context")
+    if execution_context is not None and not isinstance(execution_context, dict):
+        errors.append("execution_context must be an object when present")
+
     input_set_hash = receipt.get("input_set_hash")
     if not isinstance(input_set_hash, str) or SHA256_RE.fullmatch(input_set_hash) is None:
         errors.append("input_set_hash must be a lowercase SHA-256 hex digest")

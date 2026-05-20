@@ -57,6 +57,16 @@ def _is_v1_bundle(data: dict[str, Any]) -> bool:
     )
 
 
+def _split_execution_context(artifacts: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Separate reserved execution context from merged artifact JSON."""
+    execution_context = artifacts.get("execution_context")
+    if not isinstance(execution_context, dict):
+        return artifacts, {}
+    cleaned = dict(artifacts)
+    cleaned.pop("execution_context", None)
+    return cleaned, execution_context
+
+
 def _load_stdin_bound(tmp_root: Path) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
     """Load stdin as one source-bound JSON object."""
     raw = sys.stdin.read()
@@ -215,13 +225,21 @@ def main() -> int:
                 manifest = loaded.artifact_manifest
                 input_hash = loaded.input_set_hash
                 incident_manifest = loaded.incident_manifest
+                execution_context = loaded.execution_context
             elif p.is_file():
                 data, manifest, input_hash = _load_file_bound(p)
                 is_bundle = _is_v1_bundle(data)
                 artifacts = data.get("artifacts", {}) if is_bundle else data
+                execution_context = data.get("execution_context", {}) if is_bundle else {}
             else:
                 print(f"ERROR: {input_path} is not a file or directory", file=sys.stderr)
                 return 1
+        if input_path == "-":
+            execution_context = data.get("execution_context", {}) if is_bundle else {}
+        if not is_bundle:
+            artifacts, merged_execution_context = _split_execution_context(artifacts)
+            if merged_execution_context:
+                execution_context = merged_execution_context
 
         if is_bundle:
             receipts = [
@@ -240,6 +258,7 @@ def main() -> int:
                     artifact_manifest=manifest,
                     input_set_hash=input_hash,
                     incident_manifest=incident_manifest,
+                    execution_context=execution_context,
                     claim_types=registry,
                 ).to_dict()
                 for claim_type in claim_types

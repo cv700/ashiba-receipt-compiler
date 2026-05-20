@@ -1,0 +1,20 @@
+{
+  "ambient_load": {
+    "ambient_load_level": "negligible",
+    "congestion_events": 0,
+    "fabric_utilization_pct": 4.2,
+    "port_counter_samples": [],
+    "test_window_end": "2026-05-20T03:32:00Z",
+    "test_window_start": "2026-05-20T03:00:00Z"
+  },
+  "schema_id": "gpu_goodput_context_v0",
+  "system_state": {
+    "ecc_reboot_suspects": 2,
+    "freshly_rebooted_nodes": 3
+  },
+  "topology_manifest": {
+    "coverage_ratio": 0.25,
+    "nodes_provisioned": 256,
+    "nodes_tested": 64
+  }
+}

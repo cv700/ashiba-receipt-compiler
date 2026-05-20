@@ -2,10 +2,10 @@
   "schema_version": "receipt-gallery-manifest-v1",
   "compiler_version": "evidence-compiler-v0.6",
   "summary": {
-    "expected_directories": 24,
-    "expected_receipts": 25,
+    "expected_directories": 25,
+    "expected_receipts": 26,
     "expected_verdict_counts": {
-      "supported": 6,
+      "supported": 7,
       "contradicted": 8,
       "unknown": 10,
       "not_applicable": 1
@@ -120,6 +120,18 @@
           "absence_count": 4,
           "compiler_error_count": 0,
           "rationale": "authorization artifact presence triggers the claim type, but required grant and action evidence is missing; missing expected evidence is unknown, not contradicted"
+        }
+      ]
+    },
+    {
+      "directory": "execution_context_gpu_disclosure",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "the authorization evidence supports the claim while the GPU execution context adds anti-gaming boundary disclosures without changing the verdict"
         }
       ]
     },

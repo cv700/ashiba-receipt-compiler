@@ -12,7 +12,7 @@ Usage modes:
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
@@ -42,6 +42,7 @@ class ArtifactLoad:
     artifact_manifest: list[dict[str, Any]]
     input_set_hash: str
     incident_manifest: dict[str, Any]
+    execution_context: dict[str, Any] = field(default_factory=dict)
 
 
 def _sha256_file(path: Path) -> str:
@@ -150,6 +151,10 @@ def load_artifacts_from_incident_manifest(artifacts_dir: Path, manifest_path: Pa
 
     merged: dict[str, Any] = {}
     artifact_manifest: list[dict[str, Any]] = [incident_manifest_record(manifest_path)]
+    execution_context: dict[str, Any] = {}
+    manifest_execution_context = incident_manifest.get("execution_context")
+    if isinstance(manifest_execution_context, dict):
+        execution_context = manifest_execution_context
 
     for idx, entry in enumerate(roles):
         if not isinstance(entry, dict):
@@ -172,7 +177,10 @@ def load_artifacts_from_incident_manifest(artifacts_dir: Path, manifest_path: Pa
             raise ValueError(f"duplicate artifact_key in incident manifest: {artifact_key}")
 
         data = load_json(path)
-        merged[artifact_key] = _merge_artifact(data, artifact_key)
+        if artifact_key == "execution_context" or role == "execution_context":
+            execution_context = data
+        else:
+            merged[artifact_key] = _merge_artifact(data, artifact_key)
         artifact_manifest.append(manifest_artifact_file_record(path, rel, artifact_key, role or ""))
 
     return ArtifactLoad(
@@ -180,6 +188,7 @@ def load_artifacts_from_incident_manifest(artifacts_dir: Path, manifest_path: Pa
         artifact_manifest=artifact_manifest,
         input_set_hash=_input_set_hash(artifact_manifest),
         incident_manifest=incident_manifest,
+        execution_context=execution_context,
     )
 
 
@@ -198,6 +207,7 @@ def load_artifacts_dir_bound(artifacts_dir: Path) -> ArtifactLoad:
 
     merged: dict[str, Any] = {}
     artifact_manifest: list[dict[str, Any]] = []
+    execution_context: dict[str, Any] = {}
     json_files = sorted(artifacts_dir.glob("*.json"))
     if not json_files:
         raise ValueError(f"no JSON files found in {artifacts_dir}")
@@ -206,7 +216,10 @@ def load_artifacts_dir_bound(artifacts_dir: Path) -> ArtifactLoad:
         data = load_json(path)
         stem = path.stem
 
-        merged[stem] = _merge_artifact(data, stem)
+        if stem == "execution_context":
+            execution_context = data
+        else:
+            merged[stem] = _merge_artifact(data, stem)
         artifact_manifest.append(artifact_file_manifest(path, stem))
 
     return ArtifactLoad(
@@ -214,6 +227,7 @@ def load_artifacts_dir_bound(artifacts_dir: Path) -> ArtifactLoad:
         artifact_manifest=artifact_manifest,
         input_set_hash=_input_set_hash(artifact_manifest),
         incident_manifest={},
+        execution_context=execution_context,
     )
 
 
@@ -245,6 +259,10 @@ def _claim_surface_instantiated(artifacts: dict[str, Any], config: dict[str, Any
 
 
 def _finalize_receipt(ir: ReceiptIR) -> ReceiptIR:
+    if ir.execution_context and not any(
+        result.get("pass_id") == "execution_context_disclosure" for result in ir.pass_results
+    ):
+        _apply_pass_result(ir, get_pass("execution_context_disclosure")(ir, None))
     ir.verdict = generate_verdict(ir.pass_results, ir.absence)
     ir.boundary, ir.unsupported_inferences = generate_boundary(
         claim=ir.claim,
@@ -298,6 +316,7 @@ def compile_claim(
     artifact_manifest: list[dict[str, Any]] | None = None,
     input_set_hash: str = "",
     incident_manifest: dict[str, Any] | None = None,
+    execution_context: dict[str, Any] | None = None,
     claim_types: dict[str, dict[str, Any]] | None = None,
 ) -> ReceiptIR:
     """v2 compilation: artifacts dict + claim type config -> receipt."""
@@ -310,6 +329,7 @@ def compile_claim(
         artifact_manifest=artifact_manifest,
         input_set_hash=input_set_hash,
         incident_manifest=incident_manifest,
+        execution_context=execution_context,
     )
 
     if not _claim_surface_instantiated(artifacts, config):
@@ -470,6 +490,7 @@ def main() -> int:
                     artifact_manifest=artifact_manifest,
                     input_set_hash=input_hash,
                     incident_manifest=incident_manifest,
+                    execution_context=loaded.execution_context,
                     claim_types=active_claim_types,
                 )
                 receipts.append(receipt.to_dict())

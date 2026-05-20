@@ -57,6 +57,15 @@ def generate_boundary(
         )
     if absence:
         does_not_support.append("This receipt does not fill missing expected evidence by inference.")
+    for result in pass_results:
+        if result.get("pass_id") != "execution_context_disclosure":
+            continue
+        metadata = result.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        disclosures = metadata.get("boundary_disclosures")
+        if isinstance(disclosures, list):
+            does_not_support.extend(str(disclosure) for disclosure in disclosures if disclosure)
 
     unsupported_inferences = [
         "That the action was semantically correct or desirable.",

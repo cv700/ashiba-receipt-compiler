@@ -16,6 +16,7 @@ from constants import (
     PASS_CONTRADICTED,
     PASS_ERROR,
     PASS_MISSING,
+    PASS_OK,
     PASS_SATISFIED,
     PASS_SKIPPED,
     PASS_UNKNOWN,
@@ -227,6 +228,90 @@ def no_future_evidence(ir: ReceiptIR, params: dict[str, Any] | None = None) -> P
         detail=f"all {len(inspected)} parsed evidence timestamp(s) are <= receipt creation time",
         verdict_effect=SUPPORTED,
         metadata={"created_at": ir.created_at, "inspected_paths": inspected},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Execution context disclosure pass
+# ---------------------------------------------------------------------------
+
+def _execution_context_disclosures(execution_context: dict[str, Any]) -> list[str]:
+    """Return boundary disclosures for a typed execution context extension."""
+    if not execution_context:
+        return []
+
+    schema_id = execution_context.get("schema_id")
+    if schema_id != "gpu_goodput_context_v0":
+        if isinstance(schema_id, str) and schema_id:
+            return [
+                (
+                    f"Execution context schema {schema_id!r} not recognized; "
+                    "domain-specific disclosures not available"
+                )
+            ]
+        return ["Execution context schema not supplied; domain-specific disclosures not available"]
+
+    disclosures: list[str] = []
+
+    topology = execution_context.get("topology_manifest")
+    if isinstance(topology, dict):
+        coverage_ratio = topology.get("coverage_ratio")
+        if isinstance(coverage_ratio, (int, float)) and coverage_ratio < 1.0:
+            nodes_tested = topology.get("nodes_tested", "unknown")
+            nodes_provisioned = topology.get("nodes_provisioned", "unknown")
+            pct = max(0.0, coverage_ratio) * 100
+            disclosures.append(
+                f"Receipt covers {nodes_tested}/{nodes_provisioned} provisioned nodes ({pct:.1f}% coverage)"
+            )
+
+    system_state = execution_context.get("system_state")
+    if isinstance(system_state, dict):
+        freshly_rebooted = system_state.get("freshly_rebooted_nodes")
+        if isinstance(freshly_rebooted, int) and freshly_rebooted > 0:
+            disclosures.append(
+                f"{freshly_rebooted} nodes were rebooted within 1 hour of test (uptime < 3600s)"
+            )
+        ecc_reboot_suspects = system_state.get("ecc_reboot_suspects")
+        if isinstance(ecc_reboot_suspects, int) and ecc_reboot_suspects > 0:
+            disclosures.append(
+                f"{ecc_reboot_suspects} nodes show zero volatile ECC errors but nonzero aggregate "
+                "(possible reboot to clear errors)"
+            )
+
+    ambient_load = execution_context.get("ambient_load")
+    if isinstance(ambient_load, dict) and ambient_load.get("ambient_load_level") == "negligible":
+        disclosures.append(
+            "Test conducted under negligible fabric load; results may not reflect contended performance"
+        )
+
+    if not isinstance(execution_context.get("software_stack"), dict) or not execution_context.get("software_stack"):
+        disclosures.append("Software stack not captured; environment reproducibility unknown")
+
+    if not execution_context.get("challenge_nonce"):
+        disclosures.append("No challenge nonce; receipt replay cannot be excluded")
+
+    if (
+        not isinstance(execution_context.get("probe_manifest_commitment"), dict)
+        or not execution_context.get("probe_manifest_commitment")
+    ):
+        disclosures.append("No pre-committed probe manifest; probe selection by provider cannot be excluded")
+
+    return disclosures
+
+
+def execution_context_disclosure(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Disclose typed execution-context limits without changing the verdict."""
+    disclosures = _execution_context_disclosures(ir.execution_context)
+    schema_id = ir.execution_context.get("schema_id") if isinstance(ir.execution_context, dict) else None
+    return PassResult(
+        pass_id="execution_context_disclosure",
+        status=PASS_OK,
+        detail=f"execution context disclosed with {len(disclosures)} boundary disclosure(s)",
+        verdict_effect=None,
+        metadata={
+            "schema_id": schema_id or "",
+            "boundary_disclosures": disclosures,
+        },
     )
 
 
@@ -702,6 +787,7 @@ PASS_REGISTRY: dict[str, Any] = {
     "utc_timestamp_format": utc_timestamp_format,
     "expected_evidence_absence": expected_evidence_absence,
     "no_future_evidence": no_future_evidence,
+    "execution_context_disclosure": execution_context_disclosure,
     # Authorization grant
     "grant_active_at_event_time": grant_active_at_event_time,
     "revocation_before_action": revocation_before_action,
