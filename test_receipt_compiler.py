@@ -1452,16 +1452,18 @@ def test_ashiba_scan_readiness_gaps() -> None:
     proc = run_ashiba_process("scan", str(root / "logs"), "--policy", str(root / "policy.json"))
     assert proc.returncode == 0, proc.stderr
     assert "Ashiba scan" in proc.stdout
-    assert "Found:\n- 2 files scanned\n- 1 side-effect action found" in proc.stdout
-    assert "Action readiness:\n- 0 decidable, 1 blocked" in proc.stdout
+    assert "Summary:\n- Files scanned: 2\n- Side-effect actions found: 1" in proc.stdout
+    assert "- Receipt-ready actions: 0" in proc.stdout
+    assert "- Blocked actions: 1" in proc.stdout
+    assert "Action groups:\n- 0 receipt-ready, 1 blocked" in proc.stdout
+    assert "Top missing evidence:" in proc.stdout
     assert "Punch list:\n- add revocation_state export (1 action blocked)" in proc.stdout
-    assert "You can decide:\n- deployment_matches_reviewed_commit" in proc.stdout
-    assert "You cannot decide:\n- authorization_bound_action" in proc.stdout
-    assert "  missing authorization.revoked_at" in proc.stdout
-    assert "  missing authorization-to-action binding" in proc.stdout
+    assert "- Claim families ready: deployment_matches_reviewed_commit" in proc.stdout
+    assert "- Claim families blocked: authorization_bound_action" in proc.stdout
+    assert "authorization.revoked_at: 1 action blocked -> add revocation_state export" in proc.stdout
     assert (
-        "Probe-able next:\n- add revocation_state export\n"
-        "- log authorization decision_id or approval_id on the tool call"
+        "authorization-to-action binding: 1 action blocked -> "
+        "log authorization decision_id or approval_id on the tool call"
     ) in proc.stdout
 
 

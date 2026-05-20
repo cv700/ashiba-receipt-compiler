@@ -9,22 +9,32 @@ security, safety, intent, custody, authenticity, or general system reliability.
 
 ## What It Does
 
-Ashiba answers a narrow question:
+Drop in CloudTrail, OpenTelemetry, GitHub Actions, Kubernetes audit logs, SIEM
+JSONL, or agent/tool traces. Ashiba groups side-effect actions, checks whether
+operational claims are receipt-ready, and emits bounded receipts:
+`supported`, `contradicted`, `unknown`, or `not_applicable`.
+
+The narrow question is:
 
 > Do the available logs and artifacts support this operational claim, contradict
 > it, or leave it unknown?
 
-The intended workflow has two steps:
+The intended workflow has two local steps:
 
 ```bash
 ./ashiba scan ./logs --policy policy.json --report --out /tmp/ashiba_report
 ./compile ./evidence --card
 ```
 
-`./ashiba scan` reads existing logs and tells you which claims are decidable and
-which probes are missing. `./compile` turns evidence that is already in compiler
-artifact shape into a receipt with a verdict, basis, input binding, missing
-evidence, and boundary language.
+`./ashiba scan` reads existing logs and tells you which actions are
+receipt-ready, which claims are blocked, and which probes are missing.
+`./compile` turns evidence that is already in compiler artifact shape into a
+receipt with a verdict, basis, input binding, missing evidence, and boundary
+language.
+
+Ashiba is not a replacement for CloudTrail, OTEL, Sigstore, SLSA, TEEs, SIEM,
+SOC 2, or GRC workflows. Those systems produce or organize evidence. Ashiba
+compiles a bounded decision artifact over that evidence.
 
 ## Thirty-Second Demo
 
@@ -40,6 +50,33 @@ The demo shows:
 - a generated missing-evidence report;
 - a bounded receipt card for a supported authorization claim;
 - fail-closed behavior on invalid input.
+
+## Canonical Authorization Gap Demo
+
+This is the smallest concrete incident story in the repo:
+
+```bash
+./compile examples/cloudtrail_otel_authorization_gap \
+  --claim-type authorization_bound_action \
+  --card
+```
+
+The packet includes CloudTrail-shaped evidence, OTEL-shaped evidence, a policy
+grant, normalized parsed action, and tool-call binding. The action executes
+90 seconds after grant expiry, so the receipt is `contradicted`.
+
+Use this example when explaining the product to someone new:
+
+```text
+Logs say the action happened.
+Policy says the grant expired.
+The receipt says the authorization claim is contradicted.
+The boundary says not to overread that into general agent unsafety.
+```
+
+For field-by-field receipt semantics, see `docs/receipt_anatomy.md`.
+For why this is not meant to be another logging standard, see
+`docs/not_a_standard.md`.
 
 ## Current Commands
 
@@ -165,8 +202,8 @@ find . -type d -name __pycache__ -prune -exec rm -rf {} +
 Expected gallery summary:
 
 ```text
-26 receipts from 25 incident directories
-supported: 7 | contradicted: 8 | unknown: 10 | not_applicable: 1
+27 receipts from 26 incident directories
+supported: 7 | contradicted: 9 | unknown: 10 | not_applicable: 1
 compiler_errors: 0 | validation_errors: 0
 ```
 

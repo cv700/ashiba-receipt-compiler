@@ -45,6 +45,10 @@ Added `examples/execution_context_gpu_disclosure/`, which compiles a supported
 authorization receipt while adding GPU anti-gaming boundary disclosures. This is
 schema/disclosure coverage only, not a GPU probe implementation.
 
+Added `examples/cloudtrail_otel_authorization_gap/`, a canonical contradicted
+authorization demo with CloudTrail-shaped evidence, OTEL-shaped evidence,
+policy evidence, normalized action evidence, and tool-call binding.
+
 ## Verification
 
 Passed:
@@ -60,8 +64,8 @@ git diff --check
 Gallery summary:
 
 ```text
-26 receipts from 25 incident directories
-supported: 7 | contradicted: 8 | unknown: 10 | not_applicable: 1
+27 receipts from 26 incident directories
+supported: 7 | contradicted: 9 | unknown: 10 | not_applicable: 1
 compiler errors: 0 | validation errors: 0
 ```
 

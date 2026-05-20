@@ -1,0 +1,9 @@
+{
+  "grant_id": "grant-refund-7421",
+  "grant_valid_from": "2026-05-14T16:00:00Z",
+  "grant_valid_until": "2026-05-14T17:00:00Z",
+  "revoked_at": null,
+  "render_time_grant_hash": "sha256:0c6bfffb0b278d81f1d8dddf0b4c5fdf47f5d8fa27e4c0e2f6d8b73ec9f2a001",
+  "execution_time_decision_id": "authz-decision-7421",
+  "grant_active_at_execution": true
+}

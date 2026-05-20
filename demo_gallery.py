@@ -152,7 +152,7 @@ def print_table(rows: list[dict[str, Any]], summary: dict[str, Any]) -> None:
     )
     sep = "-" * len(header)
 
-    print(f"\nReceipt Compiler v6 - Demo Gallery  ({COMPILER_VERSION})")
+    print(f"\nReceipt Compiler v7 - Demo Gallery  ({COMPILER_VERSION})")
     print("=" * len(header))
     print()
     print(header)

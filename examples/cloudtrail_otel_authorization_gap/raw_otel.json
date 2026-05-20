@@ -1,0 +1,26 @@
+{
+  "resourceSpans": [
+    {
+      "scopeSpans": [
+        {
+          "spans": [
+            {
+              "traceId": "trace-refund-7421",
+              "spanId": "span-stripe-refund-7421",
+              "name": "stripe.refunds.create",
+              "startTimeUnixNano": "1778778090000000000",
+              "attributes": [
+                {
+                  "key": "tool_call.action_id",
+                  "value": {
+                    "stringValue": "act-refund-7421"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

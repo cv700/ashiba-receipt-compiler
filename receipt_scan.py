@@ -1127,18 +1127,56 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
     )
 
 
+def _missing_counts(result: ScanResult) -> list[tuple[str, int, str | None]]:
+    counts: dict[str, int] = {}
+    for item in result.cannot_decide:
+        for missing in item.missing:
+            counts.setdefault(missing, 0)
+    for action in result.actions:
+        seen_for_action = set()
+        for item in action.cannot_decide:
+            for missing in item.missing:
+                if missing in seen_for_action:
+                    continue
+                seen_for_action.add(missing)
+                counts[missing] = counts.get(missing, 0) + 1
+    ranked = [
+        (missing, count, PROBE_BY_MISSING.get(missing))
+        for missing, count in counts.items()
+    ]
+    ranked.sort(key=lambda item: (-item[1], item[0]))
+    return ranked
+
+
 def format_scan_text(result: ScanResult) -> str:
     actions_decidable = sum(1 for action in result.actions if action.decidable)
+    actions_blocked = len(result.actions) - actions_decidable
+    missing_counts = _missing_counts(result)
     lines = [
         "Ashiba scan",
         "",
-        "Found:",
-        f"- {len(result.files_scanned)} file{'s' if len(result.files_scanned) != 1 else ''} scanned",
-        f"- {len(result.actions)} side-effect action{'s' if len(result.actions) != 1 else ''} found",
+        "Summary:",
+        f"- Files scanned: {len(result.files_scanned)}",
+        f"- Side-effect actions found: {len(result.actions)}",
+        f"- Receipt-ready actions: {actions_decidable}",
+        f"- Blocked actions: {actions_blocked}",
     ]
     if result.input_status != "ok":
         lines.append(f"- input status: {result.input_status}")
         lines.append("- problem: no usable log files were parsed")
+    lines.append(f"- Claim families ready: {', '.join(result.can_decide) if result.can_decide else 'none'}")
+    lines.append(
+        "- Claim families blocked: "
+        + (
+            ", ".join(item.claim for item in result.cannot_decide)
+            if result.cannot_decide
+            else "none"
+        )
+    )
+
+    lines.extend(["", "Detected evidence:"])
+    if not result.observations:
+        lines.append("- none")
     for observation in result.observations:
         if observation.kinds == ["policy"]:
             lines.append(f"- policy evidence: {', '.join(observation.evidence) if observation.evidence else 'present'}")
@@ -1149,41 +1187,33 @@ def format_scan_text(result: ScanResult) -> str:
 
     lines.extend([
         "",
-        "Action readiness:",
+        "Action groups:",
     ])
     if result.actions:
-        lines.append(f"- {actions_decidable} decidable, {len(result.actions) - actions_decidable} blocked")
+        lines.append(f"- {actions_decidable} receipt-ready, {actions_blocked} blocked")
         for action in result.actions:
             label = action.action_id or "(missing action_id)"
             tool = f" {action.tool}" if action.tool else ""
             if action.decidable:
-                lines.append(f"  - ready {label}{tool}")
+                lines.append(f"  - READY {label}{tool}")
             else:
                 missing = []
                 for item in action.cannot_decide:
                     missing.extend(item.missing)
-                lines.append(f"  - blocked {label}{tool}: missing {', '.join(missing)}")
+                lines.append(f"  - BLOCKED {label}{tool}: missing {', '.join(missing)}")
     else:
         lines.append("- no side-effect actions recognized")
 
-    lines.extend(["", "You can decide:"])
-    if result.can_decide:
-        lines.extend(f"- {claim}" for claim in result.can_decide)
-    else:
-        lines.append("- (none)")
-
-    lines.extend(["", "You cannot decide:"])
-    if result.cannot_decide:
-        for item in result.cannot_decide:
-            lines.append(f"- {item.claim}")
-            for missing in item.missing:
-                lines.append(f"  missing {missing}")
-    else:
-        lines.append("- (none)")
-
-    lines.extend(["", "Probe-able next:"])
-    if result.probeable_next:
-        lines.extend(f"- {probe}" for probe in result.probeable_next)
+    lines.extend(["", "Top missing evidence:"])
+    if missing_counts:
+        for missing, count, probe in missing_counts:
+            scope = (
+                f"{count} action{'s' if count != 1 else ''} blocked"
+                if count
+                else "global claim gap"
+            )
+            probe_text = f" -> {probe}" if probe else ""
+            lines.append(f"- {missing}: {scope}{probe_text}")
     else:
         lines.append("- (none)")
 
@@ -1192,6 +1222,13 @@ def format_scan_text(result: ScanResult) -> str:
         lines.extend(f"- {item}" for item in result.punch_list)
     else:
         lines.append("- no missing probes detected for current claim set")
+
+    lines.extend([
+        "",
+        "Boundary:",
+        "- This is a readiness scan, not a receipt verdict.",
+        "- Missing evidence means unknown, not contradicted.",
+    ])
 
     if result.warnings:
         lines.extend(["", "Warnings:"])
@@ -1271,10 +1308,10 @@ def format_scan_report_markdown(result: ScanResult) -> str:
         f"- Input status: `{summary['input_status']}`",
         f"- Files scanned: {summary['files_scanned']}",
         f"- Side-effect actions found: {summary['actions_found']}",
-        f"- Actions decidable: {summary['actions_decidable']}",
+        f"- Actions receipt-ready: {summary['actions_decidable']}",
         f"- Actions blocked: {summary['actions_blocked']}",
-        f"- Claims decidable: {summary['claims_decidable']}",
-        f"- Claims blocked: {summary['claims_blocked']}",
+        f"- Claim families ready: {summary['claims_decidable']}",
+        f"- Claim families blocked: {summary['claims_blocked']}",
         "",
         "## Detected Inputs",
         "",
@@ -1295,18 +1332,18 @@ def format_scan_report_markdown(result: ScanResult) -> str:
 
     lines.extend(["", "## Claim Readiness", ""])
     if result.can_decide:
-        lines.append("Can decide:")
+        lines.append("Receipt-ready claim families:")
         lines.extend(f"- `{claim}`" for claim in result.can_decide)
     else:
-        lines.append("Can decide: none")
+        lines.append("Receipt-ready claim families: none")
 
     if result.cannot_decide:
-        lines.extend(["", "Cannot decide:"])
+        lines.extend(["", "Blocked claim families:"])
         for item in result.cannot_decide:
             missing = ", ".join(f"`{path}`" for path in item.missing)
             lines.append(f"- `{item.claim}` missing {missing}")
     else:
-        lines.extend(["", "Cannot decide: none"])
+        lines.extend(["", "Blocked claim families: none"])
 
     lines.extend(["", "## Missing Evidence Punch List", ""])
     if report["missing_evidence"]:
@@ -1348,7 +1385,7 @@ def format_scan_report_markdown(result: ScanResult) -> str:
             missing_paths = []
             for item in action.cannot_decide:
                 missing_paths.extend(item.missing)
-            status = "decidable" if action.decidable else "blocked"
+            status = "receipt-ready" if action.decidable else "blocked"
             lines.append(
                 f"| `{action.action_id or '(missing action_id)'}` | "
                 f"{action.tool or '-'} | {action.source_kind} | {status} | "

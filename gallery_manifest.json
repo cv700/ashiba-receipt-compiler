@@ -2,11 +2,11 @@
   "schema_version": "receipt-gallery-manifest-v1",
   "compiler_version": "evidence-compiler-v0.6",
   "summary": {
-    "expected_directories": 25,
-    "expected_receipts": 26,
+    "expected_directories": 26,
+    "expected_receipts": 27,
     "expected_verdict_counts": {
       "supported": 7,
-      "contradicted": 8,
+      "contradicted": 9,
       "unknown": 10,
       "not_applicable": 1
     },
@@ -108,6 +108,18 @@
           "absence_count": 0,
           "compiler_error_count": 0,
           "rationale": "incident_manifest declares a renderer-shaped cyber incident with raw trace, agent-visible observation, and hidden authorization evidence; hidden deterministic passes support the active-grant claim"
+        }
+      ]
+    },
+    {
+      "directory": "cloudtrail_otel_authorization_gap",
+      "expected_receipts": [
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "CloudTrail/OTEL-shaped evidence shows the side effect happened, but the normalized action executes 90 seconds after the authorization grant expired"
         }
       ]
     },
