@@ -1,0 +1,28 @@
+{
+  "diag_level": 2,
+  "executed_at": "2026-05-20T12:10:00Z",
+  "gpu_serial": "GPU-H100-SXM-0001",
+  "overall_result": "Pass",
+  "test_results": [
+    {
+      "detail": "Deployment checks passed",
+      "result": "Pass",
+      "test_name": "deployment"
+    },
+    {
+      "detail": "Memory stress completed without uncorrectable errors",
+      "result": "Pass",
+      "test_name": "memory_stress"
+    },
+    {
+      "detail": "PCIe link checks passed",
+      "result": "Pass",
+      "test_name": "pcie"
+    },
+    {
+      "detail": "NVLink health checks passed",
+      "result": "Pass",
+      "test_name": "nvlink"
+    }
+  ]
+}

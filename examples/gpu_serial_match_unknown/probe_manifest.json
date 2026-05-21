@@ -1,0 +1,7 @@
+{
+  "committed_at": "2026-05-20T11:45:00Z",
+  "committed_by": "ashiba",
+  "probe_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "probe_id": "gpu_serial_inventory_v0",
+  "probe_version": "0.1.0"
+}

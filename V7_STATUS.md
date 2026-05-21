@@ -17,6 +17,16 @@ GPU goodput anti-gaming fields live inside this extension object instead of as
 top-level `ReceiptIR` fields. This keeps the base receipt schema neutral across
 cyber, deployment, parser, prefix, and future compute claim families.
 
+This branch also stacks a GPU collateral receipt v0 demo on top of that
+execution-context layer. It adds two synthetic claim packs:
+
+- `gpu_serial_collateral_match`
+- `gpu_node_health_diagnostic`
+
+Those claim packs demonstrate receipt semantics for collateral identity and
+point-in-time node diagnostics. They are not GPU probes, scanprobe integration,
+or real hardware ingestion.
+
 ## Behavior
 
 - Existing receipts without `execution_context` remain unchanged.
@@ -49,6 +59,10 @@ Added `examples/cloudtrail_otel_authorization_gap/`, a canonical contradicted
 authorization demo with CloudTrail-shaped evidence, OTEL-shaped evidence,
 policy evidence, normalized action evidence, and tool-call binding.
 
+The stacked GPU collateral receipt branch adds seven synthetic GPU collateral
+fixtures for serial matching and node-health diagnostics. These are point-in-
+time receipt demos only, not real DCGM/NVML integrations.
+
 ## Verification
 
 Passed:
@@ -64,15 +78,27 @@ git diff --check
 Gallery summary:
 
 ```text
-27 receipts from 26 incident directories
-supported: 7 | contradicted: 9 | unknown: 10 | not_applicable: 1
+34 receipts from 33 incident directories
+supported: 14 | contradicted: 11 | unknown: 8 | not_applicable: 1
 compiler errors: 0 | validation errors: 0
 ```
 
 ## Not Implemented
 
 - No GPU probes.
-- No GPU claim pack.
+- No real DCGM/NVML hardware integration.
 - No scanprobe integration.
 - No change to verdict logic.
 - No public release action.
+
+## Fixture Binding Note
+
+Legacy clean/supported authorization fixtures now include explicit grant-binding
+evidence. The paired bad fixtures also include binding evidence, so their
+contradicted verdicts isolate the intended failure: expired grant timing or
+untrusted literal action source.
+
+The `grant_binding_present` pass now enforces the cross-boundary decision ID:
+`authorization.execution_time_decision_id` must match
+`tool_call.invocation_context.decision_id`. A missing tool-call decision ID is
+`unknown`; an explicit mismatch is `contradicted`.

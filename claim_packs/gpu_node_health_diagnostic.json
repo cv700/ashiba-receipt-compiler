@@ -1,0 +1,38 @@
+{
+  "schema_version": "receipt-claim-pack-v0.1",
+  "name": "gpu_node_health_diagnostic",
+  "description": "Checks whether a GPU node passed point-in-time DCGM health diagnostics with ECC counts below thresholds.",
+  "renderer_family": "gpu_collateral",
+  "claim": {
+    "id": "claim.gpu_node_health_diagnostic",
+    "text": "The GPU node passed DCGM Level 2 health diagnostics with ECC error counts below stated thresholds at the time of probe execution."
+  },
+  "expected_evidence": [
+    "dcgm_diag.gpu_serial",
+    "dcgm_diag.diag_level",
+    "dcgm_diag.overall_result",
+    "dcgm_diag.executed_at",
+    "xid_ecc_log.gpu_serial",
+    "xid_ecc_log.volatile_dbe_errors",
+    "xid_ecc_log.total_retired_pages",
+    "xid_ecc_log.page_retirement_limit",
+    "nvidia_smi.gpu_serial",
+    "nvidia_smi.queried_at",
+    "probe_manifest.probe_id",
+    "probe_manifest.probe_hash",
+    "probe_manifest.committed_at"
+  ],
+  "applicability_evidence": [
+    "dcgm_diag",
+    "xid_ecc_log"
+  ],
+  "passes": [
+    "utc_timestamp_format",
+    "expected_evidence_absence",
+    "no_future_evidence",
+    "dcgm_diag_result",
+    "ecc_threshold_check",
+    "gpu_serial_cross_reference"
+  ],
+  "pass_params": {}
+}

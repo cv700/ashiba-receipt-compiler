@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Boundary and unsupported-inference generation for receipts."""
+"""Boundary and unsupported-inference generation for receipts.
+
+The boundary is where the receipt keeps faith with the reader. It names the
+update, then protects the world from reading more into it than the probes saw.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +17,24 @@ GENERAL_BOUNDARY = (
     "or behavior under different conditions."
 )
 
+GPU_BOUNDARY = [
+    "This receipt does not verify that the node was under representative production load during testing.",
+    "This receipt does not verify that the node was not recently rebooted to clear volatile ECC counters.",
+    "This receipt does not assess residual economic value, remaining useful life, or depreciation trajectory.",
+    "This receipt does not verify firmware authenticity or detect firmware-level tampering.",
+]
+
+GPU_UNSUPPORTED_INFERENCES = [
+    "That the GPU will continue to pass diagnostics after this assessment.",
+    "That the GPU's performance is representative of the full cluster.",
+    "That the collateral is worth any specific dollar amount.",
+]
+
+
+def _is_gpu_claim(claim: dict[str, Any]) -> bool:
+    claim_id = str(claim.get("id", ""))
+    return claim_id.startswith("claim.gpu_")
+
 
 def generate_boundary(
     claim: dict[str, Any],
@@ -23,6 +45,7 @@ def generate_boundary(
     """Generate simple template boundary language from Receipt IR fields."""
     claim_text = str(claim.get("text", "")).strip()
     status = verdict.get("status")
+    is_gpu_claim = _is_gpu_claim(claim)
     supports: list[str] = []
 
     if status == SUPPORTED and claim_text:
@@ -41,10 +64,17 @@ def generate_boundary(
                 "no_action_from_untrusted_literal",
                 "human_approval_before_action",
                 "deployment_matches_reviewed_commit",
+                "gpu_serial_set_match",
+                "gpu_node_id_match",
+                "dcgm_diag_result",
+                "ecc_threshold_check",
+                "gpu_serial_cross_reference",
             }:
                 supports.append(str(result.get("detail", "")))
 
     does_not_support = [GENERAL_BOUNDARY]
+    if is_gpu_claim:
+        does_not_support.extend(GPU_BOUNDARY)
     if status == UNKNOWN:
         does_not_support.append(
             "This receipt does not support the claim because required evidence was absent or ambiguous."
@@ -74,5 +104,9 @@ def generate_boundary(
         "That the system is secure, safe, certified, or generally reliable.",
         "That omitted artifacts would have supported the claim.",
     ]
+    if is_gpu_claim:
+        unsupported_inferences.extend(
+            inference for inference in GPU_UNSUPPORTED_INFERENCES if inference not in unsupported_inferences
+        )
 
     return {"supports": supports, "does_not_support": does_not_support}, unsupported_inferences

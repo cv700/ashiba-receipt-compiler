@@ -9,8 +9,26 @@ import sys
 import tempfile
 from pathlib import Path
 
-from constants import CONTRADICTED, NOT_APPLICABLE, PASS_OK, SUPPORTED, UNKNOWN, VERDICT_STATUSES
+from constants import (
+    CONTRADICTED,
+    NOT_APPLICABLE,
+    PASS_CONTRADICTED,
+    PASS_OK,
+    PASS_SATISFIED,
+    PASS_SKIPPED,
+    SUPPORTED,
+    UNKNOWN,
+    VERDICT_STATUSES,
+)
 from demo_gallery import run_gallery
+from passes import (
+    dcgm_diag_result,
+    ecc_threshold_check,
+    grant_binding_present,
+    gpu_node_id_match,
+    gpu_serial_cross_reference,
+    gpu_serial_set_match,
+)
 from receipt_compile import (
     build_claim_registry,
     compile_bundle,
@@ -19,6 +37,7 @@ from receipt_compile import (
     load_artifacts_dir_bound,
     load_artifacts_dir_with_manifest,
 )
+from receipt_ir import ReceiptIR
 from receipt_validate import validate_receipt
 
 
@@ -220,7 +239,7 @@ def test_v1_bundles() -> None:
 def test_v2_explicit_claim_types() -> None:
     assert_receipt(
         run_json("--artifacts-dir", "examples/auth_grant_dir_supported", "--claim-type", "authorization_bound_action"),
-        UNKNOWN,
+        SUPPORTED,
         7,
         0,
     )
@@ -277,7 +296,7 @@ def test_v4_adversarial_controls_and_not_applicable() -> None:
         ("adv_offset_timestamp_unknown", UNKNOWN),
         ("adv_natural_language_timestamp_unknown", UNKNOWN),
         ("adv_revoked_equal_executed_contradicted", CONTRADICTED),
-        ("adv_grant_expires_equal_executed_supported", UNKNOWN),
+        ("adv_grant_expires_equal_executed_supported", SUPPORTED),
     ]
     for directory, expected_verdict in adversarial:
         receipt = run_json(
@@ -691,6 +710,213 @@ def test_v7_execution_context_file_loaded_outside_artifacts() -> None:
     assert any("Receipt covers 64/256" in line for line in receipt["boundary"]["does_not_support"])
 
 
+def test_gpu_collateral_gallery_fixtures() -> None:
+    cases = [
+        (
+            "gpu_serial_match_supported",
+            "gpu_serial_collateral_match",
+            SUPPORTED,
+            0,
+            {"gpu_serial_set_match", "gpu_node_id_match"},
+        ),
+        (
+            "gpu_serial_match_unknown",
+            "gpu_serial_collateral_match",
+            UNKNOWN,
+            3,
+            {"gpu_serial_set_match", "gpu_node_id_match"},
+        ),
+        (
+            "gpu_serial_match_contradicted",
+            "gpu_serial_collateral_match",
+            CONTRADICTED,
+            0,
+            {"gpu_serial_set_match", "gpu_node_id_match"},
+        ),
+        (
+            "gpu_node_health_supported",
+            "gpu_node_health_diagnostic",
+            SUPPORTED,
+            0,
+            {"dcgm_diag_result", "ecc_threshold_check", "gpu_serial_cross_reference"},
+        ),
+        (
+            "gpu_node_health_unknown",
+            "gpu_node_health_diagnostic",
+            UNKNOWN,
+            4,
+            {"dcgm_diag_result", "ecc_threshold_check", "gpu_serial_cross_reference"},
+        ),
+        (
+            "gpu_node_health_contradicted",
+            "gpu_node_health_diagnostic",
+            CONTRADICTED,
+            0,
+            {"dcgm_diag_result", "ecc_threshold_check", "gpu_serial_cross_reference"},
+        ),
+        (
+            "gpu_node_health_supported_weak_conditions",
+            "gpu_node_health_diagnostic",
+            SUPPORTED,
+            0,
+            {
+                "dcgm_diag_result",
+                "ecc_threshold_check",
+                "gpu_serial_cross_reference",
+                "execution_context_disclosure",
+            },
+        ),
+    ]
+
+    for directory, claim_type, verdict, absence_count, expected_passes in cases:
+        receipt = run_json("--artifacts-dir", f"examples/{directory}", "--claim-type", claim_type)
+        assert receipt["verdict"]["status"] == verdict, (directory, receipt)
+        assert len(receipt.get("absence", [])) == absence_count, (directory, receipt)
+        pass_ids = {result["pass_id"] for result in receipt["pass_results"]}
+        assert expected_passes <= pass_ids, (directory, pass_ids)
+        if verdict == CONTRADICTED:
+            assert any(result.get("verdict_effect") == CONTRADICTED for result in receipt["pass_results"])
+        if verdict == UNKNOWN:
+            assert receipt.get("absence"), directory
+
+    weak = run_json(
+        "--artifacts-dir",
+        "examples/gpu_node_health_supported_weak_conditions",
+        "--claim-type",
+        "gpu_node_health_diagnostic",
+    )
+    assert weak["verdict"]["status"] == SUPPORTED
+    context_passes = [
+        result for result in weak["pass_results"] if result["pass_id"] == "execution_context_disclosure"
+    ]
+    assert len(context_passes) == 1
+    assert len(context_passes[0]["metadata"]["boundary_disclosures"]) >= 3
+    gpu_boundary = "\n".join(weak["boundary"]["does_not_support"])
+    assert "representative production load" in gpu_boundary
+    assert "recently rebooted" in gpu_boundary
+    assert "No challenge nonce" in gpu_boundary
+
+    explained = run_compile_process(
+        "examples/gpu_node_health_supported_weak_conditions",
+        "--claim-type",
+        "gpu_node_health_diagnostic",
+        "--explain",
+    )
+    assert explained.returncode == 0, explained.stderr
+    assert "Execution-context disclosures:" in explained.stdout
+    assert "No challenge nonce" in explained.stdout
+
+
+def _pass_ir(artifacts: dict) -> ReceiptIR:
+    return ReceiptIR(claim={"id": "claim.test", "text": "test"}, expected_evidence=[], artifacts=artifacts)
+
+
+def test_grant_binding_cross_boundary_pass_units() -> None:
+    matched = _pass_ir({
+        "authorization": {
+            "render_time_grant_hash": "sha256:test-grant",
+            "execution_time_decision_id": "decision-123",
+            "grant_active_at_execution": True,
+        },
+        "tool_call": {"invocation_context": {"decision_id": "decision-123"}},
+    })
+    assert grant_binding_present(matched).status == PASS_SATISFIED
+
+    missing_tool_side = _pass_ir({
+        "authorization": {
+            "render_time_grant_hash": "sha256:test-grant",
+            "execution_time_decision_id": "decision-123",
+            "grant_active_at_execution": True,
+        },
+        "tool_call": {"invocation_context": {}},
+    })
+    missing_result = grant_binding_present(missing_tool_side)
+    assert missing_result.status == UNKNOWN
+    assert missing_result.verdict_effect == UNKNOWN
+    assert missing_result.metadata["missing_expected_paths"] == ["tool_call.invocation_context.decision_id"]
+
+    mismatched = _pass_ir({
+        "authorization": {
+            "render_time_grant_hash": "sha256:test-grant",
+            "execution_time_decision_id": "decision-123",
+            "grant_active_at_execution": True,
+        },
+        "tool_call": {"invocation_context": {"decision_id": "decision-999"}},
+    })
+    mismatch_result = grant_binding_present(mismatched)
+    assert mismatch_result.status == PASS_CONTRADICTED
+    assert mismatch_result.verdict_effect == CONTRADICTED
+
+
+def test_gpu_collateral_pass_units() -> None:
+    serial_ir = _pass_ir({
+        "gpu_inventory": {
+            "declared_serials": ["GPU-A", "GPU-B"],
+            "declared_node_id": "node-1",
+        },
+        "gpu_probe_observation": {
+            "observed_serials": ["GPU-B", "GPU-A"],
+            "observed_node_id": "node-1",
+        },
+    })
+    assert gpu_serial_set_match(serial_ir).status == PASS_SATISFIED
+    assert gpu_node_id_match(serial_ir).status == PASS_SATISFIED
+
+    serial_bad = _pass_ir({
+        "gpu_inventory": {
+            "declared_serials": ["GPU-A", "GPU-B"],
+            "declared_node_id": "node-1",
+        },
+        "gpu_probe_observation": {
+            "observed_serials": ["GPU-A", "GPU-Z"],
+            "observed_node_id": "node-2",
+        },
+    })
+    assert gpu_serial_set_match(serial_bad).status == PASS_CONTRADICTED
+    assert gpu_node_id_match(serial_bad).status == PASS_CONTRADICTED
+    assert gpu_serial_set_match(_pass_ir({})).status == PASS_SKIPPED
+    assert gpu_node_id_match(_pass_ir({})).status == PASS_SKIPPED
+
+    health_ir = _pass_ir({
+        "dcgm_diag": {
+            "gpu_serial": "GPU-A",
+            "overall_result": "Pass",
+            "test_results": [{"test_name": "memory_stress", "result": "Pass"}],
+        },
+        "xid_ecc_log": {
+            "gpu_serial": "GPU-A",
+            "volatile_dbe_errors": 0,
+            "total_retired_pages": 2,
+            "page_retirement_limit": 512,
+        },
+        "nvidia_smi": {"gpu_serial": "GPU-A"},
+    })
+    assert dcgm_diag_result(health_ir).status == PASS_SATISFIED
+    assert ecc_threshold_check(health_ir).status == PASS_SATISFIED
+    assert gpu_serial_cross_reference(health_ir).status == PASS_SATISFIED
+
+    health_bad = _pass_ir({
+        "dcgm_diag": {
+            "gpu_serial": "GPU-A",
+            "overall_result": "Fail",
+            "test_results": [{"test_name": "memory_stress", "result": "Fail"}],
+        },
+        "xid_ecc_log": {
+            "gpu_serial": "GPU-B",
+            "volatile_dbe_errors": 1,
+            "total_retired_pages": 512,
+            "page_retirement_limit": 512,
+        },
+        "nvidia_smi": {"gpu_serial": "GPU-A"},
+    })
+    assert dcgm_diag_result(health_bad).status == PASS_CONTRADICTED
+    assert ecc_threshold_check(health_bad).status == PASS_CONTRADICTED
+    assert gpu_serial_cross_reference(health_bad).status == PASS_CONTRADICTED
+    assert dcgm_diag_result(_pass_ir({})).status == PASS_SKIPPED
+    assert ecc_threshold_check(_pass_ir({})).status == PASS_SKIPPED
+    assert gpu_serial_cross_reference(_pass_ir({})).status == PASS_SKIPPED
+
+
 def test_one_line_compile_wrapper() -> None:
     proc = run_compile_process("examples/stripe_trick_bundle", "-v")
     assert proc.returncode == 0, proc.stderr
@@ -855,7 +1081,7 @@ def test_gap_card_and_ci_outputs() -> None:
         assert tool_gap.returncode == 0, tool_gap.stderr
         assert "missing expected path: tool_call.action_id" in tool_gap.stdout
 
-    ci_unknown = run_compile_process("examples/auth_grant_dir_supported", "--ci")
+    ci_unknown = run_compile_process("examples/auth_grant_unknown.json", "--ci")
     assert ci_unknown.returncode == 0, ci_unknown.stderr
     assert "UNKNOWN" in ci_unknown.stdout
     assert "CI WARNING: unknown receipt present" in ci_unknown.stderr
@@ -1463,7 +1689,7 @@ def test_ashiba_scan_readiness_gaps() -> None:
     assert "authorization.revoked_at: 1 action blocked -> add revocation_state export" in proc.stdout
     assert (
         "authorization-to-action binding: 1 action blocked -> "
-        "log authorization decision_id or approval_id on the tool call"
+        "carry authorization execution_time_decision_id into the tool call"
     ) in proc.stdout
 
 
@@ -1514,7 +1740,7 @@ def test_ashiba_scan_action_readiness_json() -> None:
     blocked_claims = {c["claim"] for c in missing_authorization_binding["cannot_decide"]}
     assert "authorization_bound_action" in blocked_claims
     assert (
-        "log authorization decision_id or approval_id on the tool call"
+        "carry authorization execution_time_decision_id into the tool call"
         in missing_authorization_binding["probeable_next"]
     )
     assert result["summary"]["actions_found"] == 2
@@ -1522,9 +1748,94 @@ def test_ashiba_scan_action_readiness_json() -> None:
     assert result["summary"]["actions_blocked"] == 1
     assert "CloudTrail" in result["summary"]["input_kinds"]
     assert (
-        "log authorization decision_id or approval_id on the tool call (1 action blocked)"
+        "carry authorization execution_time_decision_id into the tool call (1 action blocked)"
         in result["punch_list"]
     )
+
+
+def test_ashiba_scan_requires_cross_boundary_authorization_decision_id() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        logs = root / "logs"
+        logs.mkdir()
+        policy = root / "policy.json"
+        policy.write_text(
+            json.dumps({
+                "grant_id": "grant-cross-boundary",
+                "grant_valid_from": "2026-05-14T16:00:00Z",
+                "grant_valid_until": "2026-05-14T18:00:00Z",
+                "revoked_at": None,
+                "render_time_grant_hash": "sha256:crossboundarygrant",
+                "execution_time_decision_id": "authz-decision-123",
+                "grant_active_at_execution": True,
+            }),
+            encoding="utf-8",
+        )
+        (logs / "cloudtrail.json").write_text(
+            json.dumps({
+                "Records": [
+                    {
+                        "eventID": "act-matched-authz",
+                        "eventSource": "lambda.amazonaws.com",
+                        "eventName": "Invoke",
+                        "eventTime": "2026-05-14T17:01:30Z",
+                        "requestParameters": {"decision_id": "authz-decision-123"},
+                    },
+                    {
+                        "eventID": "act-approval-only",
+                        "eventSource": "lambda.amazonaws.com",
+                        "eventName": "Invoke",
+                        "eventTime": "2026-05-14T17:02:30Z",
+                    },
+                    {
+                        "eventID": "act-mismatched-authz",
+                        "eventSource": "lambda.amazonaws.com",
+                        "eventName": "Invoke",
+                        "eventTime": "2026-05-14T17:03:30Z",
+                        "requestParameters": {"decision_id": "authz-decision-999"},
+                    },
+                ]
+            }),
+            encoding="utf-8",
+        )
+        (logs / "approval.json").write_text(
+            json.dumps({
+                "approval": {
+                    "approval_id": "approval-for-human-claim",
+                    "tool_call_id": "act-approval-only",
+                    "approved_at": "2026-05-14T17:00:00Z",
+                    "decision": "approved",
+                    "actor": "ops@example.com",
+                }
+            }),
+            encoding="utf-8",
+        )
+
+        proc = run_ashiba_process("scan", str(logs), "--policy", str(policy), "--json")
+        assert proc.returncode == 0, proc.stderr
+        result = json.loads(proc.stdout)
+        actions = {action["action_id"]: action for action in result["actions"]}
+
+        assert "authorization_bound_action" in actions["act-matched-authz"]["can_decide"]
+
+        approval_only = actions["act-approval-only"]
+        assert "human_approval_before_external_side_effect" in approval_only["can_decide"]
+        assert "authorization_bound_action" in {
+            item["claim"] for item in approval_only["cannot_decide"]
+        }
+        assert (
+            "carry authorization execution_time_decision_id into the tool call"
+            in approval_only["probeable_next"]
+        )
+
+        mismatched = actions["act-mismatched-authz"]
+        assert "authorization_bound_action" in {
+            item["claim"] for item in mismatched["cannot_decide"]
+        }
+        assert (
+            "carry authorization execution_time_decision_id into the tool call"
+            in mismatched["probeable_next"]
+        )
 
 
 def test_ashiba_scan_compile_authorization_invariant() -> None:
@@ -1828,6 +2139,8 @@ def main() -> int:
     test_v7_gpu_execution_context_disclosures()
     test_v7_complete_gpu_execution_context_adds_no_negative_context_disclosures()
     test_v7_execution_context_file_loaded_outside_artifacts()
+    test_gpu_collateral_gallery_fixtures()
+    test_gpu_collateral_pass_units()
     test_one_line_compile_wrapper()
     test_one_line_compile_directory_errors_do_not_traceback()
     test_gap_card_and_ci_outputs()
@@ -1848,6 +2161,7 @@ def main() -> int:
     test_ashiba_scan_readiness_gaps()
     test_ashiba_scan_readiness_json_packets()
     test_ashiba_scan_action_readiness_json()
+    test_ashiba_scan_requires_cross_boundary_authorization_decision_id()
     test_ashiba_scan_compile_authorization_invariant()
     test_ashiba_scan_does_not_infer_human_approval_from_actions_only()
     test_ashiba_scan_punch_list_includes_missing_approval_probes()

@@ -10,6 +10,9 @@
     "grant_valid_from": "2026-03-11T08:00:00Z",
     "grant_valid_until": "2026-03-11T20:00:00Z",
     "revoked_at": null,
+    "render_time_grant_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "execution_time_decision_id": "decision-snowflake-incident",
+    "grant_active_at_execution": true,
     "issuer": "dataco-cortex-platform",
     "grant_context": "Analyst daily warehouse access - scheduled reporting shift"
   }

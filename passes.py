@@ -4,6 +4,10 @@
 Each pass is a function (ReceiptIR, params?) -> PassResult.
 Universal passes take only the IR. Claim-specific passes may accept
 parameters from the claim type config.
+
+Claims enter as priors, but passes are where the romance gets disciplined:
+small, inspectable questions over artifacts, each refusing to infer past what
+the evidence can bear.
 """
 
 from __future__ import annotations
@@ -167,6 +171,8 @@ def expected_evidence_absence(ir: ReceiptIR, params: dict[str, Any] | None = Non
     for path in ir.expected_evidence:
         value = get_path(ir.artifacts, path)
         if not evidence_is_present(value):
+            # Missing evidence is not contradiction. It is the compiler drawing
+            # a bright line from an unresolved claim to the next probe to build.
             absence.append(
                 {
                     "expected_path": path,
@@ -234,6 +240,8 @@ def no_future_evidence(ir: ReceiptIR, params: dict[str, Any] | None = None) -> P
 # ---------------------------------------------------------------------------
 # Execution context disclosure pass
 # ---------------------------------------------------------------------------
+# Boundary language is part of the update, not garnish. A receipt should say
+# what moved the claim, and just as clearly where the movement stopped.
 
 def _execution_context_disclosures(execution_context: dict[str, Any]) -> list[str]:
     """Return boundary disclosures for a typed execution context extension."""
@@ -420,7 +428,7 @@ def revocation_before_action(ir: ReceiptIR, params: dict[str, Any] | None = None
 
 
 def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
-    """Check that authorization evidence includes render-time grant hash and execution-time decision ID."""
+    """Check that authorization evidence is bound to the executed tool call."""
     authorization = ir.artifacts.get("authorization", {})
     if not isinstance(authorization, dict):
         return PassResult(
@@ -430,9 +438,8 @@ def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -
             verdict_effect=UNKNOWN,
         )
 
-    required = {"render_time_grant_hash", "execution_time_decision_id", "grant_active_at_execution"}
-    present = set(authorization)
-    missing = sorted(required - present)
+    required = ("render_time_grant_hash", "execution_time_decision_id", "grant_active_at_execution")
+    missing = sorted(field for field in required if not evidence_is_present(authorization.get(field)))
     if missing:
         return PassResult(
             pass_id="grant_binding_present",
@@ -445,7 +452,7 @@ def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -
             metadata={
                 "missing_fields": missing,
                 "missing_expected_paths": [f"authorization.{field}" for field in missing],
-                "present_fields": sorted(required & present),
+                "present_fields": sorted(field for field in required if field not in missing),
             },
         )
     if authorization.get("grant_active_at_execution") is not True:
@@ -456,11 +463,47 @@ def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -
             verdict_effect=UNKNOWN,
             metadata={"field": "authorization.grant_active_at_execution"},
         )
+
+    auth_decision_id = str(authorization.get("execution_time_decision_id", ""))
+    tool_decision_path = "tool_call.invocation_context.decision_id"
+    tool_decision_id = get_path(ir.artifacts, tool_decision_path)
+    if not evidence_is_present(tool_decision_id):
+        return PassResult(
+            pass_id="grant_binding_present",
+            status=PASS_UNKNOWN,
+            detail=(
+                "grant binding could not be determined; missing tool-call field: "
+                f"{tool_decision_path}"
+            ),
+            verdict_effect=UNKNOWN,
+            metadata={
+                "missing_fields": ["tool_call.invocation_context.decision_id"],
+                "missing_expected_paths": [tool_decision_path],
+                "authorization_decision_id": auth_decision_id,
+            },
+        )
+    tool_decision_text = str(tool_decision_id)
+    if auth_decision_id != tool_decision_text:
+        return PassResult(
+            pass_id="grant_binding_present",
+            status=PASS_CONTRADICTED,
+            detail=(
+                "grant binding decision mismatch: "
+                f"authorization.execution_time_decision_id={auth_decision_id!r}; "
+                f"{tool_decision_path}={tool_decision_text!r}"
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "authorization_decision_id": auth_decision_id,
+                "tool_call_decision_id": tool_decision_text,
+            },
+        )
     return PassResult(
         pass_id="grant_binding_present",
         status=PASS_SATISFIED,
-        detail="render-time grant hash and execution-time decision evidence present",
+        detail="render-time grant hash and matching tool-call decision evidence present",
         verdict_effect=SUPPORTED,
+        metadata={"decision_id": auth_decision_id},
     )
 
 
@@ -705,6 +748,228 @@ def deployment_matches_reviewed_commit(ir: ReceiptIR, params: dict[str, Any] | N
 
 
 # ---------------------------------------------------------------------------
+# GPU collateral passes
+# ---------------------------------------------------------------------------
+# v0 keeps identity, health, and economic value disentangled. Serial matching is
+# a collateral-identity update; diagnostics are a health update; valuation stays
+# outside the compiler because the evidence here cannot honestly price a GPU.
+
+def _string_list(value: Any) -> list[str] | None:
+    """Return a stringified list, or None when the value is not a non-empty list."""
+    if not isinstance(value, list) or not value:
+        return None
+    return [str(item) for item in value]
+
+
+def _number(value: Any) -> float | None:
+    """Return a numeric value without accepting booleans as numbers."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def gpu_serial_set_match(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check observed GPU serials against the declared collateral schedule."""
+    declared = _string_list(get_path(ir.artifacts, "gpu_inventory.declared_serials"))
+    observed = _string_list(get_path(ir.artifacts, "gpu_probe_observation.observed_serials"))
+    if declared is None or observed is None:
+        return PassResult(
+            pass_id="gpu_serial_set_match",
+            status=PASS_SKIPPED,
+            detail="serial set match skipped because declared or observed serial list is missing",
+        )
+
+    declared_set = set(declared)
+    observed_set = set(observed)
+    missing_from_hardware = sorted(declared_set - observed_set)
+    undeclared_on_hardware = sorted(observed_set - declared_set)
+    if missing_from_hardware or undeclared_on_hardware:
+        return PassResult(
+            pass_id="gpu_serial_set_match",
+            status=PASS_CONTRADICTED,
+            detail=(
+                "Serial set mismatch: declared but not observed: "
+                f"{missing_from_hardware}; observed but not declared: {undeclared_on_hardware}."
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "declared_count": len(declared_set),
+                "observed_count": len(observed_set),
+                "declared_but_not_observed": missing_from_hardware,
+                "observed_but_not_declared": undeclared_on_hardware,
+            },
+        )
+
+    return PassResult(
+        pass_id="gpu_serial_set_match",
+        status=PASS_SATISFIED,
+        detail=f"All {len(declared_set)} declared serial(s) matched observed serial(s).",
+        metadata={"serial_count": len(declared_set)},
+    )
+
+
+def gpu_node_id_match(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check observed GPU node identity against the declared collateral node."""
+    declared = get_path(ir.artifacts, "gpu_inventory.declared_node_id")
+    observed = get_path(ir.artifacts, "gpu_probe_observation.observed_node_id")
+    if not evidence_is_present(declared) or not evidence_is_present(observed):
+        return PassResult(
+            pass_id="gpu_node_id_match",
+            status=PASS_SKIPPED,
+            detail="node ID match skipped because declared or observed node ID is missing",
+        )
+
+    declared_text = str(declared)
+    observed_text = str(observed)
+    if declared_text != observed_text:
+        return PassResult(
+            pass_id="gpu_node_id_match",
+            status=PASS_CONTRADICTED,
+            detail=f"Node ID mismatch: declared '{declared_text}', observed '{observed_text}'.",
+            verdict_effect=CONTRADICTED,
+            metadata={"declared_node_id": declared_text, "observed_node_id": observed_text},
+        )
+
+    return PassResult(
+        pass_id="gpu_node_id_match",
+        status=PASS_SATISFIED,
+        detail=f"Node ID matched: {declared_text}.",
+        metadata={"node_id": declared_text},
+    )
+
+
+def dcgm_diag_result(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check DCGM diagnostic status without interpreting missing evidence."""
+    raw_result = get_path(ir.artifacts, "dcgm_diag.overall_result")
+    if not evidence_is_present(raw_result):
+        return PassResult(
+            pass_id="dcgm_diag_result",
+            status=PASS_SKIPPED,
+            detail="DCGM diagnostic result skipped because dcgm_diag.overall_result is missing",
+        )
+
+    result = str(raw_result)
+    if result == "Pass":
+        return PassResult(
+            pass_id="dcgm_diag_result",
+            status=PASS_SATISFIED,
+            detail="DCGM diagnostic result passed.",
+        )
+    if result == "Warn":
+        return PassResult(
+            pass_id="dcgm_diag_result",
+            status=PASS_UNKNOWN,
+            detail="DCGM reported warning status; health is indeterminate.",
+            verdict_effect=UNKNOWN,
+        )
+    if result == "Fail":
+        failed = []
+        test_results = get_path(ir.artifacts, "dcgm_diag.test_results")
+        if isinstance(test_results, list):
+            for item in test_results:
+                if not isinstance(item, dict) or item.get("result") != "Fail":
+                    continue
+                name = item.get("test_name", "unknown_test")
+                detail = item.get("detail")
+                failed.append(f"{name}: {detail}" if detail else str(name))
+        failed_text = "; ".join(failed) if failed else "no failed test detail supplied"
+        return PassResult(
+            pass_id="dcgm_diag_result",
+            status=PASS_CONTRADICTED,
+            detail=f"DCGM diagnostic failed: {failed_text}.",
+            verdict_effect=CONTRADICTED,
+            metadata={"failed_tests": failed},
+        )
+
+    return PassResult(
+        pass_id="dcgm_diag_result",
+        status=PASS_UNKNOWN,
+        detail=f"DCGM diagnostic result {result!r} is not recognized.",
+        verdict_effect=UNKNOWN,
+    )
+
+
+def ecc_threshold_check(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check uncorrectable ECC and retired-page thresholds."""
+    dbe = _number(get_path(ir.artifacts, "xid_ecc_log.volatile_dbe_errors"))
+    retired = _number(get_path(ir.artifacts, "xid_ecc_log.total_retired_pages"))
+    limit = _number(get_path(ir.artifacts, "xid_ecc_log.page_retirement_limit"))
+    if dbe is None or retired is None or limit is None:
+        return PassResult(
+            pass_id="ecc_threshold_check",
+            status=PASS_SKIPPED,
+            detail="ECC threshold check skipped because DBE or retired-page threshold evidence is missing",
+        )
+
+    contradictions = []
+    if dbe > 0:
+        contradictions.append(f"Uncorrectable double-bit ECC errors detected: {dbe:g} volatile DBE")
+    if retired >= limit:
+        contradictions.append(f"Retired page count ({retired:g}) meets or exceeds limit ({limit:g})")
+
+    if contradictions:
+        return PassResult(
+            pass_id="ecc_threshold_check",
+            status=PASS_CONTRADICTED,
+            detail="; ".join(contradictions) + ".",
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "volatile_dbe_errors": dbe,
+                "total_retired_pages": retired,
+                "page_retirement_limit": limit,
+            },
+        )
+
+    return PassResult(
+        pass_id="ecc_threshold_check",
+        status=PASS_SATISFIED,
+        detail=f"ECC within thresholds: 0 volatile DBE, {retired:g}/{limit:g} retired pages.",
+        metadata={
+            "volatile_dbe_errors": dbe,
+            "total_retired_pages": retired,
+            "page_retirement_limit": limit,
+        },
+    )
+
+
+def gpu_serial_cross_reference(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check that GPU health evidence sources refer to the same serial."""
+    sources = {
+        "dcgm_diag": get_path(ir.artifacts, "dcgm_diag.gpu_serial"),
+        "xid_ecc_log": get_path(ir.artifacts, "xid_ecc_log.gpu_serial"),
+        "nvidia_smi": get_path(ir.artifacts, "nvidia_smi.gpu_serial"),
+    }
+    present = {name: str(value) for name, value in sources.items() if evidence_is_present(value)}
+    if not present:
+        return PassResult(
+            pass_id="gpu_serial_cross_reference",
+            status=PASS_SKIPPED,
+            detail="GPU serial cross-reference skipped because no serial evidence is present",
+        )
+
+    serials = set(present.values())
+    if len(serials) > 1:
+        detail_parts = [f"{name}='{value}'" for name, value in sorted(present.items())]
+        return PassResult(
+            pass_id="gpu_serial_cross_reference",
+            status=PASS_CONTRADICTED,
+            detail="Evidence serial mismatch: " + ", ".join(detail_parts) + ".",
+            verdict_effect=CONTRADICTED,
+            metadata=present,
+        )
+
+    serial = next(iter(serials))
+    return PassResult(
+        pass_id="gpu_serial_cross_reference",
+        status=PASS_SATISFIED,
+        detail=f"All evidence sources reference same GPU: {serial}.",
+        metadata=present,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Prefix continuity passes
 # ---------------------------------------------------------------------------
 
@@ -799,6 +1064,12 @@ PASS_REGISTRY: dict[str, Any] = {
     # Human approval and deployment
     "human_approval_before_action": human_approval_before_action,
     "deployment_matches_reviewed_commit": deployment_matches_reviewed_commit,
+    # GPU collateral
+    "gpu_serial_set_match": gpu_serial_set_match,
+    "gpu_node_id_match": gpu_node_id_match,
+    "dcgm_diag_result": dcgm_diag_result,
+    "ecc_threshold_check": ecc_threshold_check,
+    "gpu_serial_cross_reference": gpu_serial_cross_reference,
     # Prefix continuity
     "prefix_continuity": prefix_continuity,
 }

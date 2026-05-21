@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Receipt IR data structures for the minimum evidence compiler."""
+"""Receipt IR data structures for the minimum evidence compiler.
+
+Claims are priors. Probes are evidence. Receipts are bounded updates.
+The IR is the object we leave behind when a technical claim has met the
+evidence that can actually be inspected.
+"""
 
 from __future__ import annotations
 
@@ -40,7 +45,12 @@ class PassResult:
 
 @dataclass
 class ReceiptIR:
-    """Claim-bound Receipt IR for deterministic evidence compilation."""
+    """Claim-bound Receipt IR for deterministic evidence compilation.
+
+    The receipt deliberately avoids fake-precise probabilities. It records the
+    claim, the observed evidence, the missing evidence, and the boundary where
+    the update must stop.
+    """
 
     claim: dict[str, Any]
     expected_evidence: list[str]

@@ -1,0 +1,7 @@
+{
+  "committed_at": "2026-05-20T11:45:00Z",
+  "committed_by": "ashiba",
+  "probe_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+  "probe_id": "gpu_node_health_v0",
+  "probe_version": "0.1.0"
+}

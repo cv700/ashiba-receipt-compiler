@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Verdict generation for the minimum evidence compiler."""
+"""Verdict generation for the minimum evidence compiler.
+
+This is the last step of one bounded update: deterministic pass results come
+in, and the compiler collapses them into an operational epistemic state rather
+than a pretending-to-be-objective probability.
+"""
 
 from __future__ import annotations
 
@@ -27,6 +32,8 @@ def generate_verdict(pass_results: list[dict[str, Any]], absence: list[dict[str,
     ]
     verdict_statuses = [result.get("status") for result in verdict_results]
 
+    # Contradiction is the strongest update: observed evidence conflicts with
+    # the claim, so missing or passing evidence elsewhere cannot rescue it.
     if CONTRADICTED in effects:
         reasons = [result.get("detail", "") for result in pass_results if result.get("verdict_effect") == CONTRADICTED]
         return {
@@ -34,6 +41,8 @@ def generate_verdict(pass_results: list[dict[str, Any]], absence: list[dict[str,
             "basis": reasons[0] if reasons else "at least one deterministic pass contradicted the claim",
         }
 
+    # Absence is not negative evidence. It is the place where the compiler says:
+    # stop, do not infer, go build the next probe.
     if absence:
         return {
             "status": UNKNOWN,

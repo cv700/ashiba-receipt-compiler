@@ -127,6 +127,22 @@ Claim definitions live in `claim_packs/`. The current preview includes:
 - `parser_repair_visibility`: was parser repair logged with provenance?
 - `prefix_continuity`: did the next prompt preserve the expected token prefix?
 
+### GPU Collateral Claims (v0)
+
+Two claim packs exercise the GPU-backed lending verification shape:
+
+- `gpu_serial_collateral_match`: verifies that GPU serial numbers observed
+  during probe execution match the serials declared in the collateral schedule.
+  This catches collateral-identity discrepancies.
+- `gpu_node_health_diagnostic`: verifies that a GPU node passed DCGM Level 2
+  health diagnostics with ECC error counts below stated thresholds at probe
+  time. This catches point-in-time hardware-health failures.
+
+These are synthetic, point-in-time, node-level demos. They do not assess cluster
+health, goodput, residual value, firmware authenticity, or ongoing performance.
+The receipt boundary section is part of the output and should not be treated as
+boilerplate.
+
 ## Verdicts
 
 Receipts use four states:
@@ -202,16 +218,13 @@ find . -type d -name __pycache__ -prune -exec rm -rf {} +
 Expected gallery summary:
 
 ```text
-27 receipts from 26 incident directories
-supported: 7 | contradicted: 9 | unknown: 10 | not_applicable: 1
+34 receipts from 33 incident directories
+supported: 14 | contradicted: 11 | unknown: 8 | not_applicable: 1
 compiler_errors: 0 | validation_errors: 0
 ```
 
 ## Known Preview Rough Edges
 
-- Some fixture directory names predate the stricter authorization-binding rule.
-  The manifest is authoritative when a legacy name says `supported` but the
-  current verdict is `unknown`.
 - The importers are intentionally conservative. They preserve missing evidence
   as missing evidence instead of inventing policy, revocation, or binding facts.
 - This is a local prototype, not a packaged service. Use the root-level scripts

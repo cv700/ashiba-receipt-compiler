@@ -1,0 +1,18 @@
+{
+  "diag_level": 2,
+  "executed_at": "2026-05-20T12:10:00Z",
+  "gpu_serial": "GPU-H100-SXM-0001",
+  "overall_result": "Fail",
+  "test_results": [
+    {
+      "detail": "Uncorrectable memory errors during stress test",
+      "result": "Fail",
+      "test_name": "memory_stress"
+    },
+    {
+      "detail": "PCIe link checks passed",
+      "result": "Pass",
+      "test_name": "pcie"
+    }
+  ]
+}

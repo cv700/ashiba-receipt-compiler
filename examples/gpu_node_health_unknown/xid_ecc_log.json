@@ -1,0 +1,12 @@
+{
+  "aggregate_dbe_errors": 0,
+  "aggregate_sbe_errors": 41,
+  "collected_at": "2026-05-20T12:11:00Z",
+  "gpu_serial": "GPU-H100-SXM-0001",
+  "page_retirement_limit": 512,
+  "retired_pages_dbe": 0,
+  "retired_pages_sbe": 2,
+  "total_retired_pages": 2,
+  "volatile_dbe_errors": 0,
+  "volatile_sbe_errors": 4
+}

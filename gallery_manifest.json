@@ -2,12 +2,12 @@
   "schema_version": "receipt-gallery-manifest-v1",
   "compiler_version": "evidence-compiler-v0.6",
   "summary": {
-    "expected_directories": 26,
-    "expected_receipts": 27,
+    "expected_directories": 33,
+    "expected_receipts": 34,
     "expected_verdict_counts": {
-      "supported": 7,
-      "contradicted": 9,
-      "unknown": 10,
+      "supported": 14,
+      "contradicted": 11,
+      "unknown": 8,
       "not_applicable": 1
     },
     "expected_compiler_errors": 0
@@ -18,11 +18,10 @@
       "expected_receipts": [
         {
           "claim_type": "authorization_bound_action",
-          "verdict": "unknown",
+          "verdict": "supported",
           "absence_count": 0,
           "compiler_error_count": 0,
-          "rationale": "the grant window is inclusive, but the stricter authorization_bound_action claim now also requires explicit grant-binding evidence before support",
-          "directory_verdict_rationale": "legacy directory name reflects the grant-window edge case; current verdict is unknown because binding evidence is absent"
+          "rationale": "the grant window is inclusive, the action executes exactly at grant_valid_until, and binding evidence carries the authorization decision to the tool call"
         }
       ]
     },
@@ -91,11 +90,10 @@
       "expected_receipts": [
         {
           "claim_type": "authorization_bound_action",
-          "verdict": "unknown",
+          "verdict": "supported",
           "absence_count": 0,
           "compiler_error_count": 0,
-          "rationale": "the action executes inside the grant window, but explicit render-time/execution-time grant binding evidence is absent",
-          "directory_verdict_rationale": "legacy directory name reflects the pre-binding semantics; current verdict is unknown under stricter authorization_bound_action semantics"
+          "rationale": "the action executes inside the grant window and binding evidence carries the authorization decision to the tool call"
         }
       ]
     },
@@ -156,6 +154,90 @@
           "absence_count": 0,
           "compiler_error_count": 0,
           "rationale": "the artifacts contain a receipt-controlled timestamp later than receipt creation time"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_node_health_contradicted",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_node_health_diagnostic",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "DCGM reports a failed memory stress diagnostic and volatile double-bit ECC errors exceed the zero-error threshold"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_node_health_supported",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_node_health_diagnostic",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "DCGM Level 2 diagnostics pass, ECC counts are below threshold, and all health evidence references the same GPU serial"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_node_health_supported_weak_conditions",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_node_health_diagnostic",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "verdict-determining health evidence supports the claim while execution_context adds weak-condition boundary disclosures"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_node_health_unknown",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_node_health_diagnostic",
+          "verdict": "unknown",
+          "absence_count": 4,
+          "compiler_error_count": 0,
+          "rationale": "nvidia-smi and ECC evidence are present, but the required DCGM diagnostic artifact is missing"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_serial_match_contradicted",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_serial_collateral_match",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "observed GPU serial set differs from the declared collateral schedule"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_serial_match_supported",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_serial_collateral_match",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "observed GPU serials and node ID match the declared collateral schedule"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_serial_match_unknown",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_serial_collateral_match",
+          "verdict": "unknown",
+          "absence_count": 3,
+          "compiler_error_count": 0,
+          "rationale": "collateral schedule and probe manifest are present, but probe observation evidence is missing"
         }
       ]
     },
@@ -260,10 +342,10 @@
       "expected_receipts": [
         {
           "claim_type": "authorization_bound_action",
-          "verdict": "unknown",
+          "verdict": "supported",
           "absence_count": 0,
           "compiler_error_count": 0,
-          "rationale": "the parsed action source is trusted and grant-window evidence is valid, but explicit grant-binding evidence is absent"
+          "rationale": "the clean prompt-injection counterfactual has trusted action sources, valid grant timing, explicit revocation state, and decision binding evidence"
         }
       ]
     },
@@ -327,11 +409,10 @@
       "expected_receipts": [
         {
           "claim_type": "authorization_bound_action",
-          "verdict": "unknown",
+          "verdict": "supported",
           "absence_count": 0,
           "compiler_error_count": 0,
-          "rationale": "the clean paired case executes inside the authorization grant window, but explicit grant-binding evidence is absent",
-          "directory_verdict_rationale": "legacy directory name reflects the paired grant-window control; current verdict is unknown under stricter binding semantics"
+          "rationale": "the clean paired case executes inside the authorization grant window and carries matching authorization decision evidence"
         }
       ]
     }

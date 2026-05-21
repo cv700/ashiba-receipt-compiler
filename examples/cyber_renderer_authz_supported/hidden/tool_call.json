@@ -7,7 +7,8 @@
     "invocation_context": {
       "conversation_id": "conv-cyber-renderer-authz-001",
       "turn_number": 4,
-      "model": "agent-eval-model-001"
+      "model": "agent-eval-model-001",
+      "decision_id": "decision-cyber-20260514-143210"
     }
   }
 }

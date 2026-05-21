@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Readiness scanner for side-effect authorization evidence."""
+"""Readiness scanner for side-effect authorization evidence.
+
+The scanner is the scout before the receipt: it reads the logs people already
+have, asks which claims are ready for a bounded update, and turns UNKNOWN into
+a concrete instrumentation punch list.
+"""
 
 from __future__ import annotations
 
@@ -27,9 +32,13 @@ CLAIM_EVIDENCE_TRIGGERS: dict[str, list[str]] = {
 }
 REVOCATION_PATH = "authorization.revoked_at"
 AUTHORIZATION_BINDING = "authorization-to-action binding"
+AUTHORIZATION_RENDER_HASH_PATH = "authorization.render_time_grant_hash"
+AUTHORIZATION_DECISION_PATH = "authorization.execution_time_decision_id"
+AUTHORIZATION_ACTIVE_PATH = "authorization.grant_active_at_execution"
+TOOL_CALL_DECISION_PATH = "tool_call.invocation_context.decision_id"
 PROBE_BY_MISSING = {
     REVOCATION_PATH: "add revocation_state export",
-    AUTHORIZATION_BINDING: "log authorization decision_id or approval_id on the tool call",
+    AUTHORIZATION_BINDING: "carry authorization execution_time_decision_id into the tool call",
     "review.commit_sha": "log reviewed commit_sha from the review system",
     "review.decision": "log review decision with approved/rejected",
     "review.approved_at": "log review approved_at as UTC",
@@ -44,7 +53,7 @@ PROBE_BY_MISSING = {
 
 WHY_BY_MISSING = {
     REVOCATION_PATH: "Without explicit revocation state, absence of a revocation event can be confused with missing evidence.",
-    AUTHORIZATION_BINDING: "Without a binding, the evidence cannot show that this authorization decision governed this exact action.",
+    AUTHORIZATION_BINDING: "Without a matching decision ID on both sides of the boundary, the evidence cannot show that this authorization decision governed this exact action.",
     "review.commit_sha": "Without the reviewed commit, deployment evidence cannot be compared to the approved artifact.",
     "review.decision": "Without the review decision, a review record does not show approval.",
     "review.approved_at": "Without the approval timestamp, the compiler cannot check review-before-deploy ordering.",
@@ -60,7 +69,11 @@ WHY_BY_MISSING = {
 SUGGESTED_FIELDS_BY_MISSING = {
     REVOCATION_PATH: {"authorization": {"revoked_at": None}},
     AUTHORIZATION_BINDING: {
-        "authorization": {"decision_id": "authz-decision-123"},
+        "authorization": {
+            "render_time_grant_hash": "sha256:grant-hash-123",
+            "execution_time_decision_id": "authz-decision-123",
+            "grant_active_at_execution": True,
+        },
         "tool_call": {"invocation_context": {"decision_id": "authz-decision-123"}},
     },
     "review.commit_sha": {"review": {"commit_sha": "abc123"}},
@@ -302,10 +315,34 @@ def _authorization_from_policy(policy: dict[str, Any] | None) -> dict[str, Any]:
         "issuer",
         "grant_context",
         "decision_id",
+        "render_time_grant_hash",
+        "execution_time_decision_id",
+        "grant_active_at_execution",
     ):
         if key in policy:
             authorization[key] = policy[key]
+    if "execution_time_decision_id" not in authorization and "decision_id" in authorization:
+        authorization["execution_time_decision_id"] = authorization["decision_id"]
     return {"authorization": authorization} if authorization else {}
+
+
+def _decision_id_from_fields(*fields: dict[str, Any]) -> Any:
+    for field in fields:
+        if not isinstance(field, dict):
+            continue
+        value = first_present(
+            field.get("authorization.execution_time_decision_id"),
+            field.get("authorization.decision_id"),
+            field.get("authorization_decision_id"),
+            field.get("authorizationDecisionId"),
+            field.get("authz_decision_id"),
+            field.get("authzDecisionId"),
+            field.get("decision_id"),
+            field.get("decisionId"),
+        )
+        if value is not None:
+            return value
+    return None
 
 
 def _review_from_policy(policy: dict[str, Any] | None) -> dict[str, Any]:
@@ -418,6 +455,10 @@ def _cloudtrail_artifacts(payload: Any) -> dict[str, Any]:
     action_id = first_present(event.get("eventID"), event.get("requestID"), event.get("eventId"))
     executed_at = normalize_timestamp(event.get("eventTime"))
     tool_name = f"{event_source}:{event_name}" if event_source and event_name else None
+    request_parameters = event.get("requestParameters") if isinstance(event.get("requestParameters"), dict) else {}
+    response_elements = event.get("responseElements") if isinstance(event.get("responseElements"), dict) else {}
+    additional_event_data = event.get("additionalEventData") if isinstance(event.get("additionalEventData"), dict) else {}
+    decision_id = _decision_id_from_fields(event, request_parameters, response_elements, additional_event_data)
     out: dict[str, Any] = {}
     if action_id or executed_at or tool_name:
         action = {}
@@ -438,6 +479,8 @@ def _cloudtrail_artifacts(payload: Any) -> dict[str, Any]:
                 "actor": nested_get(event, "userIdentity", "arn"),
             }
         }
+        if decision_id is not None:
+            tool_call["invocation_context"]["decision_id"] = str(decision_id)
         if action_id:
             tool_call["action_id"] = action_id
         if tool_name:
@@ -531,6 +574,7 @@ def _otel_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
         attrs.get("event.time"),
         attrs.get("timestamp"),
     ))
+    decision_id = _decision_id_from_fields(attrs, payload)
     artifacts = {
         "parsed_actions": [
             {
@@ -548,6 +592,7 @@ def _otel_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
                 "trace_id": first_present(payload.get("traceId"), payload.get("trace_id")),
                 "span_id": first_present(payload.get("spanId"), payload.get("span_id")),
                 "approval_id": attrs.get("approval_id"),
+                "decision_id": str(decision_id) if decision_id is not None else None,
             },
         },
     }
@@ -575,6 +620,7 @@ def _generic_event_action_candidates(payload: Any, source: str) -> list[ActionCa
         payload.get("start_time"),
         payload.get("created_at"),
     ))
+    decision_id = _decision_id_from_fields(payload)
     artifacts = {
         "parsed_actions": [
             {
@@ -591,6 +637,7 @@ def _generic_event_action_candidates(payload: Any, source: str) -> list[ActionCa
             "invocation_context": {
                 "source": "event_log",
                 "approval_id": payload.get("approval_id"),
+                "decision_id": str(decision_id) if decision_id is not None else None,
             },
         },
     }
@@ -621,6 +668,10 @@ def _kubernetes_action_candidates(payload: Any, source: str) -> list[ActionCandi
             resource_parts.append(str(part))
     tool_name = f"kubernetes.{verb}.{'/'.join(resource_parts)}"
     action_id = first_present(payload.get("auditID"), payload.get("requestUID"))
+    decision_id = _decision_id_from_fields(
+        payload,
+        payload.get("annotations") if isinstance(payload.get("annotations"), dict) else {},
+    )
     executed_at = normalize_timestamp(first_present(
         payload.get("requestReceivedTimestamp"),
         payload.get("stageTimestamp"),
@@ -641,6 +692,7 @@ def _kubernetes_action_candidates(payload: Any, source: str) -> list[ActionCandi
             "invocation_context": {
                 "source": "kubernetes_audit",
                 "user": nested_get(payload, "user", "username"),
+                "decision_id": str(decision_id) if decision_id is not None else None,
             },
         },
     }
@@ -662,6 +714,7 @@ def _siem_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
         return []
     tool_name = f"siem.{action}.{resource}"
     executed_at = normalize_timestamp(first_present(payload.get("timestamp"), payload.get("@timestamp"), payload.get("time")))
+    decision_id = _decision_id_from_fields(payload)
     artifacts = {
         "parsed_actions": [
             {
@@ -677,6 +730,7 @@ def _siem_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
             "invocation_context": {
                 "source": "siem_jsonl",
                 "actor": first_present(payload.get("actor"), payload.get("user"), payload.get("principal")),
+                "decision_id": str(decision_id) if decision_id is not None else None,
             },
         },
     }
@@ -947,22 +1001,15 @@ def _missing_expected_paths(artifacts: dict[str, Any], expected_paths: list[str]
 
 
 def _authorization_binding_present(artifacts: dict[str, Any]) -> bool:
-    action_id = get_path(artifacts, "tool_call.action_id")
-    authorization_id = first_present(
-        get_path(artifacts, "authorization.decision_id"),
-        get_path(artifacts, "approval.approval_id"),
-    )
-    bound_action_id = get_path(artifacts, "approval.tool_call_id")
-    tool_authorization_id = first_present(
-        get_path(artifacts, "tool_call.invocation_context.decision_id"),
-        get_path(artifacts, "tool_call.approval_id"),
-        get_path(artifacts, "tool_call.invocation_context.approval_id"),
-    )
-    if bound_action_id and action_id and str(bound_action_id) == str(action_id):
-        return True
-    if authorization_id and tool_authorization_id and str(authorization_id) == str(tool_authorization_id):
-        return True
-    return False
+    if not evidence_is_present(get_path(artifacts, AUTHORIZATION_RENDER_HASH_PATH)):
+        return False
+    if not evidence_is_present(get_path(artifacts, AUTHORIZATION_ACTIVE_PATH)):
+        return False
+    authorization_id = get_path(artifacts, AUTHORIZATION_DECISION_PATH)
+    tool_authorization_id = get_path(artifacts, TOOL_CALL_DECISION_PATH)
+    if not evidence_is_present(authorization_id) or not evidence_is_present(tool_authorization_id):
+        return False
+    return str(authorization_id) == str(tool_authorization_id)
 
 
 def _authorization_missing(artifacts: dict[str, Any], expected_paths: list[str]) -> list[str]:
@@ -985,6 +1032,8 @@ def _probeable_next(cannot_decide: list[ClaimReadiness]) -> list[str]:
 
 
 def _punch_list(cannot_decide: list[ClaimReadiness], actions: list[ActionReadiness]) -> list[str]:
+    # Every punch-list item is an UNKNOWN made useful: one missing field, one
+    # proposed probe, one fewer place for operational truth to hide next time.
     counts: dict[str, int] = {}
     for item in cannot_decide:
         for missing in item.missing:

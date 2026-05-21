@@ -11,6 +11,9 @@
     "grant_valid_from": "2026-05-14T09:00:00Z",
     "grant_valid_until": "2026-05-14T17:00:00Z",
     "revoked_at": null,
+    "render_time_grant_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+    "execution_time_decision_id": "decision-stripe-clean",
+    "grant_active_at_execution": true,
     "issuer": "merchant-cs-platform",
     "grant_context": "Customer service shift - Sarah's Wednesday queue"
   }

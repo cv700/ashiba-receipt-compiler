@@ -140,6 +140,22 @@ def _print_explanations(receipts: list[dict[str, Any]]) -> None:
         if not failing:
             passing = [p for p in receipt["pass_results"] if p.get("status") == "satisfied"]
             print(f"  {len(passing)} passes satisfied")
+        # The CLI keeps the update humble in public: even a SUPPORTED receipt
+        # should carry the conditions that were not observed.
+        context_disclosures = []
+        for result in receipt["pass_results"]:
+            if result.get("pass_id") != "execution_context_disclosure":
+                continue
+            metadata = result.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            disclosures = metadata.get("boundary_disclosures")
+            if isinstance(disclosures, list):
+                context_disclosures.extend(str(item) for item in disclosures if item)
+        if context_disclosures:
+            print("  Execution-context disclosures:")
+            for disclosure in context_disclosures:
+                print(f"    - {disclosure}")
         gaps = missing_evidence_gaps(receipt)
         if gaps:
             print("  Missing-evidence guidance:")

@@ -1,0 +1,14 @@
+{
+  "ambient_load": {
+    "ambient_load_level": "negligible",
+    "fabric_utilization_pct": 0.8
+  },
+  "challenge_nonce": null,
+  "probe_manifest_commitment": null,
+  "schema_id": "gpu_goodput_context_v0",
+  "software_stack": null,
+  "system_state": {
+    "ecc_reboot_suspects": 1,
+    "freshly_rebooted_nodes": 1
+  }
+}
