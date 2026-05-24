@@ -56,6 +56,7 @@ class ReceiptIR:
     expected_evidence: list[str]
     artifacts: dict[str, Any]
     claim_type: str = ""
+    renderer_family: str = ""
     receipt_id: str = field(default_factory=new_receipt_id)
     created_at: str = field(default_factory=utc_now)
     compiler_version: str = COMPILER_VERSION
@@ -107,6 +108,7 @@ class ReceiptIR:
         input_set_hash: str = "",
         incident_manifest: dict[str, Any] | None = None,
         execution_context: dict[str, Any] | None = None,
+        renderer_family: str = "",
     ) -> "ReceiptIR":
         """Create IR from a pre-merged artifacts dict and claim type config."""
         return cls(
@@ -114,6 +116,7 @@ class ReceiptIR:
             expected_evidence=[str(item) for item in expected_evidence],
             artifacts=artifacts,
             claim_type=claim_type,
+            renderer_family=renderer_family,
             artifact_manifest=artifact_manifest or [],
             input_set_hash=input_set_hash,
             incident_manifest=incident_manifest or {},
@@ -139,6 +142,8 @@ class ReceiptIR:
         }
         if self.claim_type:
             out["claim_type"] = self.claim_type
+        if self.renderer_family:
+            out["renderer_family"] = self.renderer_family
         if self.incident_manifest:
             out["incident_manifest"] = self.incident_manifest
         if self.execution_context:

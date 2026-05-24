@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from constants import CONTRADICTED, NOT_APPLICABLE, PASS_SATISFIED, SUPPORTED, UNKNOWN
+from renderer_families import renderer_family_adds_gpu_boundary
 
 
 GENERAL_BOUNDARY = (
@@ -31,21 +32,17 @@ GPU_UNSUPPORTED_INFERENCES = [
 ]
 
 
-def _is_gpu_claim(claim: dict[str, Any]) -> bool:
-    claim_id = str(claim.get("id", ""))
-    return claim_id.startswith("claim.gpu_")
-
-
 def generate_boundary(
     claim: dict[str, Any],
     verdict: dict[str, str],
     pass_results: list[dict[str, Any]],
     absence: list[dict[str, Any]],
+    renderer_family: str = "",
 ) -> tuple[dict[str, list[str]], list[str]]:
     """Generate simple template boundary language from Receipt IR fields."""
     claim_text = str(claim.get("text", "")).strip()
     status = verdict.get("status")
-    is_gpu_claim = _is_gpu_claim(claim)
+    is_gpu_claim = renderer_family_adds_gpu_boundary(renderer_family)
     supports: list[str] = []
 
     if status == SUPPORTED and claim_text:

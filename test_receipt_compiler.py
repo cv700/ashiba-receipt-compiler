@@ -436,6 +436,7 @@ def test_v6_external_claim_pack_registry() -> None:
     assert "authorization_bound_action" in default_pack_list
 
     auth_pack = build_claim_registry()["authorization_bound_action"]
+    assert auth_pack["renderer_family"] == "cyber_tool_use"
     support_requirements = {item["id"]: item for item in auth_pack["support_requirements"]}
     assert support_requirements["authorization.revoked_at"]["presence"] == "path_exists"
     binding = support_requirements["authorization-to-action binding"]
@@ -458,6 +459,7 @@ def test_v6_external_claim_pack_registry() -> None:
     external_pack = {
         "schema_version": "receipt-claim-pack-v0.1",
         "name": "authz_external_pack",
+        "renderer_family": "cyber_tool_use",
         "claim": {
             "id": "claim.authz_external_pack",
             "text": "The external pack claim is supported by active authorization evidence.",
@@ -525,6 +527,7 @@ def test_v6_external_claim_pack_registry() -> None:
     invalid_pack = {
         "schema_version": "receipt-claim-pack-v0.1",
         "name": "invalid_unknown_pass",
+        "renderer_family": "cyber_tool_use",
         "claim": {
             "id": "claim.invalid_unknown_pass",
             "text": "This invalid pack references a missing deterministic pass.",
@@ -560,6 +563,49 @@ def test_v6_external_claim_pack_registry() -> None:
         error = json.loads(proc.stdout)
         assert error["verdict"]["status"] == UNKNOWN
         assert "definitely_not_a_registered_pass" in error["compiler_errors"][0]["detail"]
+
+    missing_renderer_family = dict(external_pack)
+    missing_renderer_family.pop("renderer_family")
+    missing_renderer_family["name"] = "missing_renderer_family"
+    missing_renderer_family["claim"] = {
+        "id": "claim.missing_renderer_family",
+        "text": "This invalid pack omits the renderer-family contract.",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        pack_dir = Path(tmp)
+        (pack_dir / "missing_renderer_family.json").write_text(
+            json.dumps(missing_renderer_family),
+            encoding="utf-8",
+        )
+        proc = run_process("--list-claim-types", "--claim-packs-dir", str(pack_dir))
+        assert proc.returncode == 1
+        assert "Traceback" not in proc.stdout
+        assert "Traceback" not in proc.stderr
+        error = json.loads(proc.stdout)
+        assert error["verdict"]["status"] == UNKNOWN
+        assert "renderer_family" in error["compiler_errors"][0]["detail"]
+
+    unknown_renderer_family = dict(external_pack)
+    unknown_renderer_family["name"] = "unknown_renderer_family"
+    unknown_renderer_family["renderer_family"] = "gpu_colateral"
+    unknown_renderer_family["claim"] = {
+        "id": "claim.unknown_renderer_family",
+        "text": "This invalid pack misspells a registered renderer family.",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        pack_dir = Path(tmp)
+        (pack_dir / "unknown_renderer_family.json").write_text(
+            json.dumps(unknown_renderer_family),
+            encoding="utf-8",
+        )
+        proc = run_process("--list-claim-types", "--claim-packs-dir", str(pack_dir))
+        assert proc.returncode == 1
+        assert "Traceback" not in proc.stdout
+        assert "Traceback" not in proc.stderr
+        error = json.loads(proc.stdout)
+        assert error["verdict"]["status"] == UNKNOWN
+        assert "gpu_colateral" in error["compiler_errors"][0]["detail"]
+        assert "is not registered" in error["compiler_errors"][0]["detail"]
 
     missing_binding_contract = dict(external_pack)
     missing_binding_contract["name"] = "missing_binding_contract"
@@ -879,6 +925,67 @@ def test_gpu_collateral_gallery_fixtures() -> None:
     assert explained.returncode == 0, explained.stderr
     assert "Execution-context disclosures:" in explained.stdout
     assert "No challenge nonce" in explained.stdout
+
+
+def test_gpu_boundary_uses_renderer_family_not_claim_id_prefix() -> None:
+    custom_gpu_pack = {
+        "schema_version": "receipt-claim-pack-v0.1",
+        "name": "collateral_schedule_attestation",
+        "description": "GPU-family claim with a deliberately non-GPU claim id.",
+        "renderer_family": "gpu_collateral",
+        "claim": {
+            "id": "claim.collateral_schedule_attestation",
+            "text": "The collateral schedule matched observed hardware.",
+        },
+        "expected_evidence": [
+            "gpu_inventory.declared_serials",
+            "gpu_inventory.declared_node_id",
+            "gpu_probe_observation.observed_serials",
+            "gpu_probe_observation.observed_node_id",
+            "gpu_probe_observation.observed_at",
+            "probe_manifest.probe_id",
+            "probe_manifest.probe_hash",
+            "probe_manifest.committed_at",
+        ],
+        "applicability_evidence": [
+            "gpu_inventory",
+            "gpu_probe_observation",
+        ],
+        "passes": [
+            "utc_timestamp_format",
+            "expected_evidence_absence",
+            "no_future_evidence",
+            "gpu_serial_set_match",
+            "gpu_node_id_match",
+        ],
+        "pass_params": {},
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        pack_dir = Path(tmp)
+        (pack_dir / "collateral_schedule_attestation.json").write_text(
+            json.dumps(custom_gpu_pack),
+            encoding="utf-8",
+        )
+        registry = build_claim_registry(pack_dir)
+        artifacts, artifact_manifest, input_hash = load_artifacts_dir_with_manifest(
+            ROOT / "examples" / "gpu_serial_match_supported"
+        )
+        receipt = compile_claim(
+            artifacts,
+            "collateral_schedule_attestation",
+            artifact_manifest=artifact_manifest,
+            input_set_hash=input_hash,
+            claim_types=registry,
+        ).to_dict()
+
+    assert receipt["verdict"]["status"] == SUPPORTED
+    assert receipt["claim"]["id"] == "claim.collateral_schedule_attestation"
+    assert receipt["renderer_family"] == "gpu_collateral"
+    gpu_boundary = "\n".join(receipt["boundary"]["does_not_support"])
+    assert "representative production load" in gpu_boundary
+    assert "residual economic value" in gpu_boundary
+    assert "That the collateral is worth any specific dollar amount." in receipt["unsupported_inferences"]
 
 
 def _pass_ir(artifacts: dict) -> ReceiptIR:
@@ -2364,6 +2471,7 @@ def main() -> int:
     test_v7_complete_gpu_execution_context_adds_no_negative_context_disclosures()
     test_v7_execution_context_file_loaded_outside_artifacts()
     test_gpu_collateral_gallery_fixtures()
+    test_gpu_boundary_uses_renderer_family_not_claim_id_prefix()
     test_grant_binding_cross_boundary_pass_units()
     test_gpu_collateral_pass_units()
     test_inactive_grant_execution_flag_contradicts_authorization_claim()

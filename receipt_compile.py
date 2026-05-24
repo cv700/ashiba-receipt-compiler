@@ -24,6 +24,7 @@ from constants import CLAIM_APPLICABILITY_PASS_ID, COMPILER_VERSION, PASS_NOT_AP
 from passes import get_pass
 from receipt_explain import format_receipts_explanation
 from receipt_ir import ReceiptIR, utc_now
+from renderer_families import validate_renderer_family
 from verdict import generate_verdict
 
 
@@ -269,6 +270,7 @@ def _finalize_receipt(ir: ReceiptIR) -> ReceiptIR:
         verdict=ir.verdict,
         pass_results=ir.pass_results,
         absence=ir.absence,
+        renderer_family=ir.renderer_family,
     )
     return ir
 
@@ -356,6 +358,7 @@ def compile_claim(
 ) -> ReceiptIR:
     """v2 compilation: artifacts dict + claim type config -> receipt."""
     config = get_claim_type(claim_type_name, claim_types)
+    renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim type {claim_type_name}")
     ir = ReceiptIR.from_artifacts(
         artifacts=artifacts,
         claim=config["claim"],
@@ -365,6 +368,7 @@ def compile_claim(
         input_set_hash=input_set_hash,
         incident_manifest=incident_manifest,
         execution_context=execution_context,
+        renderer_family=renderer_family,
     )
 
     if not _claim_surface_instantiated(artifacts, config):

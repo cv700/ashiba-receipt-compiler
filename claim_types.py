@@ -18,12 +18,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+from renderer_families import validate_renderer_family
+
 
 DEFAULT_CLAIM_PACKS_DIR = Path(__file__).resolve().parent / "claim_packs"
 
 
 def _auth_grant_config() -> dict[str, Any]:
     return {
+        "renderer_family": "cyber_tool_use",
         "claim": {
             "id": "claim.authorization_bound_action",
             "text": "The tool action was executed under an active authorization grant.",
@@ -79,6 +82,7 @@ def _auth_grant_config() -> dict[str, Any]:
 
 def _parser_repair_config() -> dict[str, Any]:
     return {
+        "renderer_family": "agent_trace_integrity",
         "claim": {
             "id": "claim.parser_repair_visibility",
             "text": "A parser repair event was logged with full provenance and the writeback decision is recorded.",
@@ -107,6 +111,7 @@ def _parser_repair_config() -> dict[str, Any]:
 
 def _prefix_continuity_config() -> dict[str, Any]:
     return {
+        "renderer_family": "agent_trace_integrity",
         "claim": {
             "id": "claim.prefix_continuity",
             "text": "The next prompt preserves the exact token prefix from the previous prompt plus completion.",
@@ -256,6 +261,7 @@ def _validate_claim_pack(name: str, config: dict[str, Any], source: Path) -> dic
         if not isinstance(params, dict):
             raise ValueError(f"claim pack {source} pass_params.{pass_id} must be an object")
     support_requirements = _validate_support_requirements(source, config.get("support_requirements"))
+    renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim pack {source}")
 
     from passes import PASS_REGISTRY
 
@@ -271,8 +277,9 @@ def _validate_claim_pack(name: str, config: dict[str, Any], source: Path) -> dic
         "support_requirements": support_requirements,
         "passes": passes,
         "pass_params": pass_params,
+        "renderer_family": renderer_family,
     }
-    for optional_key in ("schema_version", "description", "owner", "renderer_family"):
+    for optional_key in ("schema_version", "description", "owner"):
         if optional_key in config:
             out[optional_key] = config[optional_key]
     out["name"] = str(config.get("name") or name)

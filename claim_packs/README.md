@@ -5,6 +5,7 @@ Claim packs are declarative JSON configs for receipt claim types.
 Each `*.json` file declares:
 
 - `name`: claim type name used by `--claim-type` and `incident_manifest.json`.
+- `renderer_family`: required registered family used by receipt boundary policy.
 - `claim`: `id` and human-readable `text`.
 - `expected_evidence`: dotted artifact paths required for support.
 - `applicability_evidence`: paths that instantiate the artifact class.
