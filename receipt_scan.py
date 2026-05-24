@@ -31,6 +31,15 @@ from importer_common import (
     normalize_timestamp,
 )
 from passes import get_path
+from side_effect_envelope import (
+    SIDE_EFFECT_ACTION_ID_PATH,
+    SIDE_EFFECT_DECISION_ID_PATH,
+    SIDE_EFFECT_EXECUTED_AT_PATH,
+    SIDE_EFFECTS_KEY,
+    legacy_artifacts_from_side_effect,
+    normalize_side_effect,
+    normalize_side_effect_artifacts,
+)
 
 
 ALL_SCAN_CLAIMS = ("deployment_matches_reviewed_commit", "authorization_bound_action",
@@ -38,7 +47,7 @@ ALL_SCAN_CLAIMS = ("deployment_matches_reviewed_commit", "authorization_bound_ac
 TEXT_SUFFIXES = {".json", ".jsonl", ".log", ".txt"}
 
 CLAIM_EVIDENCE_TRIGGERS: dict[str, list[str]] = {
-    "authorization_bound_action": ["authorization", "parsed_actions", "tool_call"],
+    "authorization_bound_action": ["authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call"],
     "deployment_matches_reviewed_commit": ["deployment", "review"],
     "human_approval_before_external_side_effect": ["approval"],
 }
@@ -52,8 +61,8 @@ PROBE_BY_MISSING = {
     "review.approved_at": "log review approved_at as UTC",
     "deployment.commit_sha": "log deployed commit_sha from the deployment job",
     "deployment.deployed_at": "log deployment time as UTC",
-    "tool_call.action_id": "log stable tool_call_id/action_id on side effects",
-    "parsed_actions.0.executed_at": "log tool execution time as UTC",
+    SIDE_EFFECT_ACTION_ID_PATH: "log stable tool_call_id/action_id on side effects",
+    SIDE_EFFECT_EXECUTED_AT_PATH: "log tool execution time as UTC",
     "approval.approved_at": "log human approval timestamp as UTC",
     "approval.decision": "log approval decision (approved/rejected)",
     "approval.actor": "log the identity of the human approver",
@@ -67,8 +76,8 @@ WHY_BY_MISSING = {
     "review.approved_at": "Without the approval timestamp, the compiler cannot check review-before-deploy ordering.",
     "deployment.commit_sha": "Without the deployed commit, the compiler cannot compare deployment to review.",
     "deployment.deployed_at": "Without deployment time, the compiler cannot check chronology.",
-    "tool_call.action_id": "Without a stable action ID, logs from different systems cannot be joined to one side effect.",
-    "parsed_actions.0.executed_at": "Without execution time, the compiler cannot check authorization or approval windows.",
+    SIDE_EFFECT_ACTION_ID_PATH: "Without a stable action ID, logs from different systems cannot be joined to one side effect.",
+    SIDE_EFFECT_EXECUTED_AT_PATH: "Without execution time, the compiler cannot check authorization or approval windows.",
     "approval.approved_at": "Without approval time, the compiler cannot prove approval happened before the side effect.",
     "approval.decision": "Without the approval decision, the compiler cannot distinguish approval from rejection or review-only records.",
     "approval.actor": "Without approver identity, the compiler cannot show who approved the side effect.",
@@ -82,15 +91,15 @@ SUGGESTED_FIELDS_BY_MISSING = {
             "execution_time_decision_id": "authz-decision-123",
             "grant_active_at_execution": True,
         },
-        "tool_call": {"invocation_context": {"decision_id": "authz-decision-123"}},
+        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "authz-decision-123"}}],
     },
     "review.commit_sha": {"review": {"commit_sha": "abc123"}},
     "review.decision": {"review": {"decision": "approved"}},
     "review.approved_at": {"review": {"approved_at": "2026-05-14T16:59:00Z"}},
     "deployment.commit_sha": {"deployment": {"commit_sha": "abc123"}},
     "deployment.deployed_at": {"deployment": {"deployed_at": "2026-05-14T17:01:30Z"}},
-    "tool_call.action_id": {"tool_call": {"action_id": "act-123"}},
-    "parsed_actions.0.executed_at": {"parsed_actions": [{"executed_at": "2026-05-14T17:01:30Z"}]},
+    SIDE_EFFECT_ACTION_ID_PATH: {SIDE_EFFECTS_KEY: [{"action_id": "act-123"}]},
+    SIDE_EFFECT_EXECUTED_AT_PATH: {SIDE_EFFECTS_KEY: [{"executed_at": "2026-05-14T17:01:30Z"}]},
     "approval.approved_at": {"approval": {"approved_at": "2026-05-14T16:59:00Z"}},
     "approval.decision": {"approval": {"decision": "approved"}},
     "approval.actor": {"approval": {"actor": "user@example.com"}},
@@ -365,7 +374,7 @@ def _merge_artifacts(
     conflicts: list[EvidenceConflict] | None = None,
     source_label: str = "",
 ) -> None:
-    for key in ("authorization", "parsed_actions", "tool_call", "deployment", "review", "approval"):
+    for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
         if key in source:
             target[key] = _merge_value(target.get(key), source[key], conflicts, key, source_label)
 
@@ -516,7 +525,7 @@ def _cloudtrail_artifacts(payload: Any) -> dict[str, Any]:
         if tool_name:
             tool_call["tool_name"] = tool_name
         out["tool_call"] = tool_call
-    return out
+    return normalize_side_effect_artifacts(out)
 
 
 def _cloudtrail_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
@@ -775,6 +784,26 @@ def _siem_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
 def _imported_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
     if not isinstance(payload, dict):
         return []
+    side_effects = payload.get(SIDE_EFFECTS_KEY)
+    if isinstance(side_effects, dict):
+        side_effects = [side_effects]
+    if isinstance(side_effects, list):
+        candidates = []
+        for idx, raw_side_effect in enumerate(side_effects):
+            if not isinstance(raw_side_effect, dict):
+                continue
+            side_effect = normalize_side_effect(raw_side_effect)
+            artifacts = {SIDE_EFFECTS_KEY: [side_effect], **legacy_artifacts_from_side_effect(side_effect)}
+            action_id = get_path(artifacts, SIDE_EFFECT_ACTION_ID_PATH)
+            candidates.append(ActionCandidate(
+                action_id=str(action_id) if action_id is not None else f"side_effect_{idx}",
+                source=source,
+                source_kind=str(side_effect.get("source_kind") or "side_effect_envelope"),
+                artifacts=artifacts,
+            ))
+        if candidates:
+            return candidates
+
     parsed_actions = payload.get("parsed_actions")
     if isinstance(parsed_actions, dict):
         parsed_actions = [parsed_actions]
@@ -821,6 +850,11 @@ def _payload_action_candidates(payload: Any, source: str) -> list[ActionCandidat
     deduped = []
     seen = set()
     for candidate in candidates:
+        candidate.artifacts = normalize_side_effect_artifacts(candidate.artifacts)
+        if candidate.action_id is None:
+            action_id = get_path(candidate.artifacts, SIDE_EFFECT_ACTION_ID_PATH)
+            if action_id is not None:
+                candidate.action_id = str(action_id)
         marker = (candidate.source, candidate.action_id, candidate.source_kind)
         if marker in seen:
             continue
@@ -884,7 +918,7 @@ def _payload_artifacts(
         return {}
     out: dict[str, Any] = {}
     _merge_artifacts(out, _payload_authorization(payload), conflicts, source_label)
-    for key in ("parsed_actions", "tool_call", "deployment", "review", "approval"):
+    for key in (SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
         if key in payload:
             _merge_artifacts(out, {key: payload[key]}, conflicts, source_label)
     _merge_artifacts(out, _cloudtrail_artifacts(payload), conflicts, source_label)
@@ -893,7 +927,7 @@ def _payload_artifacts(
     if review:
         _merge_artifacts(out, {"review": review}, conflicts, source_label)
     _merge_artifacts(out, _payload_to_approval(payload), conflicts, source_label)
-    return out
+    return normalize_side_effect_artifacts(out)
 
 
 def _payload_kinds(payload: Any) -> list[str]:
@@ -913,7 +947,7 @@ def _payload_kinds(payload: Any) -> list[str]:
             _append_unique(kinds, "agent event log")
         if any(key in payload for key in ("approval", "approvals")):
             _append_unique(kinds, "approval evidence")
-        if any(key in payload for key in ("authorization", "parsed_actions", "tool_call", "review")):
+        if any(key in payload for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "review")):
             _append_unique(kinds, "Ashiba/evidence artifact")
     if not kinds:
         _append_unique(kinds, "unrecognized JSON")
@@ -934,7 +968,7 @@ def _payload_record_count(payload: Any) -> int:
 def _payload_evidence_labels(payload: Any) -> list[str]:
     labels: list[str] = []
     artifacts = _payload_artifacts(payload)
-    for key in ("authorization", "parsed_actions", "tool_call", "deployment", "review", "approval"):
+    for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
         if key in artifacts:
             _append_unique(labels, key)
     if _approval_records_from_payload(payload):
@@ -1073,14 +1107,19 @@ def _punch_list(cannot_decide: list[ClaimReadiness], actions: list[ActionReadine
 
 def _action_base_artifacts(artifacts: dict[str, Any]) -> dict[str, Any]:
     base = deepcopy(artifacts)
-    for action_specific_key in ("parsed_actions", "tool_call", "approval"):
+    for action_specific_key in (SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "approval"):
         base.pop(action_specific_key, None)
     return base
 
 
 def _match_approval_for_action(action: ActionCandidate, approvals: list[dict[str, Any]]) -> dict[str, Any] | None:
-    action_id = get_path(action.artifacts, "tool_call.action_id")
+    action_id = first_present(
+        get_path(action.artifacts, SIDE_EFFECT_ACTION_ID_PATH),
+        get_path(action.artifacts, "tool_call.action_id"),
+    )
     action_approval_id = first_present(
+        get_path(action.artifacts, "side_effects.0.invocation.approval_id"),
+        get_path(action.artifacts, SIDE_EFFECT_DECISION_ID_PATH),
         get_path(action.artifacts, "tool_call.approval_id"),
         get_path(action.artifacts, "tool_call.invocation_context.approval_id"),
         get_path(action.artifacts, "tool_call.invocation_context.decision_id"),
@@ -1095,7 +1134,7 @@ def _match_approval_for_action(action: ActionCandidate, approvals: list[dict[str
     return None
 
 
-ACTION_SPECIFIC_CONFLICT_PREFIXES = ("parsed_actions", "tool_call", "approval")
+ACTION_SPECIFIC_CONFLICT_PREFIXES = (SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "approval")
 
 
 def _action_readiness(
@@ -1117,7 +1156,7 @@ def _action_readiness(
             for conflict in context.conflicts
             if not conflict_excluded(conflict, ACTION_SPECIFIC_CONFLICT_PREFIXES)
         ]
-        _merge_artifacts(artifacts, action.artifacts, action_conflicts, action.source)
+        _merge_artifacts(artifacts, normalize_side_effect_artifacts(action.artifacts), action_conflicts, action.source)
         approval = _match_approval_for_action(action, context.approvals)
         if approval is not None:
             _merge_artifacts(artifacts, {"approval": approval}, action_conflicts, action.source)
@@ -1139,10 +1178,14 @@ def _action_readiness(
             source=action.source,
             source_kind=action.source_kind,
             tool=first_present(
+                get_path(action.artifacts, "side_effects.0.tool"),
                 get_path(action.artifacts, "parsed_actions.0.tool"),
                 get_path(action.artifacts, "tool_call.tool_name"),
             ),
-            executed_at=get_path(action.artifacts, "parsed_actions.0.executed_at"),
+            executed_at=first_present(
+                get_path(action.artifacts, SIDE_EFFECT_EXECUTED_AT_PATH),
+                get_path(action.artifacts, "parsed_actions.0.executed_at"),
+            ),
             decidable=not cannot_decide,
             can_decide=can_decide,
             cannot_decide=cannot_decide,

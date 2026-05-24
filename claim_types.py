@@ -20,6 +20,12 @@ from typing import Any
 
 from claim_contracts import validate_pass_required_paths, validate_support_requirements
 from renderer_families import validate_renderer_family
+from side_effect_envelope import (
+    SIDE_EFFECT_ACTION_ID_PATH,
+    SIDE_EFFECT_DECISION_ID_PATH,
+    SIDE_EFFECT_EXECUTED_AT_PATH,
+    SIDE_EFFECTS_KEY,
+)
 
 
 DEFAULT_CLAIM_PACKS_DIR = Path(__file__).resolve().parent / "claim_packs"
@@ -36,13 +42,12 @@ def _auth_grant_config() -> dict[str, Any]:
             "authorization.grant_id",
             "authorization.grant_valid_from",
             "authorization.grant_valid_until",
-            "parsed_actions.0.executed_at",
-            "tool_call.action_id",
+            SIDE_EFFECT_EXECUTED_AT_PATH,
+            SIDE_EFFECT_ACTION_ID_PATH,
         ],
         "applicability_evidence": [
             "authorization",
-            "parsed_actions",
-            "tool_call",
+            SIDE_EFFECTS_KEY,
         ],
         "support_requirements": [
             {
@@ -56,11 +61,11 @@ def _auth_grant_config() -> dict[str, Any]:
                     "authorization.render_time_grant_hash",
                     "authorization.execution_time_decision_id",
                     "authorization.grant_active_at_execution",
-                    "tool_call.invocation_context.decision_id",
+                    SIDE_EFFECT_DECISION_ID_PATH,
                 ],
                 "same_value": [
                     "authorization.execution_time_decision_id",
-                    "tool_call.invocation_context.decision_id",
+                    SIDE_EFFECT_DECISION_ID_PATH,
                 ],
             },
         ],

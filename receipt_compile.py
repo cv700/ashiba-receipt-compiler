@@ -25,6 +25,7 @@ from passes import get_pass
 from receipt_explain import format_receipts_explanation
 from receipt_ir import ReceiptIR, utc_now
 from renderer_families import validate_renderer_family
+from side_effect_envelope import normalize_side_effect_artifacts
 from verdict import generate_verdict
 
 
@@ -359,6 +360,7 @@ def compile_claim(
     """v2 compilation: artifacts dict + claim type config -> receipt."""
     config = get_claim_type(claim_type_name, claim_types)
     renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim type {claim_type_name}")
+    artifacts = normalize_side_effect_artifacts(artifacts)
     ir = ReceiptIR.from_artifacts(
         artifacts=artifacts,
         claim=config["claim"],
@@ -399,6 +401,7 @@ def detect_applicable_claim_types(
     """
     from passes import evidence_is_present, get_path
 
+    artifacts = normalize_side_effect_artifacts(artifacts)
     registry = claim_types or CLAIM_TYPES
     applicable = []
     for name, config in registry.items():

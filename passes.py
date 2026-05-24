@@ -29,6 +29,12 @@ from constants import (
     UNKNOWN,
 )
 from receipt_ir import PassResult, ReceiptIR
+from side_effect_envelope import (
+    SIDE_EFFECT_ACTION_ID_PATH,
+    SIDE_EFFECT_DECISION_ID_PATH,
+    SIDE_EFFECT_EXECUTED_AT_PATH,
+    SIDE_EFFECTS_KEY,
+)
 
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
@@ -130,7 +136,7 @@ def _authorization_paths() -> tuple[str, str, str, str]:
     return (
         "authorization.grant_valid_from",
         "authorization.grant_valid_until",
-        "parsed_actions.0.executed_at",
+        SIDE_EFFECT_EXECUTED_AT_PATH,
         "authorization.revoked_at",
     )
 
@@ -498,7 +504,7 @@ def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -
         )
 
     auth_decision_id = str(authorization.get("execution_time_decision_id", ""))
-    tool_decision_path = "tool_call.invocation_context.decision_id"
+    tool_decision_path = SIDE_EFFECT_DECISION_ID_PATH
     tool_decision_id = get_path(ir.artifacts, tool_decision_path)
     if not evidence_is_present(tool_decision_id):
         return PassResult(
@@ -510,7 +516,7 @@ def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -
             ),
             verdict_effect=UNKNOWN,
             metadata={
-                "missing_fields": ["tool_call.invocation_context.decision_id"],
+                "missing_fields": [SIDE_EFFECT_DECISION_ID_PATH],
                 "missing_expected_paths": [tool_decision_path],
                 "authorization_decision_id": auth_decision_id,
             },
@@ -544,12 +550,12 @@ def no_action_from_untrusted_literal(ir: ReceiptIR, params: dict[str, Any] | Non
     """Flag contradiction if any parsed action derives from an untrusted literal source."""
     params = params or {}
     forbidden_kinds = set(params.get("forbidden_source_kinds", ["literal_untrusted_text"]))
-    actions = ir.artifacts.get("parsed_actions", [])
+    actions = ir.artifacts.get(SIDE_EFFECTS_KEY, [])
     if not isinstance(actions, list):
         return PassResult(
             pass_id="no_action_from_untrusted_literal",
             status=PASS_SKIPPED,
-            detail="no parsed_actions array in artifacts",
+            detail="no side_effects array in artifacts",
             verdict_effect=None,
         )
 
@@ -559,7 +565,7 @@ def no_action_from_untrusted_literal(ir: ReceiptIR, params: dict[str, Any] | Non
             continue
         source_kind = action.get("source_kind", "")
         if source_kind in forbidden_kinds:
-            offenders.append(f"parsed_actions.{i} (source_kind={source_kind})")
+            offenders.append(f"side_effects.{i} (source_kind={source_kind})")
 
     if offenders:
         return PassResult(
@@ -661,7 +667,7 @@ def repair_writeback_recorded(ir: ReceiptIR, params: dict[str, Any] | None = Non
 def human_approval_before_action(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
     """Check that an explicit approval preceded an external side-effect action."""
     approved_path = "approval.approved_at"
-    executed_path = "parsed_actions.0.executed_at"
+    executed_path = SIDE_EFFECT_EXECUTED_AT_PATH
     decision_path = "approval.decision"
     actor_path = "approval.actor"
     missing = [
@@ -1121,12 +1127,12 @@ PASS_SPECS: dict[str, PassSpec] = {
         required_paths=(
             "authorization.grant_valid_from",
             "authorization.grant_valid_until",
-            "parsed_actions.0.executed_at",
+            SIDE_EFFECT_EXECUTED_AT_PATH,
         ),
         contradiction_paths=(
             "authorization.grant_valid_from",
             "authorization.grant_valid_until",
-            "parsed_actions.0.executed_at",
+            SIDE_EFFECT_EXECUTED_AT_PATH,
         ),
     ),
     "revocation_before_action": PassSpec(
@@ -1135,8 +1141,8 @@ PASS_SPECS: dict[str, PassSpec] = {
         family="authorization",
         scope="action",
         readiness="authorization.revoked_at must exist; null means explicitly not revoked",
-        required_paths=("authorization.revoked_at", "parsed_actions.0.executed_at"),
-        contradiction_paths=("authorization.revoked_at", "parsed_actions.0.executed_at"),
+        required_paths=("authorization.revoked_at", SIDE_EFFECT_EXECUTED_AT_PATH),
+        contradiction_paths=("authorization.revoked_at", SIDE_EFFECT_EXECUTED_AT_PATH),
     ),
     "grant_binding_present": PassSpec(
         pass_id="grant_binding_present",
@@ -1148,12 +1154,12 @@ PASS_SPECS: dict[str, PassSpec] = {
             "authorization.render_time_grant_hash",
             "authorization.execution_time_decision_id",
             "authorization.grant_active_at_execution",
-            "tool_call.invocation_context.decision_id",
+            SIDE_EFFECT_DECISION_ID_PATH,
         ),
         contradiction_paths=(
             "authorization.grant_active_at_execution",
             "authorization.execution_time_decision_id",
-            "tool_call.invocation_context.decision_id",
+            SIDE_EFFECT_DECISION_ID_PATH,
         ),
     ),
     "no_action_from_untrusted_literal": PassSpec(
@@ -1162,7 +1168,7 @@ PASS_SPECS: dict[str, PassSpec] = {
         family="authorization",
         scope="action",
         readiness="checks parsed action source_kind when present",
-        contradiction_paths=("parsed_actions.*.source_kind",),
+        contradiction_paths=("side_effects.*.source_kind",),
         params_schema={
             "forbidden_source_kinds": {
                 "type": "list[str]",
@@ -1203,9 +1209,9 @@ PASS_SPECS: dict[str, PassSpec] = {
             "approval.approved_at",
             "approval.decision",
             "approval.actor",
-            "parsed_actions.0.executed_at",
+            SIDE_EFFECT_EXECUTED_AT_PATH,
         ),
-        contradiction_paths=("approval.approved_at", "approval.decision", "parsed_actions.0.executed_at"),
+        contradiction_paths=("approval.approved_at", "approval.decision", SIDE_EFFECT_EXECUTED_AT_PATH),
     ),
     "deployment_matches_reviewed_commit": PassSpec(
         pass_id="deployment_matches_reviewed_commit",

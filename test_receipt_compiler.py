@@ -41,6 +41,12 @@ from receipt_compile import (
 )
 from receipt_ir import ReceiptIR
 from receipt_validate import validate_receipt
+from side_effect_envelope import (
+    SIDE_EFFECT_ACTION_ID_PATH,
+    SIDE_EFFECT_DECISION_ID_PATH,
+    SIDE_EFFECT_EXECUTED_AT_PATH,
+    SIDE_EFFECTS_KEY,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -445,11 +451,11 @@ def test_v6_external_claim_pack_registry() -> None:
         "authorization.render_time_grant_hash",
         "authorization.execution_time_decision_id",
         "authorization.grant_active_at_execution",
-        "tool_call.invocation_context.decision_id",
+        SIDE_EFFECT_DECISION_ID_PATH,
     ]
     assert binding["same_value"] == [
         "authorization.execution_time_decision_id",
-        "tool_call.invocation_context.decision_id",
+        SIDE_EFFECT_DECISION_ID_PATH,
     ]
     binding_spec = get_pass_spec("grant_binding_present")
     assert binding_spec.family == "authorization"
@@ -469,13 +475,12 @@ def test_v6_external_claim_pack_registry() -> None:
             "authorization.grant_id",
             "authorization.grant_valid_from",
             "authorization.grant_valid_until",
-            "parsed_actions.0.executed_at",
-            "tool_call.action_id",
+            SIDE_EFFECT_EXECUTED_AT_PATH,
+            SIDE_EFFECT_ACTION_ID_PATH,
         ],
         "applicability_evidence": [
             "authorization",
-            "parsed_actions",
-            "tool_call",
+            SIDE_EFFECTS_KEY,
         ],
         "support_requirements": [
             {
@@ -670,17 +675,14 @@ def test_claim_contract_helpers_drive_readiness_semantics() -> None:
             "execution_time_decision_id": "authz-decision-contract",
             "grant_active_at_execution": True,
         },
-        "parsed_actions": [
+        SIDE_EFFECTS_KEY: [
             {
                 "action_id": "act-contract",
                 "tool": "lambda.amazonaws.com:Invoke",
                 "executed_at": "2026-05-14T17:01:30Z",
+                "invocation": {"decision_id": "authz-decision-contract"},
             }
         ],
-        "tool_call": {
-            "action_id": "act-contract",
-            "invocation_context": {"decision_id": "authz-decision-contract"},
-        },
     }
     assert claim_missing(artifacts, auth_pack) == []
 
@@ -690,16 +692,58 @@ def test_claim_contract_helpers_drive_readiness_semantics() -> None:
     assert claim_missing(no_revocation_state, auth_pack) == ["authorization.revoked_at"]
 
     mismatched_binding = dict(artifacts)
-    mismatched_binding["tool_call"] = {
+    mismatched_binding[SIDE_EFFECTS_KEY] = [{
         "action_id": "act-contract",
-        "invocation_context": {"decision_id": "authz-decision-other"},
-    }
+        "tool": "lambda.amazonaws.com:Invoke",
+        "executed_at": "2026-05-14T17:01:30Z",
+        "invocation": {"decision_id": "authz-decision-other"},
+    }]
     assert claim_missing(mismatched_binding, auth_pack) == ["authorization-to-action binding"]
     assert claim_conflicts(
         auth_pack,
         [{"path": "authorization.execution_time_decision_id"}],
     ) == ["authorization.execution_time_decision_id"]
     assert claim_conflicts(auth_pack, [{"path": "deployment.commit_sha"}]) == []
+
+
+def test_side_effect_envelope_v1_compiles_and_scans() -> None:
+    authorization = {
+        "grant_id": "grant-envelope",
+        "grant_valid_from": "2026-05-14T16:00:00Z",
+        "grant_valid_until": "2026-05-14T18:00:00Z",
+        "revoked_at": None,
+        "render_time_grant_hash": "sha256:envelope",
+        "execution_time_decision_id": "authz-decision-envelope",
+        "grant_active_at_execution": True,
+    }
+    side_effect = {
+        "schema_version": "side_effect_envelope_v1",
+        "action_id": "act-envelope",
+        "tool": "stripe.charges.create",
+        "executed_at": "2026-05-14T17:01:30Z",
+        "source_kind": "event_log",
+        "invocation": {"decision_id": "authz-decision-envelope"},
+    }
+    artifacts = {
+        "authorization": authorization,
+        SIDE_EFFECTS_KEY: [side_effect],
+    }
+
+    receipt = compile_claim(artifacts, "authorization_bound_action").to_dict()
+    assert receipt["verdict"]["status"] == SUPPORTED
+    assert SIDE_EFFECT_EXECUTED_AT_PATH in receipt["expected_evidence"]
+    assert receipt["artifacts"][SIDE_EFFECTS_KEY][0]["action_id"] == "act-envelope"
+    assert receipt["artifacts"]["parsed_actions"][0]["action_id"] == "act-envelope"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        log_path = Path(tmp) / "side_effect.json"
+        log_path.write_text(json.dumps(artifacts), encoding="utf-8")
+        proc = run_ashiba_process("scan", str(log_path), "--json")
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout)
+    assert "authorization_bound_action" in result["can_decide"]
+    assert result["actions"][0]["action_id"] == "act-envelope"
+    assert "authorization_bound_action" in result["actions"][0]["can_decide"]
 
 
 def test_v6_incident_manifest_path_boundaries() -> None:
@@ -1050,7 +1094,7 @@ def test_grant_binding_cross_boundary_pass_units() -> None:
             "execution_time_decision_id": "decision-123",
             "grant_active_at_execution": True,
         },
-        "tool_call": {"invocation_context": {"decision_id": "decision-123"}},
+        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "decision-123"}}],
     })
     assert grant_binding_present(matched).status == PASS_SATISFIED
 
@@ -1060,19 +1104,19 @@ def test_grant_binding_cross_boundary_pass_units() -> None:
             "execution_time_decision_id": "decision-123",
             "grant_active_at_execution": True,
         },
-        "tool_call": {"invocation_context": {}},
+        SIDE_EFFECTS_KEY: [{"invocation": {}}],
     })
     missing_result = grant_binding_present(missing_tool_side)
     assert missing_result.status == UNKNOWN
     assert missing_result.verdict_effect == UNKNOWN
-    assert missing_result.metadata["missing_expected_paths"] == ["tool_call.invocation_context.decision_id"]
+    assert missing_result.metadata["missing_expected_paths"] == [SIDE_EFFECT_DECISION_ID_PATH]
 
     missing_active = _pass_ir({
         "authorization": {
             "render_time_grant_hash": "sha256:test-grant",
             "execution_time_decision_id": "decision-123",
         },
-        "tool_call": {"invocation_context": {"decision_id": "decision-123"}},
+        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "decision-123"}}],
     })
     missing_active_result = grant_binding_present(missing_active)
     assert missing_active_result.status == UNKNOWN
@@ -1085,7 +1129,7 @@ def test_grant_binding_cross_boundary_pass_units() -> None:
             "execution_time_decision_id": "decision-123",
             "grant_active_at_execution": False,
         },
-        "tool_call": {"invocation_context": {"decision_id": "decision-123"}},
+        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "decision-123"}}],
     })
     inactive_result = grant_binding_present(inactive)
     assert inactive_result.status == PASS_CONTRADICTED
@@ -1098,7 +1142,7 @@ def test_grant_binding_cross_boundary_pass_units() -> None:
             "execution_time_decision_id": "decision-123",
             "grant_active_at_execution": True,
         },
-        "tool_call": {"invocation_context": {"decision_id": "decision-999"}},
+        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "decision-999"}}],
     })
     mismatch_result = grant_binding_present(mismatched)
     assert mismatch_result.status == PASS_CONTRADICTED
@@ -1368,10 +1412,22 @@ def test_gap_card_and_ci_outputs() -> None:
             }),
             encoding="utf-8",
         )
+        (root / "parsed_actions.json").write_text(
+            json.dumps({
+                "parsed_actions": [
+                    {
+                        "tool": "stripe.charges.create",
+                        "executed_at": "2026-05-14T17:01:30Z",
+                        "source_kind": "model_output",
+                    }
+                ]
+            }),
+            encoding="utf-8",
+        )
         (root / "tool_call.json").write_text(json.dumps({"tool_call": {}}), encoding="utf-8")
         tool_gap = run_compile_process(str(root), "--gaps")
         assert tool_gap.returncode == 0, tool_gap.stderr
-        assert "missing expected path: tool_call.action_id" in tool_gap.stdout
+        assert f"missing expected path: {SIDE_EFFECT_ACTION_ID_PATH}" in tool_gap.stdout
 
     ci_unknown = run_compile_process("examples/auth_grant_unknown.json", "--ci")
     assert ci_unknown.returncode == 0, ci_unknown.stderr
@@ -2516,6 +2572,7 @@ def main() -> int:
     test_v5_incident_manifest_and_explain_output()
     test_v6_external_claim_pack_registry()
     test_claim_contract_helpers_drive_readiness_semantics()
+    test_side_effect_envelope_v1_compiles_and_scans()
     test_v6_incident_manifest_path_boundaries()
     test_v7_execution_context_absent_is_noop()
     test_v7_execution_context_round_trip_and_unknown_schema()

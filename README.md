@@ -206,7 +206,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 environments/trace_receipt_minimizer_v0/test_s
 PYTHONDONTWRITEBYTECODE=1 ./demo_30s.sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile \
   ashiba receipt_scan.py compile receipt_validate.py receipt_compile.py \
-  passes.py claim_types.py claim_contracts.py import_cloudtrail import_github_actions import_otel \
+  passes.py claim_types.py claim_contracts.py side_effect_envelope.py import_cloudtrail import_github_actions import_otel \
   import_kubernetes_audit import_siem_jsonl import_anthropic import_openai \
   import_eventlog import_langsmith importer_common.py demo_real_world_importers.py \
   demo.py constants.py receipt_ir.py verdict.py boundary.py renderer_families.py demo_gallery.py \

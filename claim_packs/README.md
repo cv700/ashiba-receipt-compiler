@@ -9,6 +9,9 @@ Each `*.json` file declares:
 - `claim`: `id` and human-readable `text`.
 - `expected_evidence`: dotted artifact paths required for support.
 - `applicability_evidence`: paths that instantiate the artifact class.
+- Action-level packs should point at `side_effects.0.*` fields from
+  SideEffectEnvelope v1. Legacy `parsed_actions` and `tool_call` inputs are
+  normalized into that envelope by the compiler/scanner boundary.
 - `support_requirements`: optional extra support/readiness contracts. A
   requirement can use `path` with `presence: "path_exists"` when explicit null is
   meaningful, `all_of` for grouped required fields, and `same_value` for a

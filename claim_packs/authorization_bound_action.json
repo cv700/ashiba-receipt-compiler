@@ -11,13 +11,12 @@
     "authorization.grant_id",
     "authorization.grant_valid_from",
     "authorization.grant_valid_until",
-    "parsed_actions.0.executed_at",
-    "tool_call.action_id"
+    "side_effects.0.executed_at",
+    "side_effects.0.action_id"
   ],
   "applicability_evidence": [
     "authorization",
-    "parsed_actions",
-    "tool_call"
+    "side_effects"
   ],
   "support_requirements": [
     {
@@ -31,11 +30,11 @@
         "authorization.render_time_grant_hash",
         "authorization.execution_time_decision_id",
         "authorization.grant_active_at_execution",
-        "tool_call.invocation_context.decision_id"
+        "side_effects.0.invocation.decision_id"
       ],
       "same_value": [
         "authorization.execution_time_decision_id",
-        "tool_call.invocation_context.decision_id"
+        "side_effects.0.invocation.decision_id"
       ]
     }
   ],
