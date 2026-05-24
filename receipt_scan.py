@@ -53,9 +53,11 @@ CLAIM_EVIDENCE_TRIGGERS: dict[str, list[str]] = {
 }
 REVOCATION_PATH = "authorization.revoked_at"
 AUTHORIZATION_BINDING = "authorization-to-action binding"
+APPROVAL_BINDING = "approval-to-action binding"
 PROBE_BY_MISSING = {
     REVOCATION_PATH: "add revocation_state export",
     AUTHORIZATION_BINDING: "carry authorization execution_time_decision_id into the tool call",
+    APPROVAL_BINDING: "log approval tool_call_id matching the side-effect action_id",
     "review.commit_sha": "log reviewed commit_sha from the review system",
     "review.decision": "log review decision with approved/rejected",
     "review.approved_at": "log review approved_at as UTC",
@@ -71,6 +73,7 @@ PROBE_BY_MISSING = {
 WHY_BY_MISSING = {
     REVOCATION_PATH: "Without explicit revocation state, absence of a revocation event can be confused with missing evidence.",
     AUTHORIZATION_BINDING: "Without a matching decision ID on both sides of the boundary, the evidence cannot show that this authorization decision governed this exact action.",
+    APPROVAL_BINDING: "Without a matching action ID on the approval record, the evidence cannot show that this human approval governed this exact side effect.",
     "review.commit_sha": "Without the reviewed commit, deployment evidence cannot be compared to the approved artifact.",
     "review.decision": "Without the review decision, a review record does not show approval.",
     "review.approved_at": "Without the approval timestamp, the compiler cannot check review-before-deploy ordering.",
@@ -92,6 +95,10 @@ SUGGESTED_FIELDS_BY_MISSING = {
             "grant_active_at_execution": True,
         },
         SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "authz-decision-123"}}],
+    },
+    APPROVAL_BINDING: {
+        "approval": {"tool_call_id": "act-123"},
+        SIDE_EFFECTS_KEY: [{"action_id": "act-123"}],
     },
     "review.commit_sha": {"review": {"commit_sha": "abc123"}},
     "review.decision": {"review": {"decision": "approved"}},

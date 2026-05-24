@@ -721,6 +721,7 @@ def test_claim_contract_discovery_surfaces_minimum_runtime_facts() -> None:
         "executed_at",
         "invocation.decision_id",
     ]
+    assert "action_id" in side_effect_minimum["contradiction_relevant"]
     assert "source_kind" in side_effect_minimum["contradiction_relevant"]
     for unclaimed in ("episode_id", "parent_action_id", "principal", "agent_id", "evidence_refs"):
         assert unclaimed in side_effect_minimum["proposed_but_unclaimed"]
@@ -735,9 +736,16 @@ def test_claim_contract_discovery_surfaces_minimum_runtime_facts() -> None:
         ],
     }]
 
-    approval_gaps = claims["human_approval_before_external_side_effect"]["discovered_gaps"]
-    assert approval_gaps[0]["id"] == "approval-action binding not encoded"
-    assert discovery["discovered_gaps"][0]["claim"] == "human_approval_before_external_side_effect"
+    approval_binding = claims["human_approval_before_external_side_effect"]["binding_requirements"]
+    assert approval_binding == [{
+        "id": "approval-to-action binding",
+        "same_value": [
+            "approval.tool_call_id",
+            SIDE_EFFECT_ACTION_ID_PATH,
+        ],
+    }]
+    assert "discovered_gaps" not in claims["human_approval_before_external_side_effect"]
+    assert discovery["discovered_gaps"] == []
 
     text = subprocess.run(
         [PYTHON, "scripts/discover_claim_contract.py"],
@@ -748,7 +756,7 @@ def test_claim_contract_discovery_surfaces_minimum_runtime_facts() -> None:
         capture_output=True,
     )
     assert "SideEffectEnvelope v1 minimum required by current claims" in text.stdout
-    assert "approval-action binding not encoded" in text.stdout
+    assert "approval-to-action binding" in proc.stdout
 
 
 def test_side_effect_envelope_v1_compiles_and_scans() -> None:
@@ -1942,6 +1950,7 @@ def test_human_approval_claim_pack() -> None:
         (root / "approval.json").write_text(
             json.dumps({
                 "approval": {
+                    "tool_call_id": "approved-action-1",
                     "approved_at": "2026-05-14T17:00:00Z",
                     "decision": "approved",
                     "actor": "ops@example.com",
@@ -1973,6 +1982,7 @@ def test_human_approval_claim_pack() -> None:
         (root / "approval.json").write_text(
             json.dumps({
                 "approval": {
+                    "tool_call_id": "approved-action-1",
                     "approved_at": "2026-05-14T17:02:00Z",
                     "decision": "approved",
                     "actor": "ops@example.com",
@@ -1988,6 +1998,26 @@ def test_human_approval_claim_pack() -> None:
         )
         assert contradicted.returncode == 1
         assert "CONTRADICTED" in contradicted.stdout
+
+        (root / "approval.json").write_text(
+            json.dumps({
+                "approval": {
+                    "tool_call_id": "different-action",
+                    "approved_at": "2026-05-14T17:00:00Z",
+                    "decision": "approved",
+                    "actor": "ops@example.com",
+                }
+            }),
+            encoding="utf-8",
+        )
+        mismatched = run_compile_process(
+            str(root),
+            "--claim-type",
+            "human_approval_before_external_side_effect",
+            "--ci",
+        )
+        assert mismatched.returncode == 1
+        assert "CONTRADICTED" in mismatched.stdout
 
 
 def test_new_importers_missing_timestamps_fail_closed() -> None:

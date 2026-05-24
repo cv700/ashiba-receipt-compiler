@@ -666,13 +666,15 @@ def repair_writeback_recorded(ir: ReceiptIR, params: dict[str, Any] | None = Non
 
 def human_approval_before_action(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
     """Check that an explicit approval preceded an external side-effect action."""
+    approval_binding_path = "approval.tool_call_id"
+    action_id_path = SIDE_EFFECT_ACTION_ID_PATH
     approved_path = "approval.approved_at"
     executed_path = SIDE_EFFECT_EXECUTED_AT_PATH
     decision_path = "approval.decision"
     actor_path = "approval.actor"
     missing = [
         path
-        for path in (approved_path, executed_path, decision_path, actor_path)
+        for path in (approval_binding_path, action_id_path, approved_path, executed_path, decision_path, actor_path)
         if not evidence_is_present(get_path(ir.artifacts, path))
     ]
     missing.extend(path for path in _missing_or_invalid_timestamp_paths(ir, [approved_path, executed_path]) if path not in missing)
@@ -683,6 +685,23 @@ def human_approval_before_action(ir: ReceiptIR, params: dict[str, Any] | None = 
             detail="human approval ordering could not be determined; missing or invalid field(s): " + ", ".join(missing),
             verdict_effect=UNKNOWN,
             metadata={"missing_expected_paths": missing},
+        )
+
+    approval_binding = str(get_path(ir.artifacts, approval_binding_path))
+    action_id = str(get_path(ir.artifacts, action_id_path))
+    if approval_binding != action_id:
+        return PassResult(
+            pass_id="human_approval_before_action",
+            status=PASS_CONTRADICTED,
+            detail=(
+                f"approval.tool_call_id={approval_binding!r} does not match "
+                f"side_effect action_id={action_id!r}"
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "approval_tool_call_id": approval_binding,
+                "action_id": action_id,
+            },
         )
 
     decision = str(get_path(ir.artifacts, decision_path)).lower()
@@ -1204,14 +1223,22 @@ PASS_SPECS: dict[str, PassSpec] = {
         fn=human_approval_before_action,
         family="approval",
         scope="action",
-        readiness="missing approval fields make the claim unknown; non-approval or late approval contradicts it",
+        readiness="missing approval binding or fields make the claim unknown; mismatched binding, non-approval, or late approval contradicts it",
         required_paths=(
+            "approval.tool_call_id",
+            SIDE_EFFECT_ACTION_ID_PATH,
             "approval.approved_at",
             "approval.decision",
             "approval.actor",
             SIDE_EFFECT_EXECUTED_AT_PATH,
         ),
-        contradiction_paths=("approval.approved_at", "approval.decision", SIDE_EFFECT_EXECUTED_AT_PATH),
+        contradiction_paths=(
+            "approval.tool_call_id",
+            SIDE_EFFECT_ACTION_ID_PATH,
+            "approval.approved_at",
+            "approval.decision",
+            SIDE_EFFECT_EXECUTED_AT_PATH,
+        ),
     ),
     "deployment_matches_reviewed_commit": PassSpec(
         pass_id="deployment_matches_reviewed_commit",
