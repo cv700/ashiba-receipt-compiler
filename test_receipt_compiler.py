@@ -704,6 +704,53 @@ def test_claim_contract_helpers_drive_readiness_semantics() -> None:
     assert claim_conflicts(auth_pack, [{"path": "deployment.commit_sha"}]) == []
 
 
+def test_claim_contract_discovery_surfaces_minimum_runtime_facts() -> None:
+    proc = subprocess.run(
+        [PYTHON, "scripts/discover_claim_contract.py", "--json"],
+        cwd=ROOT,
+        env=ENV,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    discovery = json.loads(proc.stdout)
+    assert discovery["schema_version"] == "ashiba-claim-contract-discovery-v0.1"
+    side_effect_minimum = discovery["side_effect_envelope_v1_minimum"]
+    assert side_effect_minimum["required_by_current_claims"] == [
+        "action_id",
+        "executed_at",
+        "invocation.decision_id",
+    ]
+    assert "source_kind" in side_effect_minimum["contradiction_relevant"]
+    for unclaimed in ("episode_id", "parent_action_id", "principal", "agent_id", "evidence_refs"):
+        assert unclaimed in side_effect_minimum["proposed_but_unclaimed"]
+
+    claims = {claim["name"]: claim for claim in discovery["claims"]}
+    auth_binding = claims["authorization_bound_action"]["binding_requirements"]
+    assert auth_binding == [{
+        "id": "authorization-to-action binding",
+        "same_value": [
+            "authorization.execution_time_decision_id",
+            SIDE_EFFECT_DECISION_ID_PATH,
+        ],
+    }]
+
+    approval_gaps = claims["human_approval_before_external_side_effect"]["discovered_gaps"]
+    assert approval_gaps[0]["id"] == "approval-action binding not encoded"
+    assert discovery["discovered_gaps"][0]["claim"] == "human_approval_before_external_side_effect"
+
+    text = subprocess.run(
+        [PYTHON, "scripts/discover_claim_contract.py"],
+        cwd=ROOT,
+        env=ENV,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    assert "SideEffectEnvelope v1 minimum required by current claims" in text.stdout
+    assert "approval-action binding not encoded" in text.stdout
+
+
 def test_side_effect_envelope_v1_compiles_and_scans() -> None:
     authorization = {
         "grant_id": "grant-envelope",
@@ -2651,6 +2698,7 @@ def main() -> int:
     test_v5_incident_manifest_and_explain_output()
     test_v6_external_claim_pack_registry()
     test_claim_contract_helpers_drive_readiness_semantics()
+    test_claim_contract_discovery_surfaces_minimum_runtime_facts()
     test_side_effect_envelope_v1_compiles_and_scans()
     test_action_scoped_side_effect_envelopes_compile_independently()
     test_v6_incident_manifest_path_boundaries()

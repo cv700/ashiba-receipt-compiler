@@ -70,8 +70,9 @@ Passed:
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 test_receipt_compiler.py
 PYTHONDONTWRITEBYTECODE=1 python3 demo_gallery.py --json
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/discover_claim_contract.py --json
 PYTHONDONTWRITEBYTECODE=1 python3 demo_real_world_importers.py
-PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile receipt_ir.py passes.py receipt_compile.py receipt_scan.py receipt_validate.py claim_types.py verdict.py boundary.py compile demo_gallery.py test_receipt_compiler.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile receipt_ir.py passes.py receipt_compile.py receipt_scan.py receipt_validate.py claim_types.py verdict.py boundary.py compile demo_gallery.py scripts/discover_claim_contract.py test_receipt_compiler.py
 git diff --check
 ```
 

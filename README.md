@@ -201,6 +201,7 @@ Before sharing changes, run:
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 test_receipt_compiler.py
 PYTHONDONTWRITEBYTECODE=1 python3 demo_gallery.py --json
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/discover_claim_contract.py --json
 PYTHONDONTWRITEBYTECODE=1 python3 demo_real_world_importers.py
 PYTHONDONTWRITEBYTECODE=1 python3 environments/trace_receipt_minimizer_v0/test_score.py
 PYTHONDONTWRITEBYTECODE=1 ./demo_30s.sh
@@ -210,7 +211,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile \
   import_kubernetes_audit import_siem_jsonl import_anthropic import_openai \
   import_eventlog import_langsmith importer_common.py demo_real_world_importers.py \
   demo.py constants.py receipt_ir.py verdict.py boundary.py renderer_families.py demo_gallery.py \
-  demo_llm_comparison.py receipt_explain.py test_receipt_compiler.py \
+  demo_llm_comparison.py receipt_explain.py scripts/discover_claim_contract.py test_receipt_compiler.py \
   environments/trace_receipt_minimizer_v0/*.py
 find . -type d -name __pycache__ -prune -exec rm -rf {} +
 ```
@@ -222,6 +223,18 @@ Expected gallery summary:
 supported: 16 | contradicted: 11 | unknown: 10 | not_applicable: 1
 compiler_errors: 0 | validation_errors: 0
 ```
+
+## Discovering Contracts
+
+Before adding a new schema field, run:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/discover_claim_contract.py --json
+```
+
+The report derives required runtime facts from active claim packs and pass
+metadata, then separates proposed SideEffectEnvelope fields that no current
+claim consumes yet.
 
 ## Known Preview Rough Edges
 
