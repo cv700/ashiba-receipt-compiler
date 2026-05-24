@@ -10,14 +10,20 @@ from __future__ import annotations
 
 import argparse
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import sys
 from typing import Any
 
 from claim_types import build_claim_registry
-from importer_common import first_present, nested_get, normalize_timestamp
+from importer_common import (
+    authorization_decision_id_from_fields as _decision_id_from_fields,
+    authorization_from_policy as _authorization_from_policy,
+    first_present,
+    nested_get,
+    normalize_timestamp,
+)
 from passes import evidence_is_present, get_path, path_exists
 
 
@@ -32,10 +38,6 @@ CLAIM_EVIDENCE_TRIGGERS: dict[str, list[str]] = {
 }
 REVOCATION_PATH = "authorization.revoked_at"
 AUTHORIZATION_BINDING = "authorization-to-action binding"
-AUTHORIZATION_RENDER_HASH_PATH = "authorization.render_time_grant_hash"
-AUTHORIZATION_DECISION_PATH = "authorization.execution_time_decision_id"
-AUTHORIZATION_ACTIVE_PATH = "authorization.grant_active_at_execution"
-TOOL_CALL_DECISION_PATH = "tool_call.invocation_context.decision_id"
 PROBE_BY_MISSING = {
     REVOCATION_PATH: "add revocation_state export",
     AUTHORIZATION_BINDING: "carry authorization execution_time_decision_id into the tool call",
@@ -94,9 +96,29 @@ class ClaimReadiness:
     claim: str
     can_decide: bool
     missing: list[str]
+    conflicts: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
-        return {"claim": self.claim, "missing": self.missing}
+        out = {"claim": self.claim, "missing": self.missing}
+        if self.conflicts:
+            out["conflicts"] = self.conflicts
+        return out
+
+
+@dataclass
+class EvidenceConflict:
+    path: str
+    existing: Any
+    incoming: Any
+    source: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "existing": _conflict_value(self.existing),
+            "incoming": _conflict_value(self.incoming),
+            "source": self.source,
+        }
 
 
 @dataclass
@@ -159,6 +181,7 @@ class ScanResult:
     cannot_decide: list[ClaimReadiness]
     probeable_next: list[str]
     warnings: list[str]
+    conflicts: list[EvidenceConflict]
     actions: list[ActionReadiness]
     observations: list[FileObservation]
     punch_list: list[str]
@@ -188,6 +211,7 @@ class ScanResult:
             "probeable_next": self.probeable_next,
             "punch_list": self.punch_list,
             "warnings": self.warnings,
+            "evidence_conflicts": [conflict.as_dict() for conflict in self.conflicts],
             "actions": [action.as_dict() for action in self.actions],
         }
 
@@ -197,6 +221,7 @@ class ScanContext:
     artifacts: dict[str, Any]
     files_scanned: list[str]
     warnings: list[str]
+    conflicts: list[EvidenceConflict]
     actions: list[ActionCandidate]
     approvals: list[dict[str, Any]]
     observations: list[FileObservation]
@@ -274,7 +299,45 @@ def _payloads_from_file(path: Path) -> list[Any]:
     return [kv] if kv else []
 
 
-def _merge_value(existing: Any, incoming: Any) -> Any:
+def _conflict_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    try:
+        encoded = json.dumps(value, sort_keys=True)
+    except TypeError:
+        encoded = repr(value)
+    if len(encoded) > 240:
+        return encoded[:237] + "..."
+    return encoded
+
+
+def _record_conflict(
+    conflicts: list[EvidenceConflict] | None,
+    path: str,
+    existing: Any,
+    incoming: Any,
+    source: str,
+) -> None:
+    if conflicts is None or existing == incoming:
+        return
+    conflict = EvidenceConflict(path=path, existing=existing, incoming=incoming, source=source)
+    marker = conflict.as_dict()
+    if any(item.as_dict() == marker for item in conflicts):
+        return
+    conflicts.append(conflict)
+
+
+def _join_path(parent: str, child: str) -> str:
+    return f"{parent}.{child}" if parent else child
+
+
+def _merge_value(
+    existing: Any,
+    incoming: Any,
+    conflicts: list[EvidenceConflict] | None = None,
+    path: str = "",
+    source: str = "",
+) -> Any:
     if incoming in ({}, [], None):
         return existing
     if existing in ({}, [], None):
@@ -282,67 +345,28 @@ def _merge_value(existing: Any, incoming: Any) -> Any:
     if isinstance(existing, dict) and isinstance(incoming, dict):
         out = dict(existing)
         for key, value in incoming.items():
-            out[key] = _merge_value(out.get(key), value)
+            out[key] = _merge_value(out.get(key), value, conflicts, _join_path(path, str(key)), source)
         return out
     if isinstance(existing, list) and isinstance(incoming, list):
         return existing + incoming
+    _record_conflict(conflicts, path, existing, incoming, source)
     return existing
 
 
-def _merge_artifacts(target: dict[str, Any], source: dict[str, Any]) -> None:
+def _merge_artifacts(
+    target: dict[str, Any],
+    source: dict[str, Any],
+    conflicts: list[EvidenceConflict] | None = None,
+    source_label: str = "",
+) -> None:
     for key in ("authorization", "parsed_actions", "tool_call", "deployment", "review", "approval"):
         if key in source:
-            target[key] = _merge_value(target.get(key), source[key])
+            target[key] = _merge_value(target.get(key), source[key], conflicts, key, source_label)
 
 
 def _append_unique(items: list[str], value: str | None) -> None:
     if value and value not in items:
         items.append(value)
-
-
-def _authorization_from_policy(policy: dict[str, Any] | None) -> dict[str, Any]:
-    if not policy:
-        return {}
-    authorization = {}
-    for key in (
-        "grant_id",
-        "principal",
-        "delegated_to",
-        "scope",
-        "grant_valid_from",
-        "grant_valid_until",
-        "revoked_at",
-        "issuer",
-        "grant_context",
-        "decision_id",
-        "render_time_grant_hash",
-        "execution_time_decision_id",
-        "grant_active_at_execution",
-    ):
-        if key in policy:
-            authorization[key] = policy[key]
-    if "execution_time_decision_id" not in authorization and "decision_id" in authorization:
-        authorization["execution_time_decision_id"] = authorization["decision_id"]
-    return {"authorization": authorization} if authorization else {}
-
-
-def _decision_id_from_fields(*fields: dict[str, Any]) -> Any:
-    for field in fields:
-        if not isinstance(field, dict):
-            continue
-        value = first_present(
-            field.get("authorization.execution_time_decision_id"),
-            field.get("authorization.decision_id"),
-            field.get("authorization_decision_id"),
-            field.get("authorizationDecisionId"),
-            field.get("authz_decision_id"),
-            field.get("authzDecisionId"),
-            field.get("decision_id"),
-            field.get("decisionId"),
-        )
-        if value is not None:
-            return value
-    return None
 
 
 def _review_from_policy(policy: dict[str, Any] | None) -> dict[str, Any]:
@@ -845,20 +869,24 @@ def _approval_records_from_payload(payload: Any) -> list[dict[str, Any]]:
     return unique
 
 
-def _payload_artifacts(payload: Any) -> dict[str, Any]:
+def _payload_artifacts(
+    payload: Any,
+    conflicts: list[EvidenceConflict] | None = None,
+    source_label: str = "",
+) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     out: dict[str, Any] = {}
-    _merge_artifacts(out, _payload_authorization(payload))
+    _merge_artifacts(out, _payload_authorization(payload), conflicts, source_label)
     for key in ("parsed_actions", "tool_call", "deployment", "review", "approval"):
         if key in payload:
-            _merge_artifacts(out, {key: payload[key]})
-    _merge_artifacts(out, _cloudtrail_artifacts(payload))
-    _merge_artifacts(out, _payload_to_deployment(payload))
+            _merge_artifacts(out, {key: payload[key]}, conflicts, source_label)
+    _merge_artifacts(out, _cloudtrail_artifacts(payload), conflicts, source_label)
+    _merge_artifacts(out, _payload_to_deployment(payload), conflicts, source_label)
     review = _payload_review(payload)
     if review:
-        _merge_artifacts(out, {"review": review})
-    _merge_artifacts(out, _payload_to_approval(payload))
+        _merge_artifacts(out, {"review": review}, conflicts, source_label)
+    _merge_artifacts(out, _payload_to_approval(payload), conflicts, source_label)
     return out
 
 
@@ -930,6 +958,7 @@ def _file_observation(path: Path, payloads: list[Any], actions: list[ActionCandi
 def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanContext:
     artifacts: dict[str, Any] = {}
     warnings: list[str] = []
+    conflicts: list[EvidenceConflict] = []
     files_scanned: list[str] = []
     actions: list[ActionCandidate] = []
     approvals: list[dict[str, Any]] = []
@@ -940,9 +969,9 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
         policy = _load_json_file(policy_path, "policy")
         if not isinstance(policy, dict):
             raise ValueError("policy JSON root must be an object")
-        _merge_artifacts(artifacts, _authorization_from_policy(policy))
-        _merge_artifacts(artifacts, _review_from_policy(policy))
-        _merge_artifacts(artifacts, _approval_from_policy(policy))
+        _merge_artifacts(artifacts, _authorization_from_policy(policy), conflicts, str(policy_path))
+        _merge_artifacts(artifacts, _review_from_policy(policy), conflicts, str(policy_path))
+        _merge_artifacts(artifacts, _approval_from_policy(policy), conflicts, str(policy_path))
         approvals.extend(_approval_records_from_payload(policy))
         observations.append(FileObservation(
             path=str(policy_path),
@@ -971,7 +1000,12 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
         files_scanned.append(str(path))
         file_actions: list[ActionCandidate] = []
         for payload in payloads:
-            _merge_artifacts(artifacts, _payload_artifacts(payload))
+            _merge_artifacts(
+                artifacts,
+                _payload_artifacts(payload, conflicts, str(path)),
+                conflicts,
+                str(path),
+            )
             payload_actions = _payload_action_candidates(payload, str(path))
             file_actions.extend(payload_actions)
             actions.extend(payload_actions)
@@ -981,6 +1015,7 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
         artifacts=artifacts,
         files_scanned=files_scanned,
         warnings=warnings,
+        conflicts=conflicts,
         actions=actions,
         approvals=approvals,
         observations=observations,
@@ -1000,24 +1035,98 @@ def _missing_expected_paths(artifacts: dict[str, Any], expected_paths: list[str]
     ]
 
 
-def _authorization_binding_present(artifacts: dict[str, Any]) -> bool:
-    if not evidence_is_present(get_path(artifacts, AUTHORIZATION_RENDER_HASH_PATH)):
-        return False
-    if not evidence_is_present(get_path(artifacts, AUTHORIZATION_ACTIVE_PATH)):
-        return False
-    authorization_id = get_path(artifacts, AUTHORIZATION_DECISION_PATH)
-    tool_authorization_id = get_path(artifacts, TOOL_CALL_DECISION_PATH)
-    if not evidence_is_present(authorization_id) or not evidence_is_present(tool_authorization_id):
-        return False
-    return str(authorization_id) == str(tool_authorization_id)
+def _support_requirement_missing(artifacts: dict[str, Any], requirement: dict[str, Any]) -> bool:
+    path = requirement.get("path")
+    if isinstance(path, str):
+        presence = requirement.get("presence", "evidence_present")
+        if presence == "path_exists":
+            if not path_exists(artifacts, path):
+                return True
+        elif not evidence_is_present(get_path(artifacts, path)):
+            return True
+
+    all_of = requirement.get("all_of", [])
+    if isinstance(all_of, list):
+        for required_path in all_of:
+            if isinstance(required_path, str) and not evidence_is_present(get_path(artifacts, required_path)):
+                return True
+
+    same_value = requirement.get("same_value", [])
+    if isinstance(same_value, list) and len(same_value) == 2:
+        left = get_path(artifacts, str(same_value[0]))
+        right = get_path(artifacts, str(same_value[1]))
+        if not evidence_is_present(left) or not evidence_is_present(right):
+            return True
+        if str(left) != str(right):
+            return True
+    return False
 
 
-def _authorization_missing(artifacts: dict[str, Any], expected_paths: list[str]) -> list[str]:
-    missing = _missing_expected_paths(artifacts, expected_paths)
-    if not path_exists(artifacts, REVOCATION_PATH) and REVOCATION_PATH not in missing:
-        missing.append(REVOCATION_PATH)
-    if not _authorization_binding_present(artifacts):
-        missing.append(AUTHORIZATION_BINDING)
+def _missing_support_requirements(artifacts: dict[str, Any], requirements: list[dict[str, Any]]) -> list[str]:
+    missing = []
+    for requirement in requirements:
+        requirement_id = requirement.get("id")
+        if not isinstance(requirement_id, str) or not requirement_id:
+            continue
+        if _support_requirement_missing(artifacts, requirement) and requirement_id not in missing:
+            missing.append(requirement_id)
+    return missing
+
+
+def _support_requirement_paths(requirement: dict[str, Any]) -> list[str]:
+    paths: list[str] = []
+    path = requirement.get("path")
+    if isinstance(path, str):
+        paths.append(path)
+    for key in ("all_of", "same_value"):
+        raw = requirement.get(key)
+        if not isinstance(raw, list):
+            continue
+        paths.extend(item for item in raw if isinstance(item, str))
+    return paths
+
+
+def _claim_evidence_paths(config: dict[str, Any]) -> list[str]:
+    paths = [str(path) for path in config.get("expected_evidence", [])]
+    for requirement in config.get("support_requirements", []):
+        if isinstance(requirement, dict):
+            paths.extend(_support_requirement_paths(requirement))
+    out = []
+    for path in paths:
+        if path and path not in out:
+            out.append(path)
+    return out
+
+
+def _path_overlaps(left: str, right: str) -> bool:
+    return left == right or left.startswith(right + ".") or right.startswith(left + ".")
+
+
+def _conflict_excluded(conflict: EvidenceConflict, excluded_prefixes: tuple[str, ...]) -> bool:
+    return any(conflict.path == prefix or conflict.path.startswith(prefix + ".") for prefix in excluded_prefixes)
+
+
+def _claim_conflicts(
+    config: dict[str, Any],
+    conflicts: list[EvidenceConflict],
+    excluded_prefixes: tuple[str, ...] = (),
+) -> list[str]:
+    relevant_paths = _claim_evidence_paths(config)
+    out = []
+    for conflict in conflicts:
+        if _conflict_excluded(conflict, excluded_prefixes):
+            continue
+        if any(_path_overlaps(conflict.path, relevant) for relevant in relevant_paths):
+            if conflict.path not in out:
+                out.append(conflict.path)
+    return sorted(out)
+
+
+def _claim_missing(artifacts: dict[str, Any], config: dict[str, Any]) -> list[str]:
+    missing = _missing_expected_paths(artifacts, list(config["expected_evidence"]))
+    for requirement in _missing_support_requirements(artifacts, list(config.get("support_requirements", []))):
+        if requirement not in missing:
+            missing.append(requirement)
     return missing
 
 
@@ -1084,6 +1193,7 @@ def _match_approval_for_action(action: ActionCandidate, approvals: list[dict[str
 
 
 ACTION_LEVEL_CLAIMS = ("authorization_bound_action", "human_approval_before_external_side_effect")
+ACTION_SPECIFIC_CONFLICT_PREFIXES = ("parsed_actions", "tool_call", "approval")
 
 
 def _action_readiness(
@@ -1096,22 +1206,25 @@ def _action_readiness(
     rows = []
     for action in context.actions:
         artifacts = deepcopy(base)
-        _merge_artifacts(artifacts, action.artifacts)
+        action_conflicts = [
+            conflict
+            for conflict in context.conflicts
+            if not _conflict_excluded(conflict, ACTION_SPECIFIC_CONFLICT_PREFIXES)
+        ]
+        _merge_artifacts(artifacts, action.artifacts, action_conflicts, action.source)
         approval = _match_approval_for_action(action, context.approvals)
         if approval is not None:
-            _merge_artifacts(artifacts, {"approval": approval})
+            _merge_artifacts(artifacts, {"approval": approval}, action_conflicts, action.source)
 
         readiness: list[ClaimReadiness] = []
         for claim in action_claims:
-            expected = list(registry[claim]["expected_evidence"])
-            if claim == "authorization_bound_action":
-                missing = _authorization_missing(artifacts, expected)
-            else:
-                missing = _missing_expected_paths(artifacts, expected)
+            missing = _claim_missing(artifacts, registry[claim])
+            conflicts = _claim_conflicts(registry[claim], action_conflicts)
             readiness.append(ClaimReadiness(
                 claim=claim,
-                can_decide=not missing,
+                can_decide=not missing and not conflicts,
                 missing=missing,
+                conflicts=conflicts,
             ))
         can_decide = [item.claim for item in readiness if item.can_decide]
         cannot_decide = [item for item in readiness if not item.can_decide]
@@ -1153,12 +1266,14 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
     inferred = _infer_claims(context)
     readiness: list[ClaimReadiness] = []
     for claim in inferred:
-        expected = list(registry[claim]["expected_evidence"])
-        if claim == "authorization_bound_action":
-            missing = _authorization_missing(artifacts, expected)
-        else:
-            missing = _missing_expected_paths(artifacts, expected)
-        readiness.append(ClaimReadiness(claim=claim, can_decide=not missing, missing=missing))
+        missing = _claim_missing(artifacts, registry[claim])
+        conflicts = _claim_conflicts(registry[claim], context.conflicts)
+        readiness.append(ClaimReadiness(
+            claim=claim,
+            can_decide=not missing and not conflicts,
+            missing=missing,
+            conflicts=conflicts,
+        ))
 
     can_decide = [item.claim for item in readiness if item.can_decide]
     cannot_decide = [item for item in readiness if not item.can_decide]
@@ -1170,6 +1285,7 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
         cannot_decide=cannot_decide,
         probeable_next=_probeable_next(cannot_decide),
         warnings=context.warnings,
+        conflicts=context.conflicts,
         actions=action_rows,
         observations=context.observations,
         punch_list=_punch_list(cannot_decide, action_rows),
@@ -1247,11 +1363,26 @@ def format_scan_text(result: ScanResult) -> str:
                 lines.append(f"  - READY {label}{tool}")
             else:
                 missing = []
+                conflicts = []
                 for item in action.cannot_decide:
                     missing.extend(item.missing)
-                lines.append(f"  - BLOCKED {label}{tool}: missing {', '.join(missing)}")
+                    conflicts.extend(item.conflicts)
+                problems = []
+                if missing:
+                    problems.append(f"missing {', '.join(missing)}")
+                if conflicts:
+                    problems.append(f"conflicting {', '.join(sorted(set(conflicts)))}")
+                lines.append(f"  - BLOCKED {label}{tool}: {'; '.join(problems)}")
     else:
         lines.append("- no side-effect actions recognized")
+
+    if result.conflicts:
+        lines.extend(["", "Evidence conflicts:"])
+        for conflict in result.conflicts:
+            source = f" from {conflict.source}" if conflict.source else ""
+            lines.append(
+                f"- {conflict.path}: {conflict.existing!r} vs {conflict.incoming!r}{source}"
+            )
 
     lines.extend(["", "Top missing evidence:"])
     if missing_counts:
@@ -1278,6 +1409,8 @@ def format_scan_text(result: ScanResult) -> str:
         "- This is a readiness scan, not a receipt verdict.",
         "- Missing evidence means unknown, not contradicted.",
     ])
+    if result.conflicts:
+        lines.append("- Conflicting evidence blocks readiness until the source logs are reconciled.")
 
     if result.warnings:
         lines.extend(["", "Warnings:"])
@@ -1335,6 +1468,7 @@ def build_scan_report(result: ScanResult) -> dict[str, Any]:
         "cannot_decide": [item.as_dict() for item in result.cannot_decide],
         "detected_inputs": [observation.as_dict() for observation in result.observations],
         "missing_evidence": _missing_groups(result),
+        "evidence_conflicts": [conflict.as_dict() for conflict in result.conflicts],
         "punch_list": result.punch_list,
         "warnings": result.warnings,
         "actions": [action.as_dict() for action in result.actions],
@@ -1424,21 +1558,36 @@ def format_scan_report_markdown(result: ScanResult) -> str:
     else:
         lines.append("- No missing evidence detected for the inferred claim set.")
 
+    if report["evidence_conflicts"]:
+        lines.extend(["", "## Evidence Conflicts", ""])
+        lines.extend([
+            "| Path | Existing | Incoming | Source |",
+            "| --- | --- | --- | --- |",
+        ])
+        for conflict in report["evidence_conflicts"]:
+            lines.append(
+                f"| `{conflict['path']}` | `{conflict['existing']}` | "
+                f"`{conflict['incoming']}` | `{conflict['source'] or '-'}` |"
+            )
+
     lines.extend(["## Action Readiness", ""])
     if result.actions:
         lines.extend([
-            "| Action | Tool | Source kind | Status | Missing evidence |",
-            "| --- | --- | --- | --- | --- |",
+            "| Action | Tool | Source kind | Status | Missing evidence | Conflicts |",
+            "| --- | --- | --- | --- | --- | --- |",
         ])
         for action in result.actions:
             missing_paths = []
+            conflict_paths = []
             for item in action.cannot_decide:
                 missing_paths.extend(item.missing)
+                conflict_paths.extend(item.conflicts)
             status = "receipt-ready" if action.decidable else "blocked"
             lines.append(
                 f"| `{action.action_id or '(missing action_id)'}` | "
                 f"{action.tool or '-'} | {action.source_kind} | {status} | "
-                f"{', '.join(f'`{path}`' for path in missing_paths) or '-'} |"
+                f"{', '.join(f'`{path}`' for path in missing_paths) or '-'} | "
+                f"{', '.join(f'`{path}`' for path in sorted(set(conflict_paths))) or '-'} |"
             )
     else:
         lines.append("- No side-effect actions recognized.")
@@ -1453,6 +1602,7 @@ def format_scan_report_markdown(result: ScanResult) -> str:
         "",
         "- This report is a readiness scan, not a receipt verdict.",
         "- Missing evidence means `unknown`, not `contradicted`.",
+        "- Conflicting evidence blocks readiness until the source logs are reconciled.",
         "- The report does not prove model intent, safety, custody, authenticity, or general system reliability.",
         "",
     ])

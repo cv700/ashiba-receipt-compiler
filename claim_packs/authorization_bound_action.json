@@ -19,6 +19,26 @@
     "parsed_actions",
     "tool_call"
   ],
+  "support_requirements": [
+    {
+      "id": "authorization.revoked_at",
+      "path": "authorization.revoked_at",
+      "presence": "path_exists"
+    },
+    {
+      "id": "authorization-to-action binding",
+      "all_of": [
+        "authorization.render_time_grant_hash",
+        "authorization.execution_time_decision_id",
+        "authorization.grant_active_at_execution",
+        "tool_call.invocation_context.decision_id"
+      ],
+      "same_value": [
+        "authorization.execution_time_decision_id",
+        "tool_call.invocation_context.decision_id"
+      ]
+    }
+  ],
   "passes": [
     "utc_timestamp_format",
     "expected_evidence_absence",

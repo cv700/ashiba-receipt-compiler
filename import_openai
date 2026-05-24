@@ -31,6 +31,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from importer_common import authorization_from_policy
+
 
 def _epoch_to_utc(epoch_seconds: int | float) -> str:
     """Convert an evidence-backed epoch timestamp to ISO 8601 UTC with Z."""
@@ -145,24 +147,6 @@ def _infer_executed_at(response: dict[str, Any], override: str | None = None) ->
     )
 
 
-def _build_authorization(policy: dict[str, Any]) -> dict[str, Any]:
-    """Build the authorization artifact from the policy file."""
-    grant_id = policy.get("grant_id", f"grant-{uuid.uuid4().hex[:8]}")
-    return {
-        "authorization": {
-            "grant_id": grant_id,
-            "principal": policy.get("principal", "unknown"),
-            "delegated_to": policy.get("delegated_to", "unknown"),
-            "scope": policy.get("scope", []),
-            "grant_valid_from": policy.get("grant_valid_from", ""),
-            "grant_valid_until": policy.get("grant_valid_until", ""),
-            "revoked_at": policy.get("revoked_at", None),
-            "issuer": policy.get("issuer", "policy_file"),
-            "grant_context": policy.get("grant_context", ""),
-        }
-    }
-
-
 def _tool_call_to_parsed_action(tool_call: dict[str, Any], executed_at: str) -> dict[str, Any]:
     """Convert one extracted OpenAI call into a parsed_action."""
     return {
@@ -217,7 +201,7 @@ def import_response(
     tool_call = tool_calls[action_index]
     executed_at = _infer_executed_at(response, executed_at_override)
     return {
-        **_build_authorization(policy),
+        **authorization_from_policy(policy),
         "parsed_actions": [_tool_call_to_parsed_action(tool_call, executed_at)],
         **_build_tool_call(tool_call, response),
     }

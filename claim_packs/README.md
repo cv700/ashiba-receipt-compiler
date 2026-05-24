@@ -8,8 +8,17 @@ Each `*.json` file declares:
 - `claim`: `id` and human-readable `text`.
 - `expected_evidence`: dotted artifact paths required for support.
 - `applicability_evidence`: paths that instantiate the artifact class.
+- `support_requirements`: optional extra support/readiness contracts. A
+  requirement can use `path` with `presence: "path_exists"` when explicit null is
+  meaningful, `all_of` for grouped required fields, and `same_value` for a
+  cross-boundary equality check.
 - `passes`: ordered deterministic pass IDs from `passes.py`.
 - `pass_params`: optional per-pass parameters.
+
+Pass IDs are validated against `PassSpec` metadata in `passes.py`. If a pass
+declares `required_paths`, the claim pack must cover those paths through either
+`expected_evidence` or `support_requirements`; otherwise the pack fails closed
+at registry load time.
 
 The compiler loads this directory by default and falls back to built-in copies
 only if a default pack is absent.

@@ -263,6 +263,7 @@ def main() -> int:
                     data,
                     artifact_manifest=manifest,
                     input_set_hash=input_hash,
+                    claim_types=registry,
                 ).to_dict()
             ]
         else:

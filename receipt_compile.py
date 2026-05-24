@@ -21,7 +21,7 @@ from typing import Any
 from boundary import generate_boundary
 from claim_types import CLAIM_TYPES, build_claim_registry, get_claim_type, list_claim_types
 from constants import CLAIM_APPLICABILITY_PASS_ID, COMPILER_VERSION, PASS_NOT_APPLICABLE, UNKNOWN
-from passes import ORDERED_PASSES, get_pass
+from passes import get_pass
 from receipt_explain import format_receipts_explanation
 from receipt_ir import ReceiptIR, utc_now
 from verdict import generate_verdict
@@ -294,20 +294,55 @@ def _run_pass_sequence(
     return _finalize_receipt(ir)
 
 
+def _bundle_claim_type_name(
+    bundle: dict[str, Any],
+    claim_types: dict[str, dict[str, Any]] | None = None,
+) -> str:
+    """Resolve a legacy bundle claim to the canonical claim-pack registry."""
+    registry = claim_types or CLAIM_TYPES
+    explicit = bundle.get("claim_type")
+    if isinstance(explicit, str) and explicit:
+        get_claim_type(explicit, registry)
+        return explicit
+
+    claim = bundle.get("claim")
+    claim_id = claim.get("id") if isinstance(claim, dict) else None
+    if isinstance(claim_id, str) and claim_id:
+        matches = sorted(
+            name
+            for name, config in registry.items()
+            if isinstance(config.get("claim"), dict) and config["claim"].get("id") == claim_id
+        )
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise ValueError(f"bundle claim id {claim_id!r} matches multiple claim types: {', '.join(matches)}")
+
+    raise ValueError(
+        "legacy bundle claim does not match a known claim pack; "
+        "add claim_type or convert the bundle to artifact-directory form"
+    )
+
+
 def compile_bundle(
     bundle: dict[str, Any],
     artifact_manifest: list[dict[str, Any]] | None = None,
     input_set_hash: str = "",
+    claim_types: dict[str, dict[str, Any]] | None = None,
 ) -> ReceiptIR:
-    """v1 compilation: single bundle with embedded claim + expected_evidence + artifacts."""
-    ir = ReceiptIR.from_bundle(
-        bundle,
+    """v1 compilation: single bundle routed through the canonical claim-pack path."""
+    artifacts = bundle.get("artifacts")
+    if not isinstance(artifacts, dict):
+        artifacts = {}
+    execution_context = bundle.get("execution_context")
+    return compile_claim(
+        artifacts=artifacts,
+        claim_type_name=_bundle_claim_type_name(bundle, claim_types),
         artifact_manifest=artifact_manifest,
         input_set_hash=input_set_hash,
+        execution_context=execution_context if isinstance(execution_context, dict) else {},
+        claim_types=claim_types,
     )
-
-    pass_ids = [compiler_pass.__name__ for compiler_pass in ORDERED_PASSES]
-    return _run_pass_sequence(ir, pass_ids)
 
 
 def compile_claim(
@@ -441,7 +476,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         active_claim_types: dict[str, dict[str, Any]] | None = None
-        if args.list_claim_types or args.artifacts_dir:
+        if args.list_claim_types or args.artifacts_dir or args.bundle or args.claim_packs_dir:
             active_claim_types = build_claim_registry(args.claim_packs_dir)
 
         if args.list_claim_types:
@@ -458,7 +493,12 @@ def main() -> int:
             # v1 mode: single bundle file
             bundle = load_json(args.bundle)
             artifact_manifest, input_hash = bundle_manifest(args.bundle)
-            receipt = compile_bundle(bundle, artifact_manifest=artifact_manifest, input_set_hash=input_hash)
+            receipt = compile_bundle(
+                bundle,
+                artifact_manifest=artifact_manifest,
+                input_set_hash=input_hash,
+                claim_types=active_claim_types,
+            )
             receipts = [receipt.to_dict()]
 
         else:

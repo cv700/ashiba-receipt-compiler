@@ -24,6 +24,7 @@ from demo_gallery import run_gallery
 from passes import (
     dcgm_diag_result,
     ecc_threshold_check,
+    get_pass_spec,
     grant_binding_present,
     gpu_node_id_match,
     gpu_serial_cross_reference,
@@ -227,13 +228,28 @@ def verdict_word_in_directory(directory: str) -> str | None:
 
 def test_v1_bundles() -> None:
     supported = run_json("--bundle", "examples/auth_grant_supported.json")
-    assert_receipt(supported, SUPPORTED, 5, 0)
+    assert_receipt(supported, SUPPORTED, 7, 0)
     assert supported["artifact_manifest"][0]["source"] == "bundle"
     assert supported["artifact_manifest"][0]["filename"] == "auth_grant_supported.json"
     assert supported["artifact_manifest"][0]["relative_path"] == "auth_grant_supported.json"
     assert validate_receipt(supported, source_root=ROOT / "examples") == []
-    assert_receipt(run_json("--bundle", "examples/auth_grant_contradicted.json"), CONTRADICTED, 5, 0)
-    assert_receipt(run_json("--bundle", "examples/auth_grant_unknown.json"), UNKNOWN, 5, 2)
+    assert_receipt(run_json("--bundle", "examples/auth_grant_contradicted.json"), CONTRADICTED, 7, 0)
+    assert_receipt(run_json("--bundle", "examples/auth_grant_unknown.json"), UNKNOWN, 7, 2)
+
+    no_binding_bundle = json.loads((ROOT / "examples" / "auth_grant_supported.json").read_text(encoding="utf-8"))
+    authorization = no_binding_bundle["artifacts"]["authorization"]
+    authorization.pop("render_time_grant_hash")
+    authorization.pop("execution_time_decision_id")
+    authorization.pop("grant_active_at_execution")
+    no_binding_bundle["artifacts"]["tool_call"].pop("invocation_context")
+    with tempfile.TemporaryDirectory() as tmp:
+        no_binding_path = Path(tmp) / "no_binding_bundle.json"
+        no_binding_path.write_text(json.dumps(no_binding_bundle), encoding="utf-8")
+        no_binding = run_json("--bundle", str(no_binding_path))
+    assert_receipt(no_binding, UNKNOWN, 7, 0)
+    binding_pass = [result for result in no_binding["pass_results"] if result["pass_id"] == "grant_binding_present"][0]
+    assert binding_pass["status"] == UNKNOWN
+    assert "missing authorization field" in binding_pass["detail"]
 
 
 def test_v2_explicit_claim_types() -> None:
@@ -419,6 +435,26 @@ def test_v6_external_claim_pack_registry() -> None:
     default_pack_list = run_text("--list-claim-types", "--claim-packs-dir", "claim_packs")
     assert "authorization_bound_action" in default_pack_list
 
+    auth_pack = build_claim_registry()["authorization_bound_action"]
+    support_requirements = {item["id"]: item for item in auth_pack["support_requirements"]}
+    assert support_requirements["authorization.revoked_at"]["presence"] == "path_exists"
+    binding = support_requirements["authorization-to-action binding"]
+    assert binding["all_of"] == [
+        "authorization.render_time_grant_hash",
+        "authorization.execution_time_decision_id",
+        "authorization.grant_active_at_execution",
+        "tool_call.invocation_context.decision_id",
+    ]
+    assert binding["same_value"] == [
+        "authorization.execution_time_decision_id",
+        "tool_call.invocation_context.decision_id",
+    ]
+    binding_spec = get_pass_spec("grant_binding_present")
+    assert binding_spec.family == "authorization"
+    assert binding_spec.scope == "action"
+    assert set(binding_spec.required_paths) <= set(binding["all_of"])
+    assert "authorization.grant_active_at_execution" in binding_spec.contradiction_paths
+
     external_pack = {
         "schema_version": "receipt-claim-pack-v0.1",
         "name": "authz_external_pack",
@@ -437,6 +473,13 @@ def test_v6_external_claim_pack_registry() -> None:
             "authorization",
             "parsed_actions",
             "tool_call",
+        ],
+        "support_requirements": [
+            {
+                "id": "authorization.revoked_at",
+                "path": "authorization.revoked_at",
+                "presence": "path_exists",
+            }
         ],
         "passes": [
             "utc_timestamp_format",
@@ -495,14 +538,19 @@ def test_v6_external_claim_pack_registry() -> None:
         pack_dir = Path(tmp)
         (pack_dir / "invalid_unknown_pass.json").write_text(json.dumps(invalid_pack), encoding="utf-8")
 
-        # Bundle mode does not need claim packs, so unrelated bad pack dirs are ignored.
-        bundle_receipt = run_json(
+        # Bundle mode now resolves through claim packs, so invalid packs fail closed here too.
+        bundle_proc = run_process(
             "--bundle",
             "examples/auth_grant_supported.json",
             "--claim-packs-dir",
             str(pack_dir),
         )
-        assert_receipt(bundle_receipt, SUPPORTED, 5, 0)
+        assert bundle_proc.returncode == 1
+        assert "Traceback" not in bundle_proc.stdout
+        assert "Traceback" not in bundle_proc.stderr
+        bundle_error = json.loads(bundle_proc.stdout)
+        assert bundle_error["verdict"]["status"] == UNKNOWN
+        assert "definitely_not_a_registered_pass" in bundle_error["compiler_errors"][0]["detail"]
 
         # Claim-pack failures produce structured compiler errors, not Python tracebacks.
         proc = run_process("--list-claim-types", "--claim-packs-dir", str(pack_dir))
@@ -512,6 +560,32 @@ def test_v6_external_claim_pack_registry() -> None:
         error = json.loads(proc.stdout)
         assert error["verdict"]["status"] == UNKNOWN
         assert "definitely_not_a_registered_pass" in error["compiler_errors"][0]["detail"]
+
+    missing_binding_contract = dict(external_pack)
+    missing_binding_contract["name"] = "missing_binding_contract"
+    missing_binding_contract["claim"] = {
+        "id": "claim.missing_binding_contract",
+        "text": "This invalid pack names the binding pass but omits its evidence contract.",
+    }
+    missing_binding_contract["passes"] = [
+        "utc_timestamp_format",
+        "expected_evidence_absence",
+        "grant_binding_present",
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        pack_dir = Path(tmp)
+        (pack_dir / "missing_binding_contract.json").write_text(
+            json.dumps(missing_binding_contract),
+            encoding="utf-8",
+        )
+        proc = run_process("--list-claim-types", "--claim-packs-dir", str(pack_dir))
+        assert proc.returncode == 1
+        assert "Traceback" not in proc.stdout
+        assert "Traceback" not in proc.stderr
+        error = json.loads(proc.stdout)
+        assert error["verdict"]["status"] == UNKNOWN
+        assert "grant_binding_present" in error["compiler_errors"][0]["detail"]
+        assert "authorization.execution_time_decision_id" in error["compiler_errors"][0]["detail"]
 
     duplicate_pack = dict(external_pack)
     duplicate_pack["name"] = "authorization_bound_action"
@@ -611,7 +685,7 @@ def _complete_gpu_context() -> dict:
 
 def test_v7_execution_context_absent_is_noop() -> None:
     receipt = run_json("--bundle", "examples/auth_grant_supported.json")
-    assert_receipt(receipt, SUPPORTED, 5, 0)
+    assert_receipt(receipt, SUPPORTED, 7, 0)
     assert "execution_context" not in receipt
     assert all(result["pass_id"] != "execution_context_disclosure" for result in receipt["pass_results"])
     assert not any("Execution context" in line for line in receipt["boundary"]["does_not_support"])
@@ -623,7 +697,7 @@ def test_v7_execution_context_round_trip_and_unknown_schema() -> None:
     receipt = compile_bundle(bundle).to_dict()
     assert receipt["execution_context"] == bundle["execution_context"]
     assert receipt["verdict"]["status"] == SUPPORTED
-    assert len(receipt["pass_results"]) == 6
+    assert len(receipt["pass_results"]) == 8
     assert len(receipt.get("absence", [])) == 0
     assert len(receipt.get("compiler_errors", [])) == 0
 
@@ -835,6 +909,31 @@ def test_grant_binding_cross_boundary_pass_units() -> None:
     assert missing_result.verdict_effect == UNKNOWN
     assert missing_result.metadata["missing_expected_paths"] == ["tool_call.invocation_context.decision_id"]
 
+    missing_active = _pass_ir({
+        "authorization": {
+            "render_time_grant_hash": "sha256:test-grant",
+            "execution_time_decision_id": "decision-123",
+        },
+        "tool_call": {"invocation_context": {"decision_id": "decision-123"}},
+    })
+    missing_active_result = grant_binding_present(missing_active)
+    assert missing_active_result.status == UNKNOWN
+    assert missing_active_result.verdict_effect == UNKNOWN
+    assert missing_active_result.metadata["missing_expected_paths"] == ["authorization.grant_active_at_execution"]
+
+    inactive = _pass_ir({
+        "authorization": {
+            "render_time_grant_hash": "sha256:test-grant",
+            "execution_time_decision_id": "decision-123",
+            "grant_active_at_execution": False,
+        },
+        "tool_call": {"invocation_context": {"decision_id": "decision-123"}},
+    })
+    inactive_result = grant_binding_present(inactive)
+    assert inactive_result.status == PASS_CONTRADICTED
+    assert inactive_result.verdict_effect == CONTRADICTED
+    assert inactive_result.metadata["field"] == "authorization.grant_active_at_execution"
+
     mismatched = _pass_ir({
         "authorization": {
             "render_time_grant_hash": "sha256:test-grant",
@@ -846,6 +945,41 @@ def test_grant_binding_cross_boundary_pass_units() -> None:
     mismatch_result = grant_binding_present(mismatched)
     assert mismatch_result.status == PASS_CONTRADICTED
     assert mismatch_result.verdict_effect == CONTRADICTED
+
+
+def test_inactive_grant_execution_flag_contradicts_authorization_claim() -> None:
+    receipt = compile_claim(
+        {
+            "authorization": {
+                "grant_id": "grant-inactive-at-execution",
+                "grant_valid_from": "2026-05-14T16:00:00Z",
+                "grant_valid_until": "2026-05-14T18:00:00Z",
+                "revoked_at": None,
+                "render_time_grant_hash": "sha256:test-grant",
+                "execution_time_decision_id": "decision-inactive",
+                "grant_active_at_execution": False,
+            },
+            "parsed_actions": [
+                {
+                    "action_id": "action-inactive",
+                    "tool": "stripe.charges.create",
+                    "executed_at": "2026-05-14T17:01:30Z",
+                    "source_kind": "model_output",
+                }
+            ],
+            "tool_call": {
+                "action_id": "action-inactive",
+                "tool_name": "stripe.charges.create",
+                "invocation_context": {"decision_id": "decision-inactive"},
+            },
+        },
+        "authorization_bound_action",
+    )
+    assert receipt.verdict["status"] == CONTRADICTED
+    binding_pass = [result for result in receipt.pass_results if result["pass_id"] == "grant_binding_present"][0]
+    assert binding_pass["status"] == PASS_CONTRADICTED
+    assert binding_pass["verdict_effect"] == CONTRADICTED
+    assert "grant_active_at_execution is false" in binding_pass["detail"]
 
 
 def test_gpu_collateral_pass_units() -> None:
@@ -1863,6 +1997,30 @@ def test_ashiba_scan_compile_authorization_invariant() -> None:
     assert compiled.stdout.strip() == "UNKNOWN"
 
 
+def test_importer_preserves_scanner_ready_authorization_binding() -> None:
+    root = Path("readiness_packets/authorization_ready_no_deployment_2026-05-18")
+
+    scan = run_ashiba_process("scan", str(root / "logs"), "--policy", str(root / "policy.json"), "--json")
+    assert scan.returncode == 0, scan.stderr
+    assert "authorization_bound_action" in json.loads(scan.stdout)["can_decide"]
+
+    imported = run_import_cloudtrail_process(
+        str(root / "logs" / "cloudtrail_lambda_invoke.json"),
+        "--policy",
+        str(root / "policy.json"),
+    )
+    assert imported.returncode == 0, imported.stderr
+    artifacts = json.loads(imported.stdout)
+    assert artifacts["authorization"]["render_time_grant_hash"] == "sha256:authorizationreadygrant"
+    assert artifacts["authorization"]["execution_time_decision_id"] == "authz-decision-approved-charge"
+    assert artifacts["authorization"]["grant_active_at_execution"] is True
+    assert artifacts["tool_call"]["invocation_context"]["decision_id"] == "authz-decision-approved-charge"
+
+    compiled = run_compile_process("-", "--claim-type", "authorization_bound_action", "--verdict", input_text=imported.stdout)
+    assert compiled.returncode == 0, compiled.stderr
+    assert compiled.stdout.strip() == "SUPPORTED"
+
+
 def test_ashiba_scan_does_not_infer_human_approval_from_actions_only() -> None:
     proc = run_ashiba_process(
         "scan",
@@ -1932,6 +2090,72 @@ def test_ashiba_scan_punch_list_includes_missing_approval_probes() -> None:
         assert "log human approval timestamp as UTC (1 action blocked)" in result["punch_list"]
         assert "log approval decision (approved/rejected) (1 action blocked)" in result["punch_list"]
         assert "log the identity of the human approver (1 action blocked)" in result["punch_list"]
+
+
+def test_ashiba_scan_surfaces_conflicting_scalar_evidence() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        logs = root / "logs"
+        logs.mkdir()
+        policy = root / "policy.json"
+        policy.write_text(
+            json.dumps({
+                "grant_id": "grant-conflict",
+                "grant_valid_from": "2026-05-14T16:00:00Z",
+                "grant_valid_until": "2026-05-14T18:00:00Z",
+                "revoked_at": None,
+                "render_time_grant_hash": "sha256:conflict-grant",
+                "execution_time_decision_id": "authz-decision-123",
+                "grant_active_at_execution": True,
+            }),
+            encoding="utf-8",
+        )
+        (logs / "cloudtrail.json").write_text(
+            json.dumps({
+                "Records": [
+                    {
+                        "eventID": "act-conflicting-authz",
+                        "eventSource": "lambda.amazonaws.com",
+                        "eventName": "Invoke",
+                        "eventTime": "2026-05-14T17:01:30Z",
+                        "requestParameters": {"decision_id": "authz-decision-123"},
+                    }
+                ]
+            }),
+            encoding="utf-8",
+        )
+        (logs / "authorization_conflict.json").write_text(
+            json.dumps({
+                "authorization": {
+                    "execution_time_decision_id": "authz-decision-999",
+                }
+            }),
+            encoding="utf-8",
+        )
+
+        proc = run_ashiba_process("scan", str(logs), "--policy", str(policy), "--json")
+        assert proc.returncode == 0, proc.stderr
+        result = json.loads(proc.stdout)
+        assert result["evidence_conflicts"]
+        conflict = result["evidence_conflicts"][0]
+        assert conflict["path"] == "authorization.execution_time_decision_id"
+        assert conflict["existing"] == "authz-decision-123"
+        assert conflict["incoming"] == "authz-decision-999"
+        assert "authorization_bound_action" in {item["claim"] for item in result["cannot_decide"]}
+        auth_gap = [item for item in result["cannot_decide"] if item["claim"] == "authorization_bound_action"][0]
+        assert auth_gap["missing"] == []
+        assert auth_gap["conflicts"] == ["authorization.execution_time_decision_id"]
+        action_gap = [
+            item
+            for item in result["actions"][0]["cannot_decide"]
+            if item["claim"] == "authorization_bound_action"
+        ][0]
+        assert action_gap["conflicts"] == ["authorization.execution_time_decision_id"]
+
+        text = run_ashiba_process("scan", str(logs), "--policy", str(policy))
+        assert text.returncode == 0, text.stderr
+        assert "Evidence conflicts:" in text.stdout
+        assert "authorization.execution_time_decision_id" in text.stdout
 
 
 def test_ashiba_scan_detects_common_action_formats() -> None:
@@ -2140,7 +2364,9 @@ def main() -> int:
     test_v7_complete_gpu_execution_context_adds_no_negative_context_disclosures()
     test_v7_execution_context_file_loaded_outside_artifacts()
     test_gpu_collateral_gallery_fixtures()
+    test_grant_binding_cross_boundary_pass_units()
     test_gpu_collateral_pass_units()
+    test_inactive_grant_execution_flag_contradicts_authorization_claim()
     test_one_line_compile_wrapper()
     test_one_line_compile_directory_errors_do_not_traceback()
     test_gap_card_and_ci_outputs()
@@ -2163,8 +2389,10 @@ def main() -> int:
     test_ashiba_scan_action_readiness_json()
     test_ashiba_scan_requires_cross_boundary_authorization_decision_id()
     test_ashiba_scan_compile_authorization_invariant()
+    test_importer_preserves_scanner_ready_authorization_binding()
     test_ashiba_scan_does_not_infer_human_approval_from_actions_only()
     test_ashiba_scan_punch_list_includes_missing_approval_probes()
+    test_ashiba_scan_surfaces_conflicting_scalar_evidence()
     test_ashiba_scan_detects_common_action_formats()
     test_ashiba_scan_invalid_inputs_exit_nonzero()
     test_demo_30s_script()

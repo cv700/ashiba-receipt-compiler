@@ -165,10 +165,35 @@ def authorization_from_policy(policy: dict[str, Any] | None) -> dict[str, Any]:
         "issuer",
         "grant_context",
         "decision_id",
+        "render_time_grant_hash",
+        "execution_time_decision_id",
+        "grant_active_at_execution",
     ):
         if key in policy:
             authorization[key] = policy[key]
+    if "execution_time_decision_id" not in authorization and "decision_id" in authorization:
+        authorization["execution_time_decision_id"] = authorization["decision_id"]
     return {"authorization": authorization} if authorization else {}
+
+
+def authorization_decision_id_from_fields(*fields: dict[str, Any]) -> Any:
+    """Find the action-side authorization decision id in common log shapes."""
+    for field in fields:
+        if not isinstance(field, dict):
+            continue
+        value = first_present(
+            field.get("authorization.execution_time_decision_id"),
+            field.get("authorization.decision_id"),
+            field.get("authorization_decision_id"),
+            field.get("authorizationDecisionId"),
+            field.get("authz_decision_id"),
+            field.get("authzDecisionId"),
+            field.get("decision_id"),
+            field.get("decisionId"),
+        )
+        if value is not None:
+            return value
+    return None
 
 
 def write_artifacts(out_dir: Path, merged: dict[str, Any]) -> None:

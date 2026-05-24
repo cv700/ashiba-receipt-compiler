@@ -18,6 +18,7 @@ from typing import Any
 
 from importer_common import (
     authorization_from_policy,
+    authorization_decision_id_from_fields,
     first_present,
     load_json,
     load_policy,
@@ -46,6 +47,21 @@ def _event_to_artifacts(event: dict[str, Any], policy: dict[str, Any] | None, ex
     action_id = require_str(first_present(event.get("eventID"), event.get("requestID"), event.get("eventId")), "eventID")
     executed_at = require_timestamp(first_present(executed_at_override, event.get("eventTime")), "eventTime")
     tool_name = f"{event_source}:{event_name}"
+    request_parameters = event.get("requestParameters") if isinstance(event.get("requestParameters"), dict) else {}
+    response_elements = event.get("responseElements") if isinstance(event.get("responseElements"), dict) else {}
+    additional_event_data = event.get("additionalEventData") if isinstance(event.get("additionalEventData"), dict) else {}
+    decision_id = authorization_decision_id_from_fields(event, request_parameters, response_elements, additional_event_data)
+    invocation_context = {
+        "source": "cloudtrail",
+        "event_source": event_source,
+        "event_name": event_name,
+        "aws_region": event.get("awsRegion"),
+        "account_id": nested_get(event, "userIdentity", "accountId"),
+        "actor": nested_get(event, "userIdentity", "arn"),
+        "error_code": event.get("errorCode"),
+    }
+    if decision_id is not None:
+        invocation_context["decision_id"] = str(decision_id)
     return {
         **authorization_from_policy(policy),
         "parsed_actions": [
@@ -54,22 +70,14 @@ def _event_to_artifacts(event: dict[str, Any], policy: dict[str, Any] | None, ex
                 "tool": tool_name,
                 "executed_at": executed_at,
                 "source_kind": "cloudtrail_event",
-                "parameters": event.get("requestParameters", {}),
+                "parameters": request_parameters,
             }
         ],
         "tool_call": {
             "action_id": action_id,
             "tool_name": tool_name,
             "tool_version": "aws-cloudtrail",
-            "invocation_context": {
-                "source": "cloudtrail",
-                "event_source": event_source,
-                "event_name": event_name,
-                "aws_region": event.get("awsRegion"),
-                "account_id": nested_get(event, "userIdentity", "accountId"),
-                "actor": nested_get(event, "userIdentity", "arn"),
-                "error_code": event.get("errorCode"),
-            },
+            "invocation_context": invocation_context,
         },
     }
 

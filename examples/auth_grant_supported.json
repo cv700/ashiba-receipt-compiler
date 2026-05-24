@@ -15,7 +15,10 @@
       "grant_id": "grant-abc-123",
       "grant_valid_from": "2026-05-15T10:00:00Z",
       "grant_valid_until": "2026-05-15T18:00:00Z",
-      "revoked_at": null
+      "revoked_at": null,
+      "render_time_grant_hash": "sha256:grant-abc-123",
+      "execution_time_decision_id": "decision-act-001",
+      "grant_active_at_execution": true
     },
     "parsed_actions": [
       {
@@ -27,7 +30,10 @@
     ],
     "tool_call": {
       "action_id": "act-001",
-      "tool_schema_hash": "sha256:abc123"
+      "tool_schema_hash": "sha256:abc123",
+      "invocation_context": {
+        "decision_id": "decision-act-001"
+      }
     }
   }
 }

@@ -18,6 +18,7 @@ import sys
 from typing import Any
 
 from importer_common import (
+    authorization_decision_id_from_fields,
     authorization_from_policy,
     decode_json_maybe,
     first_present,
@@ -135,6 +136,19 @@ def _span_to_artifacts(span: dict[str, Any], policy: dict[str, Any] | None, exec
     )
     executed_at = _timestamp(span, attrs, executed_at_override)
     parameters = decode_json_maybe(first_present(attrs.get("tool.arguments"), attrs.get("arguments"), attrs.get("input"), attrs))
+    decision_id = authorization_decision_id_from_fields(attrs, span)
+    invocation_context = {
+        "source": "opentelemetry",
+        "trace_id": first_present(span.get("traceId"), span.get("trace_id")),
+        "span_id": first_present(span.get("spanId"), span.get("span_id")),
+        "parent_span_id": first_present(span.get("parentSpanId"), span.get("parent_span_id")),
+        "service_name": first_present(
+            nested_get(span, "resource", "attributes", "service.name"),
+            attrs.get("service.name"),
+        ),
+    }
+    if decision_id is not None:
+        invocation_context["decision_id"] = str(decision_id)
     return {
         **authorization_from_policy(policy),
         "parsed_actions": [
@@ -150,16 +164,7 @@ def _span_to_artifacts(span: dict[str, Any], policy: dict[str, Any] | None, exec
             "action_id": action_id,
             "tool_name": tool_name,
             "tool_version": "opentelemetry-span",
-            "invocation_context": {
-                "source": "opentelemetry",
-                "trace_id": first_present(span.get("traceId"), span.get("trace_id")),
-                "span_id": first_present(span.get("spanId"), span.get("span_id")),
-                "parent_span_id": first_present(span.get("parentSpanId"), span.get("parent_span_id")),
-                "service_name": first_present(
-                    nested_get(span, "resource", "attributes", "service.name"),
-                    attrs.get("service.name"),
-                ),
-            },
+            "invocation_context": invocation_context,
         },
     }
 
