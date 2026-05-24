@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from constants import CONTRADICTED, NOT_APPLICABLE, PASS_SATISFIED, SUPPORTED, UNKNOWN
+from pass_specs import BOUNDARY_ROLE_DISCLOSURE, BOUNDARY_ROLE_SUPPORT_DETAIL, PassSpec, get_pass_spec
 from renderer_families import renderer_family_adds_gpu_boundary
 
 
@@ -32,6 +33,16 @@ GPU_UNSUPPORTED_INFERENCES = [
 ]
 
 
+def _result_spec(result: dict[str, Any]) -> PassSpec | None:
+    pass_id = result.get("pass_id")
+    if not isinstance(pass_id, str):
+        return None
+    try:
+        return get_pass_spec(pass_id)
+    except ValueError:
+        return None
+
+
 def generate_boundary(
     claim: dict[str, Any],
     verdict: dict[str, str],
@@ -49,25 +60,14 @@ def generate_boundary(
         supports.append(claim_text)
     if status == SUPPORTED:
         for result in pass_results:
-            if result.get("status") == PASS_SATISFIED and result.get("pass_id") in {
-                "expected_evidence_absence",
-                "grant_active_at_event_time",
-                "revocation_before_action",
-                "no_future_evidence",
-                "parser_repair_logged",
-                "repair_writeback_recorded",
-                "prefix_continuity",
-                "grant_binding_present",
-                "no_action_from_untrusted_literal",
-                "human_approval_before_action",
-                "deployment_matches_reviewed_commit",
-                "gpu_serial_set_match",
-                "gpu_node_id_match",
-                "dcgm_diag_result",
-                "ecc_threshold_check",
-                "gpu_serial_cross_reference",
-            }:
-                supports.append(str(result.get("detail", "")))
+            if result.get("status") != PASS_SATISFIED:
+                continue
+            spec = _result_spec(result)
+            if spec is None or spec.boundary_role != BOUNDARY_ROLE_SUPPORT_DETAIL:
+                continue
+            detail = str(result.get("detail", ""))
+            if detail:
+                supports.append(detail)
 
     does_not_support = [GENERAL_BOUNDARY]
     if is_gpu_claim:
@@ -85,7 +85,8 @@ def generate_boundary(
     if absence:
         does_not_support.append("This receipt does not fill missing expected evidence by inference.")
     for result in pass_results:
-        if result.get("pass_id") != "execution_context_disclosure":
+        spec = _result_spec(result)
+        if spec is None or spec.boundary_role != BOUNDARY_ROLE_DISCLOSURE:
             continue
         metadata = result.get("metadata")
         if not isinstance(metadata, dict):

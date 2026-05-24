@@ -30,7 +30,7 @@ from importer_common import (
     nested_get,
     normalize_timestamp,
 )
-from passes import get_path
+from evidence_paths import get_path
 from side_effect_envelope import (
     SIDE_EFFECT_ACTION_ID_PATH,
     SIDE_EFFECT_DECISION_ID_PATH,

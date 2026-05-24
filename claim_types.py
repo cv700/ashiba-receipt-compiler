@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from claim_contracts import validate_pass_required_paths, validate_support_requirements
+from pass_specs import PASS_SPECS
 from renderer_families import validate_renderer_family
 from side_effect_envelope import (
     SIDE_EFFECT_ACTION_ID_PATH,
@@ -191,9 +192,7 @@ def _validate_claim_pack(name: str, config: dict[str, Any], source: Path) -> dic
     support_requirements = validate_support_requirements(source_label, config.get("support_requirements"))
     renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim pack {source}")
 
-    from passes import PASS_REGISTRY
-
-    unknown_passes = sorted(set(passes) - set(PASS_REGISTRY))
+    unknown_passes = sorted(set(passes) - set(PASS_SPECS))
     if unknown_passes:
         raise ValueError(f"claim pack {source} references unknown pass(es): {', '.join(unknown_passes)}")
     validate_pass_required_paths(source_label, passes, expected_evidence, support_requirements)

@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
 
 from claim_contracts import claim_has_action_scope, support_requirement_paths  # noqa: E402
 from claim_types import build_claim_registry  # noqa: E402
-from passes import get_pass_spec  # noqa: E402
+from pass_specs import get_pass_spec  # noqa: E402
 
 
 SCHEMA_VERSION = "ashiba-claim-contract-discovery-v0.1"

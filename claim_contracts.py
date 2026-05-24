@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from passes import evidence_is_present, get_path, get_pass_spec, path_exists
+from evidence_paths import evidence_is_present, get_path, path_exists
+from pass_specs import get_pass_spec
 
 
 def _require_str_list(value: Any, label: str) -> list[str]:

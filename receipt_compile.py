@@ -252,7 +252,7 @@ def load_artifacts_dir(artifacts_dir: Path) -> dict[str, Any]:
 
 def _claim_surface_instantiated(artifacts: dict[str, Any], config: dict[str, Any]) -> bool:
     """Return whether the artifact class instantiates the configured claim type."""
-    from passes import evidence_is_present, get_path
+    from evidence_paths import evidence_is_present, get_path
 
     paths = config.get("applicability_evidence") or config.get("expected_evidence", [])
     for path in paths:
@@ -468,7 +468,7 @@ def detect_applicable_claim_types(
     A claim type is applicable if at least one of its expected evidence paths
     resolves to a non-empty value.
     """
-    from passes import evidence_is_present, get_path
+    from evidence_paths import evidence_is_present, get_path
 
     artifacts = normalize_side_effect_artifacts(artifacts)
     registry = claim_types or CLAIM_TYPES

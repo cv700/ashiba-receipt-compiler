@@ -12,7 +12,6 @@ the evidence can bear.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
@@ -28,6 +27,9 @@ from constants import (
     SUPPORTED,
     UNKNOWN,
 )
+from evidence_paths import evidence_is_present, get_path, path_exists
+from execution_contexts import execution_context_disclosures as _execution_context_disclosures
+from pass_specs import PASS_SPECS, PassSpec, get_pass_spec as _get_pass_spec
 from receipt_ir import PassResult, ReceiptIR
 from side_effect_envelope import (
     SIDE_EFFECT_ACTION_ID_PATH,
@@ -38,67 +40,6 @@ from side_effect_envelope import (
 
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
-
-
-@dataclass(frozen=True)
-class PassSpec:
-    """Metadata contract for one deterministic compiler pass."""
-
-    pass_id: str
-    fn: Any
-    family: str
-    scope: str
-    readiness: str
-    required_paths: tuple[str, ...] = ()
-    contradiction_paths: tuple[str, ...] = ()
-    params_schema: dict[str, Any] = field(default_factory=dict)
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def get_path(obj: Any, dotted: str) -> Any:
-    """Traverse dict/list objects using the scorer-compatible dotted path form."""
-    cur = obj
-    for part in dotted.split("."):
-        if isinstance(cur, dict) and part in cur:
-            cur = cur[part]
-        elif isinstance(cur, list) and part.isdigit():
-            idx = int(part)
-            if 0 <= idx < len(cur):
-                cur = cur[idx]
-            else:
-                return None
-        else:
-            return None
-    return cur
-
-
-def path_exists(obj: Any, dotted: str) -> bool:
-    """Return whether a dotted path exists, even when its value is explicit null."""
-    cur = obj
-    for part in dotted.split("."):
-        if isinstance(cur, dict) and part in cur:
-            cur = cur[part]
-        elif isinstance(cur, list) and part.isdigit():
-            idx = int(part)
-            if 0 <= idx < len(cur):
-                cur = cur[idx]
-            else:
-                return False
-        else:
-            return False
-    return True
-
-
-def evidence_is_present(value: Any) -> bool:
-    """Return whether an expected evidence path resolves to supplied evidence."""
-    if value is None:
-        return False
-    if isinstance(value, (str, list, dict)):
-        return len(value) > 0
-    return True
 
 
 def _parse_ts(raw: Any) -> datetime | None:
@@ -261,73 +202,6 @@ def no_future_evidence(ir: ReceiptIR, params: dict[str, Any] | None = None) -> P
 # ---------------------------------------------------------------------------
 # Execution context disclosure pass
 # ---------------------------------------------------------------------------
-# Boundary language is part of the update, not garnish. A receipt should say
-# what moved the claim, and just as clearly where the movement stopped.
-
-def _execution_context_disclosures(execution_context: dict[str, Any]) -> list[str]:
-    """Return boundary disclosures for a typed execution context extension."""
-    if not execution_context:
-        return []
-
-    schema_id = execution_context.get("schema_id")
-    if schema_id != "gpu_goodput_context_v0":
-        if isinstance(schema_id, str) and schema_id:
-            return [
-                (
-                    f"Execution context schema {schema_id!r} not recognized; "
-                    "domain-specific disclosures not available"
-                )
-            ]
-        return ["Execution context schema not supplied; domain-specific disclosures not available"]
-
-    disclosures: list[str] = []
-
-    topology = execution_context.get("topology_manifest")
-    if isinstance(topology, dict):
-        coverage_ratio = topology.get("coverage_ratio")
-        if isinstance(coverage_ratio, (int, float)) and coverage_ratio < 1.0:
-            nodes_tested = topology.get("nodes_tested", "unknown")
-            nodes_provisioned = topology.get("nodes_provisioned", "unknown")
-            pct = max(0.0, coverage_ratio) * 100
-            disclosures.append(
-                f"Receipt covers {nodes_tested}/{nodes_provisioned} provisioned nodes ({pct:.1f}% coverage)"
-            )
-
-    system_state = execution_context.get("system_state")
-    if isinstance(system_state, dict):
-        freshly_rebooted = system_state.get("freshly_rebooted_nodes")
-        if isinstance(freshly_rebooted, int) and freshly_rebooted > 0:
-            disclosures.append(
-                f"{freshly_rebooted} nodes were rebooted within 1 hour of test (uptime < 3600s)"
-            )
-        ecc_reboot_suspects = system_state.get("ecc_reboot_suspects")
-        if isinstance(ecc_reboot_suspects, int) and ecc_reboot_suspects > 0:
-            disclosures.append(
-                f"{ecc_reboot_suspects} nodes show zero volatile ECC errors but nonzero aggregate "
-                "(possible reboot to clear errors)"
-            )
-
-    ambient_load = execution_context.get("ambient_load")
-    if isinstance(ambient_load, dict) and ambient_load.get("ambient_load_level") == "negligible":
-        disclosures.append(
-            "Test conducted under negligible fabric load; results may not reflect contended performance"
-        )
-
-    if not isinstance(execution_context.get("software_stack"), dict) or not execution_context.get("software_stack"):
-        disclosures.append("Software stack not captured; environment reproducibility unknown")
-
-    if not execution_context.get("challenge_nonce"):
-        disclosures.append("No challenge nonce; receipt replay cannot be excluded")
-
-    if (
-        not isinstance(execution_context.get("probe_manifest_commitment"), dict)
-        or not execution_context.get("probe_manifest_commitment")
-    ):
-        disclosures.append("No pre-committed probe manifest; probe selection by provider cannot be excluded")
-
-    return disclosures
-
-
 def execution_context_disclosure(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
     """Disclose typed execution-context limits without changing the verdict."""
     disclosures = _execution_context_disclosures(ir.execution_context)
@@ -1101,246 +975,11 @@ def prefix_continuity(ir: ReceiptIR, params: dict[str, Any] | None = None) -> Pa
     )
 
 
-# ---------------------------------------------------------------------------
-# Pass registry
-# ---------------------------------------------------------------------------
+_missing_functions = sorted(pass_id for pass_id in PASS_SPECS if pass_id not in globals())
+if _missing_functions:
+    raise RuntimeError(f"pass registry/spec mismatch: missing functions={_missing_functions}")
 
-PASS_SPECS: dict[str, PassSpec] = {
-    # Universal
-    "utc_timestamp_format": PassSpec(
-        pass_id="utc_timestamp_format",
-        fn=utc_timestamp_format,
-        family="universal",
-        scope="global",
-        readiness="validates supplied timestamp-like fields; missing optional fields do not block readiness",
-    ),
-    "expected_evidence_absence": PassSpec(
-        pass_id="expected_evidence_absence",
-        fn=expected_evidence_absence,
-        family="universal",
-        scope="claim",
-        readiness="uses claim_pack.expected_evidence as its dynamic required path list",
-    ),
-    "no_future_evidence": PassSpec(
-        pass_id="no_future_evidence",
-        fn=no_future_evidence,
-        family="universal",
-        scope="global",
-        readiness="validates supplied timestamp-like fields against receipt creation time",
-        contradiction_paths=("*_at", "*_from", "*_until", "*timestamp*",),
-    ),
-    "execution_context_disclosure": PassSpec(
-        pass_id="execution_context_disclosure",
-        fn=execution_context_disclosure,
-        family="execution_context",
-        scope="context",
-        readiness="boundary disclosure only; does not affect verdict readiness",
-    ),
-    # Authorization grant
-    "grant_active_at_event_time": PassSpec(
-        pass_id="grant_active_at_event_time",
-        fn=grant_active_at_event_time,
-        family="authorization",
-        scope="action",
-        readiness="missing or invalid grant/action timestamps make the claim unknown",
-        required_paths=(
-            "authorization.grant_valid_from",
-            "authorization.grant_valid_until",
-            SIDE_EFFECT_EXECUTED_AT_PATH,
-        ),
-        contradiction_paths=(
-            "authorization.grant_valid_from",
-            "authorization.grant_valid_until",
-            SIDE_EFFECT_EXECUTED_AT_PATH,
-        ),
-    ),
-    "revocation_before_action": PassSpec(
-        pass_id="revocation_before_action",
-        fn=revocation_before_action,
-        family="authorization",
-        scope="action",
-        readiness="authorization.revoked_at must exist; null means explicitly not revoked",
-        required_paths=("authorization.revoked_at", SIDE_EFFECT_EXECUTED_AT_PATH),
-        contradiction_paths=("authorization.revoked_at", SIDE_EFFECT_EXECUTED_AT_PATH),
-    ),
-    "grant_binding_present": PassSpec(
-        pass_id="grant_binding_present",
-        fn=grant_binding_present,
-        family="authorization",
-        scope="action",
-        readiness="missing binding evidence makes the claim unknown; mismatched or inactive binding contradicts it",
-        required_paths=(
-            "authorization.render_time_grant_hash",
-            "authorization.execution_time_decision_id",
-            "authorization.grant_active_at_execution",
-            SIDE_EFFECT_DECISION_ID_PATH,
-        ),
-        contradiction_paths=(
-            "authorization.grant_active_at_execution",
-            "authorization.execution_time_decision_id",
-            SIDE_EFFECT_DECISION_ID_PATH,
-        ),
-    ),
-    "no_action_from_untrusted_literal": PassSpec(
-        pass_id="no_action_from_untrusted_literal",
-        fn=no_action_from_untrusted_literal,
-        family="authorization",
-        scope="action",
-        readiness="checks parsed action source_kind when present",
-        contradiction_paths=("side_effects.*.source_kind",),
-        params_schema={
-            "forbidden_source_kinds": {
-                "type": "list[str]",
-                "default": ["literal_untrusted_text"],
-            },
-        },
-    ),
-    # Parser repair
-    "parser_repair_logged": PassSpec(
-        pass_id="parser_repair_logged",
-        fn=parser_repair_logged,
-        family="parser_repair",
-        scope="claim",
-        readiness="requires at least one parser repair event with provenance fields",
-        required_paths=(
-            "parser.repair_events.0.repair_function",
-            "parser.repair_events.0.before_hash",
-            "parser.repair_events.0.after_hash",
-            "parser.repair_events.0.writeback_to_model_history",
-        ),
-    ),
-    "repair_writeback_recorded": PassSpec(
-        pass_id="repair_writeback_recorded",
-        fn=repair_writeback_recorded,
-        family="parser_repair",
-        scope="claim",
-        readiness="missing or non-boolean repair writeback decision makes the claim unknown",
-        required_paths=("parser.repair_events.0.writeback_to_model_history",),
-    ),
-    # Human approval and deployment
-    "human_approval_before_action": PassSpec(
-        pass_id="human_approval_before_action",
-        fn=human_approval_before_action,
-        family="approval",
-        scope="action",
-        readiness="missing approval binding or fields make the claim unknown; mismatched binding, non-approval, or late approval contradicts it",
-        required_paths=(
-            "approval.tool_call_id",
-            SIDE_EFFECT_ACTION_ID_PATH,
-            "approval.approved_at",
-            "approval.decision",
-            "approval.actor",
-            SIDE_EFFECT_EXECUTED_AT_PATH,
-        ),
-        contradiction_paths=(
-            "approval.tool_call_id",
-            SIDE_EFFECT_ACTION_ID_PATH,
-            "approval.approved_at",
-            "approval.decision",
-            SIDE_EFFECT_EXECUTED_AT_PATH,
-        ),
-    ),
-    "deployment_matches_reviewed_commit": PassSpec(
-        pass_id="deployment_matches_reviewed_commit",
-        fn=deployment_matches_reviewed_commit,
-        family="deployment",
-        scope="claim",
-        readiness="missing deployment/review fields make the claim unknown; mismatch, rejection, or late approval contradicts it",
-        required_paths=(
-            "deployment.commit_sha",
-            "deployment.deployed_at",
-            "review.commit_sha",
-            "review.decision",
-            "review.approved_at",
-        ),
-        contradiction_paths=(
-            "deployment.commit_sha",
-            "deployment.deployed_at",
-            "review.commit_sha",
-            "review.decision",
-            "review.approved_at",
-        ),
-    ),
-    # GPU collateral
-    "gpu_serial_set_match": PassSpec(
-        pass_id="gpu_serial_set_match",
-        fn=gpu_serial_set_match,
-        family="gpu_collateral",
-        scope="claim",
-        readiness="requires declared and observed serial lists; mismatched sets contradict collateral identity",
-        required_paths=("gpu_inventory.declared_serials", "gpu_probe_observation.observed_serials"),
-        contradiction_paths=("gpu_inventory.declared_serials", "gpu_probe_observation.observed_serials"),
-    ),
-    "gpu_node_id_match": PassSpec(
-        pass_id="gpu_node_id_match",
-        fn=gpu_node_id_match,
-        family="gpu_collateral",
-        scope="claim",
-        readiness="requires declared and observed node ids; mismatch contradicts collateral identity",
-        required_paths=("gpu_inventory.declared_node_id", "gpu_probe_observation.observed_node_id"),
-        contradiction_paths=("gpu_inventory.declared_node_id", "gpu_probe_observation.observed_node_id"),
-    ),
-    "dcgm_diag_result": PassSpec(
-        pass_id="dcgm_diag_result",
-        fn=dcgm_diag_result,
-        family="gpu_health",
-        scope="claim",
-        readiness="requires DCGM overall result when checking node health",
-        required_paths=("dcgm_diag.overall_result",),
-        contradiction_paths=("dcgm_diag.overall_result", "dcgm_diag.test_results"),
-    ),
-    "ecc_threshold_check": PassSpec(
-        pass_id="ecc_threshold_check",
-        fn=ecc_threshold_check,
-        family="gpu_health",
-        scope="claim",
-        readiness="requires ECC counters and page retirement threshold evidence",
-        required_paths=(
-            "xid_ecc_log.volatile_dbe_errors",
-            "xid_ecc_log.total_retired_pages",
-            "xid_ecc_log.page_retirement_limit",
-        ),
-        contradiction_paths=(
-            "xid_ecc_log.volatile_dbe_errors",
-            "xid_ecc_log.total_retired_pages",
-            "xid_ecc_log.page_retirement_limit",
-        ),
-    ),
-    "gpu_serial_cross_reference": PassSpec(
-        pass_id="gpu_serial_cross_reference",
-        fn=gpu_serial_cross_reference,
-        family="gpu_health",
-        scope="claim",
-        readiness="requires serial evidence from health/collateral sources and checks they refer to the same GPU",
-        required_paths=("dcgm_diag.gpu_serial", "xid_ecc_log.gpu_serial", "nvidia_smi.gpu_serial"),
-        contradiction_paths=("dcgm_diag.gpu_serial", "xid_ecc_log.gpu_serial", "nvidia_smi.gpu_serial"),
-    ),
-    # Prefix continuity
-    "prefix_continuity": PassSpec(
-        pass_id="prefix_continuity",
-        fn=prefix_continuity,
-        family="agent_trace_integrity",
-        scope="claim",
-        readiness="requires previous prompt, completion, and next prompt token sequences",
-        required_paths=(
-            "token_sequences.previous_prompt_tokens",
-            "token_sequences.completion_tokens",
-            "token_sequences.next_prompt_tokens",
-        ),
-        contradiction_paths=(
-            "token_sequences.previous_prompt_tokens",
-            "token_sequences.completion_tokens",
-            "token_sequences.next_prompt_tokens",
-        ),
-        params_schema={
-            "previous_key": {"type": "path", "default": "token_sequences.previous_prompt_tokens"},
-            "completion_key": {"type": "path", "default": "token_sequences.completion_tokens"},
-            "next_key": {"type": "path", "default": "token_sequences.next_prompt_tokens"},
-        },
-    ),
-}
-
-PASS_REGISTRY: dict[str, Any] = {pass_id: spec.fn for pass_id, spec in PASS_SPECS.items()}
+PASS_REGISTRY: dict[str, Any] = {pass_id: globals()[pass_id] for pass_id in PASS_SPECS}
 
 
 def get_pass(pass_id: str) -> Any:
@@ -1353,7 +992,4 @@ def get_pass(pass_id: str) -> Any:
 
 def get_pass_spec(pass_id: str) -> PassSpec:
     """Return the metadata contract for a pass_id, or raise ValueError."""
-    if pass_id not in PASS_SPECS:
-        available = ", ".join(sorted(PASS_SPECS))
-        raise ValueError(f"unknown pass {pass_id!r}; available: {available}")
-    return PASS_SPECS[pass_id]
+    return _get_pass_spec(pass_id)
