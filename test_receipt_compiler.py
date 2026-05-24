@@ -9,6 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from claim_contracts import claim_conflicts, claim_has_action_scope, claim_missing
 from constants import (
     CONTRADICTED,
     NOT_APPLICABLE,
@@ -649,6 +650,56 @@ def test_v6_external_claim_pack_registry() -> None:
         error = json.loads(proc.stdout)
         assert error["verdict"]["status"] == UNKNOWN
         assert "duplicate existing claim type" in error["compiler_errors"][0]["detail"]
+
+
+def test_claim_contract_helpers_drive_readiness_semantics() -> None:
+    registry = build_claim_registry()
+    auth_pack = registry["authorization_bound_action"]
+    deployment_pack = registry["deployment_matches_reviewed_commit"]
+
+    assert claim_has_action_scope(auth_pack)
+    assert not claim_has_action_scope(deployment_pack)
+
+    artifacts = {
+        "authorization": {
+            "grant_id": "grant-contract",
+            "grant_valid_from": "2026-05-14T16:00:00Z",
+            "grant_valid_until": "2026-05-14T18:00:00Z",
+            "revoked_at": None,
+            "render_time_grant_hash": "sha256:contract",
+            "execution_time_decision_id": "authz-decision-contract",
+            "grant_active_at_execution": True,
+        },
+        "parsed_actions": [
+            {
+                "action_id": "act-contract",
+                "tool": "lambda.amazonaws.com:Invoke",
+                "executed_at": "2026-05-14T17:01:30Z",
+            }
+        ],
+        "tool_call": {
+            "action_id": "act-contract",
+            "invocation_context": {"decision_id": "authz-decision-contract"},
+        },
+    }
+    assert claim_missing(artifacts, auth_pack) == []
+
+    no_revocation_state = dict(artifacts)
+    no_revocation_state["authorization"] = dict(artifacts["authorization"])
+    no_revocation_state["authorization"].pop("revoked_at")
+    assert claim_missing(no_revocation_state, auth_pack) == ["authorization.revoked_at"]
+
+    mismatched_binding = dict(artifacts)
+    mismatched_binding["tool_call"] = {
+        "action_id": "act-contract",
+        "invocation_context": {"decision_id": "authz-decision-other"},
+    }
+    assert claim_missing(mismatched_binding, auth_pack) == ["authorization-to-action binding"]
+    assert claim_conflicts(
+        auth_pack,
+        [{"path": "authorization.execution_time_decision_id"}],
+    ) == ["authorization.execution_time_decision_id"]
+    assert claim_conflicts(auth_pack, [{"path": "deployment.commit_sha"}]) == []
 
 
 def test_v6_incident_manifest_path_boundaries() -> None:
@@ -2464,6 +2515,7 @@ def main() -> int:
     test_source_file_binding_verification()
     test_v5_incident_manifest_and_explain_output()
     test_v6_external_claim_pack_registry()
+    test_claim_contract_helpers_drive_readiness_semantics()
     test_v6_incident_manifest_path_boundaries()
     test_v7_execution_context_absent_is_noop()
     test_v7_execution_context_round_trip_and_unknown_schema()

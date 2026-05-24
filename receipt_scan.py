@@ -16,6 +16,12 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from claim_contracts import (
+    claim_conflicts,
+    claim_has_action_scope,
+    claim_missing,
+    conflict_excluded,
+)
 from claim_types import build_claim_registry
 from importer_common import (
     authorization_decision_id_from_fields as _decision_id_from_fields,
@@ -24,7 +30,7 @@ from importer_common import (
     nested_get,
     normalize_timestamp,
 )
-from passes import evidence_is_present, get_path, path_exists
+from passes import get_path
 
 
 ALL_SCAN_CLAIMS = ("deployment_matches_reviewed_commit", "authorization_bound_action",
@@ -1027,109 +1033,6 @@ def collect_scan_artifacts(logs: Path, policy_path: Path | None = None) -> tuple
     return context.artifacts, context.files_scanned, context.warnings
 
 
-def _missing_expected_paths(artifacts: dict[str, Any], expected_paths: list[str]) -> list[str]:
-    return [
-        path
-        for path in expected_paths
-        if not evidence_is_present(get_path(artifacts, path))
-    ]
-
-
-def _support_requirement_missing(artifacts: dict[str, Any], requirement: dict[str, Any]) -> bool:
-    path = requirement.get("path")
-    if isinstance(path, str):
-        presence = requirement.get("presence", "evidence_present")
-        if presence == "path_exists":
-            if not path_exists(artifacts, path):
-                return True
-        elif not evidence_is_present(get_path(artifacts, path)):
-            return True
-
-    all_of = requirement.get("all_of", [])
-    if isinstance(all_of, list):
-        for required_path in all_of:
-            if isinstance(required_path, str) and not evidence_is_present(get_path(artifacts, required_path)):
-                return True
-
-    same_value = requirement.get("same_value", [])
-    if isinstance(same_value, list) and len(same_value) == 2:
-        left = get_path(artifacts, str(same_value[0]))
-        right = get_path(artifacts, str(same_value[1]))
-        if not evidence_is_present(left) or not evidence_is_present(right):
-            return True
-        if str(left) != str(right):
-            return True
-    return False
-
-
-def _missing_support_requirements(artifacts: dict[str, Any], requirements: list[dict[str, Any]]) -> list[str]:
-    missing = []
-    for requirement in requirements:
-        requirement_id = requirement.get("id")
-        if not isinstance(requirement_id, str) or not requirement_id:
-            continue
-        if _support_requirement_missing(artifacts, requirement) and requirement_id not in missing:
-            missing.append(requirement_id)
-    return missing
-
-
-def _support_requirement_paths(requirement: dict[str, Any]) -> list[str]:
-    paths: list[str] = []
-    path = requirement.get("path")
-    if isinstance(path, str):
-        paths.append(path)
-    for key in ("all_of", "same_value"):
-        raw = requirement.get(key)
-        if not isinstance(raw, list):
-            continue
-        paths.extend(item for item in raw if isinstance(item, str))
-    return paths
-
-
-def _claim_evidence_paths(config: dict[str, Any]) -> list[str]:
-    paths = [str(path) for path in config.get("expected_evidence", [])]
-    for requirement in config.get("support_requirements", []):
-        if isinstance(requirement, dict):
-            paths.extend(_support_requirement_paths(requirement))
-    out = []
-    for path in paths:
-        if path and path not in out:
-            out.append(path)
-    return out
-
-
-def _path_overlaps(left: str, right: str) -> bool:
-    return left == right or left.startswith(right + ".") or right.startswith(left + ".")
-
-
-def _conflict_excluded(conflict: EvidenceConflict, excluded_prefixes: tuple[str, ...]) -> bool:
-    return any(conflict.path == prefix or conflict.path.startswith(prefix + ".") for prefix in excluded_prefixes)
-
-
-def _claim_conflicts(
-    config: dict[str, Any],
-    conflicts: list[EvidenceConflict],
-    excluded_prefixes: tuple[str, ...] = (),
-) -> list[str]:
-    relevant_paths = _claim_evidence_paths(config)
-    out = []
-    for conflict in conflicts:
-        if _conflict_excluded(conflict, excluded_prefixes):
-            continue
-        if any(_path_overlaps(conflict.path, relevant) for relevant in relevant_paths):
-            if conflict.path not in out:
-                out.append(conflict.path)
-    return sorted(out)
-
-
-def _claim_missing(artifacts: dict[str, Any], config: dict[str, Any]) -> list[str]:
-    missing = _missing_expected_paths(artifacts, list(config["expected_evidence"]))
-    for requirement in _missing_support_requirements(artifacts, list(config.get("support_requirements", []))):
-        if requirement not in missing:
-            missing.append(requirement)
-    return missing
-
-
 def _probeable_next(cannot_decide: list[ClaimReadiness]) -> list[str]:
     probeable_next = []
     for item in cannot_decide:
@@ -1192,7 +1095,6 @@ def _match_approval_for_action(action: ActionCandidate, approvals: list[dict[str
     return None
 
 
-ACTION_LEVEL_CLAIMS = ("authorization_bound_action", "human_approval_before_external_side_effect")
 ACTION_SPECIFIC_CONFLICT_PREFIXES = ("parsed_actions", "tool_call", "approval")
 
 
@@ -1201,7 +1103,11 @@ def _action_readiness(
     registry: dict[str, Any],
     inferred_claims: list[str] | None = None,
 ) -> list[ActionReadiness]:
-    action_claims = [c for c in (inferred_claims or ALL_SCAN_CLAIMS) if c in ACTION_LEVEL_CLAIMS and c in registry]
+    action_claims = [
+        claim
+        for claim in (inferred_claims or ALL_SCAN_CLAIMS)
+        if claim in registry and claim_has_action_scope(registry[claim])
+    ]
     base = _action_base_artifacts(context.artifacts)
     rows = []
     for action in context.actions:
@@ -1209,7 +1115,7 @@ def _action_readiness(
         action_conflicts = [
             conflict
             for conflict in context.conflicts
-            if not _conflict_excluded(conflict, ACTION_SPECIFIC_CONFLICT_PREFIXES)
+            if not conflict_excluded(conflict, ACTION_SPECIFIC_CONFLICT_PREFIXES)
         ]
         _merge_artifacts(artifacts, action.artifacts, action_conflicts, action.source)
         approval = _match_approval_for_action(action, context.approvals)
@@ -1218,8 +1124,8 @@ def _action_readiness(
 
         readiness: list[ClaimReadiness] = []
         for claim in action_claims:
-            missing = _claim_missing(artifacts, registry[claim])
-            conflicts = _claim_conflicts(registry[claim], action_conflicts)
+            missing = claim_missing(artifacts, registry[claim])
+            conflicts = claim_conflicts(registry[claim], action_conflicts)
             readiness.append(ClaimReadiness(
                 claim=claim,
                 can_decide=not missing and not conflicts,
@@ -1266,8 +1172,8 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
     inferred = _infer_claims(context)
     readiness: list[ClaimReadiness] = []
     for claim in inferred:
-        missing = _claim_missing(artifacts, registry[claim])
-        conflicts = _claim_conflicts(registry[claim], context.conflicts)
+        missing = claim_missing(artifacts, registry[claim])
+        conflicts = claim_conflicts(registry[claim], context.conflicts)
         readiness.append(ClaimReadiness(
             claim=claim,
             can_decide=not missing and not conflicts,

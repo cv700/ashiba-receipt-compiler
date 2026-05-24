@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from claim_contracts import validate_pass_required_paths, validate_support_requirements
 from renderer_families import validate_renderer_family
 
 
@@ -153,85 +154,6 @@ def _require_str_list(value: Any, label: str) -> list[str]:
     return [str(item) for item in value]
 
 
-def _validate_support_requirements(source: Path, raw: Any) -> list[dict[str, Any]]:
-    if raw is None:
-        return []
-    if not isinstance(raw, list):
-        raise ValueError(f"claim pack {source} support_requirements must be a list")
-
-    requirements: list[dict[str, Any]] = []
-    for idx, item in enumerate(raw):
-        label = f"{source} support_requirements.{idx}"
-        if not isinstance(item, dict):
-            raise ValueError(f"{label} must be an object")
-        requirement_id = item.get("id")
-        if not isinstance(requirement_id, str) or not requirement_id:
-            raise ValueError(f"{label}.id must be a non-empty string")
-
-        requirement: dict[str, Any] = {"id": requirement_id}
-        if "path" in item:
-            path = item["path"]
-            if not isinstance(path, str) or not path:
-                raise ValueError(f"{label}.path must be a non-empty string")
-            requirement["path"] = path
-            presence = item.get("presence", "evidence_present")
-            if presence not in {"evidence_present", "path_exists"}:
-                raise ValueError(f"{label}.presence must be evidence_present or path_exists")
-            requirement["presence"] = presence
-        if "all_of" in item:
-            requirement["all_of"] = _require_str_list(item["all_of"], f"{label}.all_of")
-        if "same_value" in item:
-            same_value = _require_str_list(item["same_value"], f"{label}.same_value")
-            if len(same_value) != 2:
-                raise ValueError(f"{label}.same_value must contain exactly two paths")
-            requirement["same_value"] = same_value
-        if not any(key in requirement for key in ("path", "all_of", "same_value")):
-            raise ValueError(f"{label} must define path, all_of, or same_value")
-        requirements.append(requirement)
-    return requirements
-
-
-def _support_requirement_paths(requirements: list[dict[str, Any]]) -> list[str]:
-    paths: list[str] = []
-    for requirement in requirements:
-        path = requirement.get("path")
-        if isinstance(path, str):
-            paths.append(path)
-        for key in ("all_of", "same_value"):
-            raw = requirement.get(key)
-            if isinstance(raw, list):
-                paths.extend(item for item in raw if isinstance(item, str))
-    return paths
-
-
-def _validate_pass_required_paths(
-    source: Path,
-    passes: list[str],
-    expected_evidence: list[str],
-    support_requirements: list[dict[str, Any]],
-) -> None:
-    from passes import get_pass_spec
-
-    covered = set(expected_evidence) | set(_support_requirement_paths(support_requirements))
-    missing_by_pass: dict[str, list[str]] = {}
-    for pass_id in passes:
-        spec = get_pass_spec(pass_id)
-        missing = sorted(path for path in spec.required_paths if path not in covered)
-        if missing:
-            missing_by_pass[pass_id] = missing
-    if not missing_by_pass:
-        return
-
-    parts = [
-        f"{pass_id}: {', '.join(paths)}"
-        for pass_id, paths in sorted(missing_by_pass.items())
-    ]
-    raise ValueError(
-        f"claim pack {source} does not cover required path(s) for pass metadata: "
-        + "; ".join(parts)
-    )
-
-
 def _validate_claim_pack(name: str, config: dict[str, Any], source: Path) -> dict[str, Any]:
     if not isinstance(config, dict):
         raise ValueError(f"claim pack {source} must be a JSON object")
@@ -260,7 +182,8 @@ def _validate_claim_pack(name: str, config: dict[str, Any], source: Path) -> dic
             raise ValueError(f"claim pack {source} pass_params keys must be non-empty strings")
         if not isinstance(params, dict):
             raise ValueError(f"claim pack {source} pass_params.{pass_id} must be an object")
-    support_requirements = _validate_support_requirements(source, config.get("support_requirements"))
+    source_label = f"claim pack {source}"
+    support_requirements = validate_support_requirements(source_label, config.get("support_requirements"))
     renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim pack {source}")
 
     from passes import PASS_REGISTRY
@@ -268,7 +191,7 @@ def _validate_claim_pack(name: str, config: dict[str, Any], source: Path) -> dic
     unknown_passes = sorted(set(passes) - set(PASS_REGISTRY))
     if unknown_passes:
         raise ValueError(f"claim pack {source} references unknown pass(es): {', '.join(unknown_passes)}")
-    _validate_pass_required_paths(source, passes, expected_evidence, support_requirements)
+    validate_pass_required_paths(source_label, passes, expected_evidence, support_requirements)
 
     out = {
         "claim": {"id": claim["id"], "text": claim["text"]},
