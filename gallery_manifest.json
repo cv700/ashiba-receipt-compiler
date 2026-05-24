@@ -3,11 +3,11 @@
   "compiler_version": "evidence-compiler-v0.6",
   "summary": {
     "expected_directories": 33,
-    "expected_receipts": 34,
+    "expected_receipts": 38,
     "expected_verdict_counts": {
-      "supported": 14,
+      "supported": 16,
       "contradicted": 11,
-      "unknown": 8,
+      "unknown": 10,
       "not_applicable": 1
     },
     "expected_compiler_errors": 0
@@ -246,10 +246,17 @@
       "expected_receipts": [
         {
           "claim_type": "authorization_bound_action",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "the ticket-close action has authorization and action evidence, but explicit grant-binding evidence is absent"
+        },
+        {
+          "claim_type": "authorization_bound_action",
           "verdict": "contradicted",
           "absence_count": 0,
           "compiler_error_count": 0,
-          "rationale": "at least one parsed action derives from an untrusted literal source"
+          "rationale": "the PII export action derives from an untrusted literal source"
         }
       ]
     },
@@ -297,7 +304,14 @@
           "verdict": "unknown",
           "absence_count": 0,
           "compiler_error_count": 0,
-          "rationale": "authorization and action evidence are present and inside the grant window, but explicit grant-binding evidence is absent"
+          "rationale": "the database-delete action has authorization and action evidence, but explicit grant-binding evidence is absent"
+        },
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "the backup-delete action has authorization and action evidence, but explicit grant-binding evidence is absent"
         }
       ]
     },
@@ -345,7 +359,14 @@
           "verdict": "supported",
           "absence_count": 0,
           "compiler_error_count": 0,
-          "rationale": "the clean prompt-injection counterfactual has trusted action sources, valid grant timing, explicit revocation state, and decision binding evidence"
+          "rationale": "the clean query action has a trusted source, valid grant timing, explicit revocation state, and decision binding evidence"
+        },
+        {
+          "claim_type": "authorization_bound_action",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "the clean export action has a trusted source, valid grant timing, explicit revocation state, and decision binding evidence"
         }
       ]
     },
@@ -354,10 +375,17 @@
       "expected_receipts": [
         {
           "claim_type": "authorization_bound_action",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "the warehouse query action remains supported under the authorization evidence"
+        },
+        {
+          "claim_type": "authorization_bound_action",
           "verdict": "contradicted",
           "absence_count": 0,
           "compiler_error_count": 0,
-          "rationale": "parsed action derives from literal untrusted text"
+          "rationale": "the external export action derives from literal untrusted text"
         }
       ]
     },

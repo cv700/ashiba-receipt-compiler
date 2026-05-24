@@ -35,6 +35,7 @@ from receipt_compile import (
     build_claim_registry,
     compile_bundle,
     compile_claim,
+    compile_claims,
     detect_applicable_claim_types,
     load_artifacts_dir_bound,
     load_artifacts_dir_with_manifest,
@@ -330,13 +331,10 @@ def test_v4_adversarial_controls_and_not_applicable() -> None:
         )
         assert_receipt(receipt, expected_verdict, 7, 0)
 
-    # Existing v3 adversarial controls remain in the suite.
-    assert_receipt(
-        run_json("--artifacts-dir", "examples/mixed_actions_incident", "--claim-type", "authorization_bound_action"),
-        CONTRADICTED,
-        7,
-        0,
-    )
+    # Existing v3 adversarial controls now compile per side effect.
+    mixed = run_json("--artifacts-dir", "examples/mixed_actions_incident", "--claim-type", "authorization_bound_action")
+    assert [receipt["verdict"]["status"] for receipt in mixed["receipts"]] == [UNKNOWN, CONTRADICTED]
+    assert [len(receipt["absence"]) for receipt in mixed["receipts"]] == [0, 0]
     assert_receipt(
         run_json("--artifacts-dir", "examples/parser_repair_unknown", "--claim-type", "parser_repair_visibility"),
         UNKNOWN,
@@ -744,6 +742,63 @@ def test_side_effect_envelope_v1_compiles_and_scans() -> None:
     assert "authorization_bound_action" in result["can_decide"]
     assert result["actions"][0]["action_id"] == "act-envelope"
     assert "authorization_bound_action" in result["actions"][0]["can_decide"]
+
+
+def test_action_scoped_side_effect_envelopes_compile_independently() -> None:
+    authorization = {
+        "grant_id": "grant-envelope",
+        "grant_valid_from": "2026-05-14T16:00:00Z",
+        "grant_valid_until": "2026-05-14T18:00:00Z",
+        "revoked_at": None,
+        "render_time_grant_hash": "sha256:envelope",
+        "execution_time_decision_id": "authz-decision-envelope",
+        "grant_active_at_execution": True,
+    }
+    artifacts = {
+        "authorization": authorization,
+        SIDE_EFFECTS_KEY: [
+            {
+                "action_id": "act-supported",
+                "tool": "stripe.charges.create",
+                "executed_at": "2026-05-14T17:01:30Z",
+                "source_kind": "event_log",
+                "invocation": {"decision_id": "authz-decision-envelope"},
+            },
+            {
+                "action_id": "act-blocked",
+                "tool": "stripe.charges.create",
+                "executed_at": "2026-05-14T17:02:30Z",
+                "source_kind": "event_log",
+                "invocation": {"decision_id": "other-decision"},
+            },
+        ],
+    }
+
+    receipts = [receipt.to_dict() for receipt in compile_claims(artifacts, "authorization_bound_action")]
+    assert [receipt["artifacts"][SIDE_EFFECTS_KEY][0]["action_id"] for receipt in receipts] == [
+        "act-supported",
+        "act-blocked",
+    ]
+    assert [receipt["verdict"]["status"] for receipt in receipts] == [SUPPORTED, CONTRADICTED]
+    assert all(len(receipt["artifacts"][SIDE_EFFECTS_KEY]) == 1 for receipt in receipts)
+    try:
+        compile_claim(artifacts, "authorization_bound_action")
+    except ValueError as exc:
+        assert "use compile_claims for multi-action artifacts" in str(exc)
+    else:
+        raise AssertionError("compile_claim should reject multi-action action-scoped artifacts")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "authorization.json").write_text(json.dumps({"authorization": authorization}), encoding="utf-8")
+        (root / "side_effects.json").write_text(json.dumps({SIDE_EFFECTS_KEY: artifacts[SIDE_EFFECTS_KEY]}), encoding="utf-8")
+        proc = run_compile_process(str(root), "--claim-type", "authorization_bound_action")
+    assert proc.returncode == 0, proc.stderr
+    compiled = json.loads(proc.stdout)
+    assert [receipt["artifacts"][SIDE_EFFECTS_KEY][0]["action_id"] for receipt in compiled["receipts"]] == [
+        "act-supported",
+        "act-blocked",
+    ]
 
 
 def test_v6_incident_manifest_path_boundaries() -> None:
@@ -2496,12 +2551,46 @@ def test_gallery_manifest_outputs() -> None:
         artifact_manifest = loaded.artifact_manifest
         input_hash = loaded.input_set_hash
         incident_manifest = loaded.incident_manifest
-        manifest_claim_types = sorted(receipt["claim_type"] for receipt in expected_receipts)
+        manifest_claim_types = sorted({receipt["claim_type"] for receipt in expected_receipts})
         detected_claim_types = detect_applicable_claim_types(artifacts)
         if expected_receipts and expected_receipts[0]["verdict"] == NOT_APPLICABLE:
             assert detected_claim_types == [], directory
         else:
             assert detected_claim_types == manifest_claim_types, directory
+
+        compiled_receipts = []
+        for claim_type in manifest_claim_types:
+            compiled_receipts.extend(
+                receipt.to_dict()
+                for receipt in compile_claims(
+                    artifacts,
+                    claim_type,
+                    artifact_manifest=artifact_manifest,
+                    input_set_hash=input_hash,
+                    incident_manifest=incident_manifest,
+                    execution_context=loaded.execution_context,
+                )
+            )
+
+        expected_signatures = sorted(
+            (
+                expected["claim_type"],
+                expected["verdict"],
+                expected["absence_count"],
+                expected["compiler_error_count"],
+            )
+            for expected in expected_receipts
+        )
+        actual_signatures = sorted(
+            (
+                receipt["claim_type"],
+                receipt["verdict"]["status"],
+                len(receipt.get("absence", [])),
+                len(receipt.get("compiler_errors", [])),
+            )
+            for receipt in compiled_receipts
+        )
+        assert actual_signatures == expected_signatures, (directory, actual_signatures, expected_signatures)
 
         for expected in expected_receipts:
             name_verdict = verdict_word_in_directory(directory)
@@ -2509,23 +2598,13 @@ def test_gallery_manifest_outputs() -> None:
                 assert expected.get("directory_verdict_rationale"), (
                     f"{directory} names {name_verdict} but manifest expects {expected['verdict']}"
                 )
+            assert expected.get("rationale"), directory
 
-            receipt = compile_claim(
-                artifacts,
-                expected["claim_type"],
-                artifact_manifest=artifact_manifest,
-                input_set_hash=input_hash,
-                incident_manifest=incident_manifest,
-                execution_context=loaded.execution_context,
-            ).to_dict()
+        for receipt in compiled_receipts:
             validation_errors = validate_receipt(receipt)
-            assert validation_errors == [], (directory, expected["claim_type"], validation_errors)
-            assert receipt["verdict"]["status"] == expected["verdict"], (directory, receipt)
-            assert len(receipt.get("absence", [])) == expected["absence_count"], (directory, receipt)
-            assert len(receipt.get("compiler_errors", [])) == expected["compiler_error_count"], (directory, receipt)
+            assert validation_errors == [], (directory, receipt["claim_type"], validation_errors)
             assert receipt.get("artifact_manifest"), (directory, receipt)
             assert len(receipt.get("input_set_hash", "")) == 64, (directory, receipt)
-            assert expected.get("rationale"), directory
 
             total_receipts += 1
             verdict = receipt["verdict"]["status"]
@@ -2573,6 +2652,7 @@ def main() -> int:
     test_v6_external_claim_pack_registry()
     test_claim_contract_helpers_drive_readiness_semantics()
     test_side_effect_envelope_v1_compiles_and_scans()
+    test_action_scoped_side_effect_envelopes_compile_independently()
     test_v6_incident_manifest_path_boundaries()
     test_v7_execution_context_absent_is_noop()
     test_v7_execution_context_round_trip_and_unknown_schema()

@@ -78,8 +78,8 @@ git diff --check
 Gallery summary:
 
 ```text
-34 receipts from 33 incident directories
-supported: 14 | contradicted: 11 | unknown: 8 | not_applicable: 1
+38 receipts from 33 incident directories
+supported: 16 | contradicted: 11 | unknown: 10 | not_applicable: 1
 compiler errors: 0 | validation errors: 0
 ```
 

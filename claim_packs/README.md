@@ -12,6 +12,8 @@ Each `*.json` file declares:
 - Action-level packs should point at `side_effects.0.*` fields from
   SideEffectEnvelope v1. Legacy `parsed_actions` and `tool_call` inputs are
   normalized into that envelope by the compiler/scanner boundary.
+- Multi-action inputs compile one action-scoped receipt per envelope; within
+  each receipt, `side_effects.0` means the selected side effect.
 - `support_requirements`: optional extra support/readiness contracts. A
   requirement can use `path` with `presence: "path_exists"` when explicit null is
   meaningful, `all_of` for grouped required fields, and `same_value` for a

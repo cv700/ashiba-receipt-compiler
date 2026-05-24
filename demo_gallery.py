@@ -16,7 +16,7 @@ from typing import Any
 
 from constants import CONTRADICTED, NOT_APPLICABLE, SUPPORTED, UNKNOWN
 from receipt_compile import (
-    compile_claim,
+    compile_claims,
     detect_applicable_claim_types,
     load_artifacts_dir_bound,
 )
@@ -62,7 +62,7 @@ def run_directory(dir_path: Path, expected_claim_types: list[str] | None = None)
 
         for claim_type in claim_types:
             try:
-                receipt = compile_claim(
+                receipts = compile_claims(
                     artifacts,
                     claim_type,
                     artifact_manifest=artifact_manifest,
@@ -70,17 +70,18 @@ def run_directory(dir_path: Path, expected_claim_types: list[str] | None = None)
                     incident_manifest=incident_manifest,
                     execution_context=loaded.execution_context,
                 )
-                receipt_dict = receipt.to_dict()
-                rows.append({
-                    "directory": dir_name,
-                    "claim_type": claim_type,
-                    "verdict": receipt_dict.get("verdict", {}).get("status", UNKNOWN),
-                    "passes": len(receipt_dict.get("pass_results", [])),
-                    "absent": len(receipt_dict.get("absence", [])),
-                    "errors": len(receipt_dict.get("compiler_errors", [])),
-                    "validation_errors": validate_receipt(receipt_dict),
-                    "error_msg": None,
-                })
+                for receipt in receipts:
+                    receipt_dict = receipt.to_dict()
+                    rows.append({
+                        "directory": dir_name,
+                        "claim_type": claim_type,
+                        "verdict": receipt_dict.get("verdict", {}).get("status", UNKNOWN),
+                        "passes": len(receipt_dict.get("pass_results", [])),
+                        "absent": len(receipt_dict.get("absence", [])),
+                        "errors": len(receipt_dict.get("compiler_errors", [])),
+                        "validation_errors": validate_receipt(receipt_dict),
+                        "error_msg": None,
+                    })
             except Exception as exc:
                 rows.append({
                     "directory": dir_name,
@@ -199,11 +200,11 @@ def run_gallery() -> tuple[list[dict[str, Any]], dict[str, Any]]:
             raise ValueError("gallery manifest has no examples")
         directories = [examples_dir / str(entry["directory"]) for entry in entries]
         expected_by_dir = {
-            str(entry["directory"]): [
+            str(entry["directory"]): sorted({
                 str(receipt["claim_type"])
                 for receipt in entry.get("expected_receipts", [])
                 if isinstance(receipt, dict)
-            ]
+            })
             for entry in entries
             if isinstance(entry, dict)
         }

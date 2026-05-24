@@ -19,13 +19,14 @@ from pathlib import Path
 from typing import Any
 
 from boundary import generate_boundary
+from claim_contracts import claim_has_action_scope
 from claim_types import CLAIM_TYPES, build_claim_registry, get_claim_type, list_claim_types
 from constants import CLAIM_APPLICABILITY_PASS_ID, COMPILER_VERSION, PASS_NOT_APPLICABLE, UNKNOWN
 from passes import get_pass
 from receipt_explain import format_receipts_explanation
 from receipt_ir import ReceiptIR, utc_now
 from renderer_families import validate_renderer_family
-from side_effect_envelope import normalize_side_effect_artifacts
+from side_effect_envelope import iter_action_scoped_artifacts, normalize_side_effect_artifacts
 from verdict import generate_verdict
 
 
@@ -348,19 +349,16 @@ def compile_bundle(
     )
 
 
-def compile_claim(
+def _compile_claim_normalized(
     artifacts: dict[str, Any],
     claim_type_name: str,
+    config: dict[str, Any],
+    renderer_family: str,
     artifact_manifest: list[dict[str, Any]] | None = None,
     input_set_hash: str = "",
     incident_manifest: dict[str, Any] | None = None,
     execution_context: dict[str, Any] | None = None,
-    claim_types: dict[str, dict[str, Any]] | None = None,
 ) -> ReceiptIR:
-    """v2 compilation: artifacts dict + claim type config -> receipt."""
-    config = get_claim_type(claim_type_name, claim_types)
-    renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim type {claim_type_name}")
-    artifacts = normalize_side_effect_artifacts(artifacts)
     ir = ReceiptIR.from_artifacts(
         artifacts=artifacts,
         claim=config["claim"],
@@ -388,6 +386,77 @@ def compile_claim(
         return _finalize_receipt(ir)
 
     return _run_pass_sequence(ir, config["passes"], config.get("pass_params", {}))
+
+
+def compile_claim(
+    artifacts: dict[str, Any],
+    claim_type_name: str,
+    artifact_manifest: list[dict[str, Any]] | None = None,
+    input_set_hash: str = "",
+    incident_manifest: dict[str, Any] | None = None,
+    execution_context: dict[str, Any] | None = None,
+    claim_types: dict[str, dict[str, Any]] | None = None,
+) -> ReceiptIR:
+    """Compile one receipt for a claim type.
+
+    For action-scoped claim types, multi-action artifacts must go through
+    compile_claims so the caller cannot accidentally first-win the log.
+    """
+    config = get_claim_type(claim_type_name, claim_types)
+    renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim type {claim_type_name}")
+    artifacts = normalize_side_effect_artifacts(artifacts)
+    if claim_has_action_scope(config):
+        artifact_sets = iter_action_scoped_artifacts(artifacts)
+        if len(artifact_sets) > 1:
+            raise ValueError(
+                f"claim type {claim_type_name} is action-scoped; "
+                "use compile_claims for multi-action artifacts"
+            )
+        artifacts = artifact_sets[0]
+    return _compile_claim_normalized(
+        artifacts,
+        claim_type_name,
+        config,
+        renderer_family,
+        artifact_manifest=artifact_manifest,
+        input_set_hash=input_set_hash,
+        incident_manifest=incident_manifest,
+        execution_context=execution_context,
+    )
+
+
+def compile_claims(
+    artifacts: dict[str, Any],
+    claim_type_name: str,
+    artifact_manifest: list[dict[str, Any]] | None = None,
+    input_set_hash: str = "",
+    incident_manifest: dict[str, Any] | None = None,
+    execution_context: dict[str, Any] | None = None,
+    claim_types: dict[str, dict[str, Any]] | None = None,
+) -> list[ReceiptIR]:
+    """Compile every receipt implied by a claim type.
+
+    Claim-scoped packs produce one receipt. Action-scoped packs produce one
+    receipt per SideEffectEnvelope v1 action, with legacy parsed_actions/tool_call
+    projected into the same envelope shape at the boundary.
+    """
+    config = get_claim_type(claim_type_name, claim_types)
+    renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim type {claim_type_name}")
+    artifacts = normalize_side_effect_artifacts(artifacts)
+    artifact_sets = iter_action_scoped_artifacts(artifacts) if claim_has_action_scope(config) else [artifacts]
+    return [
+        _compile_claim_normalized(
+            scoped_artifacts,
+            claim_type_name,
+            config,
+            renderer_family,
+            artifact_manifest=artifact_manifest,
+            input_set_hash=input_set_hash,
+            incident_manifest=incident_manifest,
+            execution_context=execution_context,
+        )
+        for scoped_artifacts in artifact_sets
+    ]
 
 
 def detect_applicable_claim_types(
@@ -531,7 +600,7 @@ def main() -> int:
 
             receipts = []
             for ct in claim_types:
-                receipt = compile_claim(
+                receipts.extend(receipt.to_dict() for receipt in compile_claims(
                     artifacts,
                     ct,
                     artifact_manifest=artifact_manifest,
@@ -539,8 +608,7 @@ def main() -> int:
                     incident_manifest=incident_manifest,
                     execution_context=loaded.execution_context,
                     claim_types=active_claim_types,
-                )
-                receipts.append(receipt.to_dict())
+                ))
 
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(json.dumps(error_receipt(exc), indent=2, sort_keys=True))

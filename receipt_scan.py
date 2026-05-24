@@ -1194,6 +1194,36 @@ def _action_readiness(
     return rows
 
 
+def _claim_readiness_from_action_rows(claim: str, action_rows: list[ActionReadiness]) -> ClaimReadiness | None:
+    rows = [
+        row
+        for row in action_rows
+        if claim in row.can_decide or any(item.claim == claim for item in row.cannot_decide)
+    ]
+    if not rows:
+        return None
+
+    missing: list[str] = []
+    conflicts: list[str] = []
+    for row in rows:
+        for item in row.cannot_decide:
+            if item.claim != claim:
+                continue
+            for path in item.missing:
+                if path not in missing:
+                    missing.append(path)
+            for path in item.conflicts:
+                if path not in conflicts:
+                    conflicts.append(path)
+
+    return ClaimReadiness(
+        claim=claim,
+        can_decide=all(claim in row.can_decide for row in rows),
+        missing=missing,
+        conflicts=sorted(conflicts),
+    )
+
+
 def _infer_claims(context: ScanContext) -> list[str]:
     present_keys = set(context.artifacts.keys())
     if context.approvals:
@@ -1213,8 +1243,14 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
     artifacts = context.artifacts
     registry = build_claim_registry()
     inferred = _infer_claims(context)
+    action_rows = _action_readiness(context, registry, inferred)
     readiness: list[ClaimReadiness] = []
     for claim in inferred:
+        if claim_has_action_scope(registry[claim]):
+            action_readiness = _claim_readiness_from_action_rows(claim, action_rows)
+            if action_readiness is not None:
+                readiness.append(action_readiness)
+                continue
         missing = claim_missing(artifacts, registry[claim])
         conflicts = claim_conflicts(registry[claim], context.conflicts)
         readiness.append(ClaimReadiness(
@@ -1226,7 +1262,6 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
 
     can_decide = [item.claim for item in readiness if item.can_decide]
     cannot_decide = [item for item in readiness if not item.can_decide]
-    action_rows = _action_readiness(context, registry, inferred)
     return ScanResult(
         input_status="ok" if context.files_scanned else "no_parseable_inputs",
         files_scanned=context.files_scanned,

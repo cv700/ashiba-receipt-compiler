@@ -68,6 +68,13 @@ def side_effect_from_legacy(action: dict[str, Any], tool_call: dict[str, Any] | 
         envelope["tool"] = str(tool)
     if source_kind is not None:
         envelope["source_kind"] = str(source_kind)
+    legacy_tool_call = deepcopy(tool_call)
+    if legacy_tool_call:
+        if action_id is not None:
+            legacy_tool_call["action_id"] = str(action_id)
+        if tool is not None:
+            legacy_tool_call["tool_name"] = str(tool)
+        envelope["legacy_tool_call"] = legacy_tool_call
     return {key: value for key, value in envelope.items() if _present(value)}
 
 
@@ -92,7 +99,8 @@ def legacy_artifacts_from_side_effect(side_effect: dict[str, Any]) -> dict[str, 
     if source_kind is not None:
         action["source_kind"] = str(source_kind)
 
-    tool_call: dict[str, Any] = {}
+    legacy_tool_call = side_effect.get("legacy_tool_call")
+    tool_call: dict[str, Any] = deepcopy(legacy_tool_call) if isinstance(legacy_tool_call, dict) else {}
     if action_id is not None:
         tool_call["action_id"] = str(action_id)
     if tool is not None:
@@ -122,3 +130,23 @@ def normalize_side_effect_artifacts(artifacts: dict[str, Any]) -> dict[str, Any]
             if "tool_call" in legacy:
                 out.setdefault("tool_call", legacy["tool_call"])
     return out
+
+
+def action_scoped_artifacts(artifacts: dict[str, Any], side_effect: dict[str, Any]) -> dict[str, Any]:
+    out = normalize_side_effect_artifacts(artifacts)
+    out.pop(SIDE_EFFECTS_KEY, None)
+    out.pop("parsed_actions", None)
+    out.pop("tool_call", None)
+
+    normalized = normalize_side_effect(side_effect)
+    out[SIDE_EFFECTS_KEY] = [normalized]
+    out.update(legacy_artifacts_from_side_effect(normalized))
+    return out
+
+
+def iter_action_scoped_artifacts(artifacts: dict[str, Any]) -> list[dict[str, Any]]:
+    normalized = normalize_side_effect_artifacts(artifacts)
+    side_effects = _as_side_effect_list(normalized.get(SIDE_EFFECTS_KEY))
+    if not side_effects:
+        return [normalized]
+    return [action_scoped_artifacts(normalized, side_effect) for side_effect in side_effects]

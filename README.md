@@ -218,8 +218,8 @@ find . -type d -name __pycache__ -prune -exec rm -rf {} +
 Expected gallery summary:
 
 ```text
-34 receipts from 33 incident directories
-supported: 14 | contradicted: 11 | unknown: 8 | not_applicable: 1
+38 receipts from 33 incident directories
+supported: 16 | contradicted: 11 | unknown: 10 | not_applicable: 1
 compiler_errors: 0 | validation_errors: 0
 ```
 

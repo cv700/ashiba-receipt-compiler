@@ -30,7 +30,7 @@ from receipt_compile import (
     bundle_manifest,
     claim_types_from_incident_manifest,
     compile_bundle,
-    compile_claim,
+    compile_claims,
     detect_applicable_claim_types,
     load_artifacts_dir_bound,
 )
@@ -268,8 +268,9 @@ def main() -> int:
             ]
         else:
             claim_types = _select_claim_types(artifacts, args.claim_type, incident_manifest, registry)
-            receipts = [
-                compile_claim(
+            receipts = []
+            for claim_type in claim_types:
+                receipts.extend(receipt.to_dict() for receipt in compile_claims(
                     artifacts,
                     claim_type,
                     artifact_manifest=manifest,
@@ -277,9 +278,7 @@ def main() -> int:
                     incident_manifest=incident_manifest,
                     execution_context=execution_context,
                     claim_types=registry,
-                ).to_dict()
-                for claim_type in claim_types
-            ]
+                ))
 
     # Output
     if args.verdict:
