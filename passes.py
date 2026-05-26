@@ -411,6 +411,7 @@ def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -
                 "tool_call_decision_id": tool_decision_text,
             },
         )
+
     return PassResult(
         pass_id="grant_binding_present",
         status=PASS_SATISFIED,
