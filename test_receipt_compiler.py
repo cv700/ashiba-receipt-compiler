@@ -763,6 +763,68 @@ def test_authorization_decision_id_mismatch_cannot_support() -> None:
         assert "runtime decision_id does not match" in data["verdict"]["basis"]
 
 
+def test_hero_authorization_demo_packets() -> None:
+    before = run_ashiba_process(
+        "scan",
+        "readiness_packets/hero_authz_before_2026-05-26/logs",
+        "--policy",
+        "readiness_packets/hero_authz_before_2026-05-26/policy.json",
+        "--json",
+    )
+    assert before.returncode == 0, before.stderr
+    before_result = json.loads(before.stdout)
+    assert before_result["summary"]["actions_found"] == 1
+    assert before_result["summary"]["actions_decidable"] == 0
+    assert before_result["summary"]["actions_blocked"] == 1
+    assert before_result["can_decide"] == []
+    blocked_claims = {item["claim"]: item["missing"] for item in before_result["cannot_decide"]}
+    assert blocked_claims["authorization_bound_action"] == [
+        "authorization.revoked_at",
+        "authorization-to-action binding",
+    ]
+    before_action = before_result["actions"][0]
+    assert before_action["action_id"] == "hero-authz-charge-001"
+    assert before_action["decidable"] is False
+    assert before_action["can_decide"] == []
+    assert before_action["cannot_decide"][0]["missing"] == [
+        "authorization.revoked_at",
+        "authorization-to-action binding",
+    ]
+
+    after = run_ashiba_process(
+        "scan",
+        "readiness_packets/hero_authz_after_2026-05-26/logs",
+        "--policy",
+        "readiness_packets/hero_authz_after_2026-05-26/policy.json",
+        "--json",
+    )
+    assert after.returncode == 0, after.stderr
+    after_result = json.loads(after.stdout)
+    assert after_result["summary"]["actions_found"] == 1
+    assert after_result["summary"]["actions_decidable"] == 1
+    assert after_result["summary"]["actions_blocked"] == 0
+    assert "authorization_bound_action" in after_result["can_decide"]
+    assert after_result["cannot_decide"] == []
+    after_action = after_result["actions"][0]
+    assert after_action["action_id"] == "hero-authz-charge-001"
+    assert after_action["decidable"] is True
+    assert "authorization_bound_action" in after_action["can_decide"]
+
+    receipt = run_compile_process(
+        "readiness_packets/hero_authz_supported_2026-05-26/artifacts",
+        "--claim-type",
+        "authorization_bound_action",
+    )
+    assert receipt.returncode == 0, receipt.stderr
+    receipt_data = json.loads(receipt.stdout)
+    assert_receipt(receipt_data, SUPPORTED, 7, 0)
+    assert receipt_data["artifacts"]["tool_call"]["action_id"] == "hero-authz-charge-001"
+    assert (
+        receipt_data["artifacts"]["tool_call"]["invocation_context"]["decision_id"]
+        == receipt_data["artifacts"]["authorization"]["execution_time_decision_id"]
+    )
+
+
 def test_anthropic_importer_bridge() -> None:
     response_path = ROOT / "examples" / "anthropic_response_sample.json"
     policy_arg = ("--policy", "examples/policy_sample.json")
@@ -1573,12 +1635,18 @@ def test_demo_30s_script() -> None:
         capture_output=True,
     )
     assert proc.returncode == 0, proc.stderr
-    assert "== 1. Scan messy logs for decidable claims ==" in proc.stdout
-    assert "== 2. Compile a bounded receipt card ==" in proc.stdout
-    assert "== 3. Bad input fails closed ==" in proc.stdout
+    assert "== 1. Before: scan missing authorization boundary telemetry ==" in proc.stdout
+    assert "== 2. After: scan with revocation state and action binding ==" in proc.stdout
+    assert "== 3. Compile a bounded receipt card for the same action ==" in proc.stdout
+    assert "== 4. Bad input fails closed ==" in proc.stdout
+    assert "blocked hero-authz-charge-001" in proc.stdout
+    assert "missing authorization.revoked_at, authorization-to-action binding" in proc.stdout
+    assert "ready hero-authz-charge-001" in proc.stdout
+    assert "You can decide:\n- authorization_bound_action" in proc.stdout
     assert "Report preview:" in proc.stdout
     assert "Ashiba Evidence Readiness Report" in proc.stdout
     assert "Receipt Card" in proc.stdout
+    assert "Verdict: supported" in proc.stdout
     assert "Bad input produced nonzero exit as expected." in proc.stdout
 
 
@@ -1721,6 +1789,7 @@ def main() -> int:
     test_one_line_compile_directory_errors_do_not_traceback()
     test_gap_card_and_ci_outputs()
     test_authorization_decision_id_mismatch_cannot_support()
+    test_hero_authorization_demo_packets()
     test_anthropic_importer_bridge()
     test_anthropic_importer_missing_timestamp_fails_closed()
     test_openai_importer_bridge()

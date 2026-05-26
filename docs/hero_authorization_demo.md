@@ -6,6 +6,23 @@ The point of the demo is not that ARC rubber-stamps an action. The point is
 that ARC refuses to call a high-risk side effect authorized until the logs bind
 the authorization or approval decision to the exact action that ran.
 
+## Quick Path
+
+Run the full live path from the repository root:
+
+```bash
+./demo_30s.sh
+```
+
+Expected sections:
+
+```text
+== 1. Before: scan missing authorization boundary telemetry ==
+== 2. After: scan with revocation state and action binding ==
+== 3. Compile a bounded receipt card for the same action ==
+== 4. Bad input fails closed ==
+```
+
 ## Story
 
 1. A high-risk Lambda action executed: `hero-authz-charge-001`.
@@ -86,10 +103,10 @@ The scanner works over raw operational logs. The compiler receipt needs
 compiler-shaped verifier artifacts, including the stronger fields described in
 [authorization_binding_contract.md](authorization_binding_contract.md).
 
-For the current supported receipt card, run:
+For the supported receipt card for the same action story, run:
 
 ```bash
-./compile examples/cyber_renderer_authz_supported --card
+./compile readiness_packets/hero_authz_supported_2026-05-26/artifacts --card
 ```
 
 Expected verdict:
@@ -99,12 +116,10 @@ Verdict: supported
 Basis: all required evidence was present and all required deterministic passes were satisfied
 ```
 
-Use this as the receipt-card close after the before/after scan loop. Do not
-claim that the raw hero CloudTrail packet itself compiles to `supported`; direct
-CloudTrail import is intentionally conservative until verifier binding fields
-such as `authorization.execution_time_decision_id`,
-`authorization.render_time_grant_hash`, and
-`authorization.grant_active_at_execution` exist.
+Use this as the receipt-card close after the before/after scan loop. The raw
+hero CloudTrail packet is scan-ready after the second scan; the receipt card
+uses compiler-shaped verifier artifacts for the same action ID:
+`hero-authz-charge-001`.
 
 ## Known Limits
 

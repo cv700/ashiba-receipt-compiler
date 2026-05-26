@@ -1,0 +1,14 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "hero-authz-charge-001",
+      "tool": "lambda.amazonaws.com:Invoke",
+      "executed_at": "2026-05-14T17:01:30Z",
+      "source_kind": "cloudtrail_event",
+      "parameters": {
+        "functionName": "charge-customer",
+        "payload_hash": "sha256:herochargepayload"
+      }
+    }
+  ]
+}
