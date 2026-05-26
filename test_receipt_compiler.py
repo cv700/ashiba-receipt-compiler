@@ -1717,6 +1717,119 @@ def test_hero_authorization_demo_packets() -> None:
     )
 
 
+def test_reference_authorization_boundary_probe_fills_hero_evidence_gap() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        out_dir = Path(tmp) / "probe_packet"
+        probe = subprocess.run(
+            [
+                PYTHON,
+                "examples/probes/authorization_boundary_probe.py",
+                "--policy",
+                "readiness_packets/hero_authz_before_2026-05-26/policy.json",
+                "--cloudtrail",
+                "readiness_packets/hero_authz_before_2026-05-26/logs/cloudtrail_lambda_invoke.json",
+                "--out",
+                str(out_dir),
+            ],
+            cwd=ROOT,
+            env=ENV,
+            text=True,
+            capture_output=True,
+        )
+        assert probe.returncode == 0, probe.stderr
+        assert "Authorization boundary probe emitted boundary evidence" in probe.stdout
+        assert "grant_active_at_execution: true" in probe.stdout
+
+        scan = run_ashiba_process("scan", str(out_dir / "logs"), "--policy", str(out_dir / "policy.json"), "--json")
+        assert scan.returncode == 0, scan.stderr
+        scan_result = json.loads(scan.stdout)
+        assert scan_result["summary"]["actions_found"] == 1
+        assert scan_result["summary"]["actions_decidable"] == 1
+        assert scan_result["summary"]["actions_blocked"] == 0
+        assert scan_result["can_decide"] == ["authorization_bound_action"]
+        assert scan_result["cannot_decide"] == []
+
+        receipt = run_compile_process(
+            str(out_dir / "artifacts"),
+            "--claim-type",
+            "authorization_bound_action",
+        )
+        assert receipt.returncode == 0, receipt.stderr
+        receipt_data = json.loads(receipt.stdout)
+        assert_receipt(receipt_data, SUPPORTED, 7, 0)
+        assert (
+            receipt_data["artifacts"]["tool_call"]["invocation_context"]["decision_id"]
+            == receipt_data["artifacts"]["authorization"]["execution_time_decision_id"]
+        )
+
+
+def test_reference_authorization_boundary_probe_preserves_contradiction() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        out_dir = Path(tmp) / "revoked_probe_packet"
+        probe = subprocess.run(
+            [
+                PYTHON,
+                "examples/probes/authorization_boundary_probe.py",
+                "--policy",
+                "readiness_packets/hero_authz_before_2026-05-26/policy.json",
+                "--cloudtrail",
+                "readiness_packets/hero_authz_before_2026-05-26/logs/cloudtrail_lambda_invoke.json",
+                "--revoked-at",
+                "2026-05-14T17:00:30Z",
+                "--out",
+                str(out_dir),
+            ],
+            cwd=ROOT,
+            env=ENV,
+            text=True,
+            capture_output=True,
+        )
+        assert probe.returncode == 0, probe.stderr
+        assert "grant_active_at_execution: false" in probe.stdout
+
+        scan = run_ashiba_process("scan", str(out_dir / "logs"), "--policy", str(out_dir / "policy.json"), "--json")
+        assert scan.returncode == 0, scan.stderr
+        scan_result = json.loads(scan.stdout)
+        assert scan_result["summary"]["actions_decidable"] == 1
+        assert scan_result["summary"]["actions_blocked"] == 0
+        assert scan_result["can_decide"] == ["authorization_bound_action"]
+
+        receipt = run_compile_process(
+            str(out_dir / "artifacts"),
+            "--claim-type",
+            "authorization_bound_action",
+            "--verdict",
+        )
+        assert receipt.returncode == 0, receipt.stderr
+        assert receipt.stdout.strip() == "CONTRADICTED"
+
+
+def test_reference_authorization_boundary_probe_fails_closed_on_bad_revocation_time() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        out_dir = Path(tmp) / "bad_revocation_packet"
+        probe = subprocess.run(
+            [
+                PYTHON,
+                "examples/probes/authorization_boundary_probe.py",
+                "--policy",
+                "readiness_packets/hero_authz_before_2026-05-26/policy.json",
+                "--cloudtrail",
+                "readiness_packets/hero_authz_before_2026-05-26/logs/cloudtrail_lambda_invoke.json",
+                "--revoked-at",
+                "yesterday",
+                "--out",
+                str(out_dir),
+            ],
+            cwd=ROOT,
+            env=ENV,
+            text=True,
+            capture_output=True,
+        )
+        assert probe.returncode == 1
+        assert "revoked_at must be ISO 8601" in probe.stderr
+        assert not out_dir.exists()
+
+
 def test_anthropic_importer_bridge() -> None:
     response_path = ROOT / "examples" / "anthropic_response_sample.json"
     policy_arg = ("--policy", "examples/policy_sample.json")
@@ -2741,6 +2854,26 @@ def test_demo_30s_script() -> None:
     assert "Bad input produced nonzero exit as expected." in proc.stdout
 
 
+def test_demo_reference_probe_script() -> None:
+    proc = subprocess.run(
+        ["bash", "demo_reference_probe.sh"],
+        cwd=ROOT,
+        env=ENV,
+        text=True,
+        capture_output=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "== 1. Existing logs: authorization claim is blocked ==" in proc.stdout
+    assert "== 2. Run reference authorization-boundary probe ==" in proc.stdout
+    assert "== 3. Probe output: authorization claim is receipt-ready ==" in proc.stdout
+    assert "== 4. Compile bounded receipt from probe artifacts ==" in proc.stdout
+    assert "== 5. Epistemic check: decidable does not mean supported ==" in proc.stdout
+    assert "BLOCKED hero-authz-charge-001" in proc.stdout
+    assert "READY hero-authz-charge-001" in proc.stdout
+    assert "Verdict: supported" in proc.stdout
+    assert proc.stdout.rstrip().endswith("CONTRADICTED")
+
+
 def test_ashiba_scan_report_mode() -> None:
     root = Path("readiness_packets/deployment_ready_auth_gaps_2026-05-18")
     with tempfile.TemporaryDirectory() as tmp:
@@ -2921,6 +3054,9 @@ def main() -> int:
     test_authorization_decision_id_mismatch_cannot_support()
     test_authorization_missing_runtime_decision_id_cannot_support()
     test_hero_authorization_demo_packets()
+    test_reference_authorization_boundary_probe_fills_hero_evidence_gap()
+    test_reference_authorization_boundary_probe_preserves_contradiction()
+    test_reference_authorization_boundary_probe_fails_closed_on_bad_revocation_time()
     test_anthropic_importer_bridge()
     test_anthropic_importer_missing_timestamp_fails_closed()
     test_openai_importer_bridge()
@@ -2947,6 +3083,7 @@ def main() -> int:
     test_ashiba_scan_detects_common_action_formats()
     test_ashiba_scan_invalid_inputs_exit_nonzero()
     test_demo_30s_script()
+    test_demo_reference_probe_script()
     test_ashiba_scan_report_mode()
     test_gallery_manifest_outputs()
     test_gallery_summary_and_json_output()

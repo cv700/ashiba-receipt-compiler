@@ -51,6 +51,18 @@ The demo shows:
 - a bounded receipt card for a supported authorization claim;
 - fail-closed behavior on invalid input.
 
+## Reference Probe Demo
+
+Run this to see the full scan -> gap -> probe -> receipt loop:
+
+```bash
+./demo_reference_probe.sh
+```
+
+The demo starts with a blocked `authorization_bound_action` claim, runs a small
+authorization-boundary probe, rescans the emitted evidence, and then compiles a
+bounded receipt from the probe artifacts.
+
 ## Canonical Authorization Gap Demo
 
 This is the smallest concrete incident story in the repo:
