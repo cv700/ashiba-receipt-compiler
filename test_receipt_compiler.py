@@ -763,6 +763,60 @@ def test_authorization_decision_id_mismatch_cannot_support() -> None:
         assert "runtime decision_id does not match" in data["verdict"]["basis"]
 
 
+def test_authorization_missing_runtime_decision_id_cannot_support() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "authorization.json").write_text(
+            json.dumps({
+                "authorization": {
+                    "grant_id": "grant-missing-runtime-decision",
+                    "grant_valid_from": "2026-05-14T16:00:00Z",
+                    "grant_valid_until": "2026-05-14T18:00:00Z",
+                    "revoked_at": None,
+                    "render_time_grant_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                    "execution_time_decision_id": "decision-expected",
+                    "grant_active_at_execution": True,
+                }
+            }),
+            encoding="utf-8",
+        )
+        (root / "parsed_actions.json").write_text(
+            json.dumps({
+                "parsed_actions": [
+                    {
+                        "action_id": "act-missing-runtime-decision",
+                        "tool": "lambda.amazonaws.com:Invoke",
+                        "executed_at": "2026-05-14T17:01:30Z",
+                        "source_kind": "cloudtrail_event",
+                    }
+                ]
+            }),
+            encoding="utf-8",
+        )
+        (root / "tool_call.json").write_text(
+            json.dumps({
+                "tool_call": {
+                    "action_id": "act-missing-runtime-decision",
+                    "tool_name": "lambda.amazonaws.com:Invoke",
+                    "invocation_context": {
+                        "source": "cloudtrail",
+                    },
+                }
+            }),
+            encoding="utf-8",
+        )
+
+        receipt = run_compile_process(str(root), "--claim-type", "authorization_bound_action")
+        assert receipt.returncode == 0, receipt.stderr
+        data = json.loads(receipt.stdout)
+        assert data["verdict"]["status"] == UNKNOWN
+        assert data["verdict"]["status"] != SUPPORTED
+        assert "runtime decision_id is missing" in data["verdict"]["basis"]
+        gaps = run_compile_process(str(root), "--claim-type", "authorization_bound_action", "--gaps")
+        assert gaps.returncode == 0, gaps.stderr
+        assert "missing expected path: tool_call.invocation_context.decision_id" in gaps.stdout
+
+
 def test_hero_authorization_demo_packets() -> None:
     before = run_ashiba_process(
         "scan",
@@ -1789,6 +1843,7 @@ def main() -> int:
     test_one_line_compile_directory_errors_do_not_traceback()
     test_gap_card_and_ci_outputs()
     test_authorization_decision_id_mismatch_cannot_support()
+    test_authorization_missing_runtime_decision_id_cannot_support()
     test_hero_authorization_demo_packets()
     test_anthropic_importer_bridge()
     test_anthropic_importer_missing_timestamp_fails_closed()
