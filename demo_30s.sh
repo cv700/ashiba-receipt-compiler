@@ -4,12 +4,12 @@ set -u
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT" || exit 1
 
-echo "== 1. Scan messy logs for decidable claims =="
+echo "== 1. Before: scan missing authorization boundary telemetry =="
 report_dir="/tmp/ashiba_demo_30s_report"
 rm -rf "$report_dir"
 PYTHONDONTWRITEBYTECODE=1 ./ashiba scan \
-  readiness_packets/deployment_ready_auth_gaps_2026-05-18/logs \
-  --policy readiness_packets/deployment_ready_auth_gaps_2026-05-18/policy.json \
+  readiness_packets/hero_authz_before_2026-05-26/logs \
+  --policy readiness_packets/hero_authz_before_2026-05-26/policy.json \
   --report \
   --out "$report_dir"
 
@@ -18,11 +18,17 @@ echo "Report preview:"
 sed -n '1,37p' "$report_dir/ashiba_report.md"
 
 echo
-echo "== 2. Compile a bounded receipt card =="
-PYTHONDONTWRITEBYTECODE=1 ./compile examples/cyber_renderer_authz_supported --card
+echo "== 2. After: scan with revocation state and action binding =="
+PYTHONDONTWRITEBYTECODE=1 ./ashiba scan \
+  readiness_packets/hero_authz_after_2026-05-26/logs \
+  --policy readiness_packets/hero_authz_after_2026-05-26/policy.json
 
 echo
-echo "== 3. Bad input fails closed =="
+echo "== 3. Compile a bounded receipt card for the same action =="
+PYTHONDONTWRITEBYTECODE=1 ./compile readiness_packets/hero_authz_supported_2026-05-26/artifacts --card
+
+echo
+echo "== 4. Bad input fails closed =="
 tmpdir="$(mktemp -d)"
 bad_stdout="$(mktemp)"
 bad_stderr="$(mktemp)"

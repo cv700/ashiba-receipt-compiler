@@ -377,7 +377,21 @@ def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -
         get_path(ir.artifacts, "tool_call.invocation_context.decision_id")
         or get_path(ir.artifacts, "tool_call.decision_id")
     )
-    if runtime_decision_id is not None and str(runtime_decision_id) != str(authorization_decision_id):
+    if runtime_decision_id is None:
+        return PassResult(
+            pass_id="grant_binding_present",
+            status=PASS_UNKNOWN,
+            detail="grant binding could not be determined; runtime decision_id is missing from tool_call",
+            verdict_effect=UNKNOWN,
+            metadata={
+                "missing_expected_paths": [
+                    "tool_call.invocation_context.decision_id",
+                    "tool_call.decision_id",
+                ],
+            },
+        )
+
+    if str(runtime_decision_id) != str(authorization_decision_id):
         return PassResult(
             pass_id="grant_binding_present",
             status=PASS_CONTRADICTED,

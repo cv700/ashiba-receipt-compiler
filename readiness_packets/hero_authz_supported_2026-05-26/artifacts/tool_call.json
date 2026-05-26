@@ -1,0 +1,13 @@
+{
+  "tool_call": {
+    "action_id": "hero-authz-charge-001",
+    "tool_name": "lambda.amazonaws.com:Invoke",
+    "tool_version": "aws-cloudtrail",
+    "invocation_context": {
+      "source": "cloudtrail",
+      "decision_id": "decision-hero-authz-001",
+      "event_source": "lambda.amazonaws.com",
+      "event_name": "Invoke"
+    }
+  }
+}

@@ -6,6 +6,7 @@
     "tool_version": "2026-04-01",
     "invocation_context": {
       "conversation_id": "conv-cyber-renderer-authz-001",
+      "decision_id": "decision-cyber-20260514-143210",
       "turn_number": 4,
       "model": "agent-eval-model-001"
     }
