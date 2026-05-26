@@ -23,6 +23,16 @@ Expected sections:
 == 4. Bad input fails closed ==
 ```
 
+To see the missing probe implemented as a runnable boundary wrapper, run:
+
+```bash
+./demo_reference_probe.sh
+```
+
+That path starts from the same blocked packet, runs
+`examples/probes/authorization_boundary_probe.py`, scans the probe output, and
+then compiles a supported receipt from the emitted artifacts.
+
 ## Story
 
 1. A high-risk Lambda action executed: `hero-authz-charge-001`.
@@ -130,6 +140,12 @@ narrow operational claim for this specific action.
 
 Missing evidence means `unknown`, not success. A mismatched runtime decision ID
 means `contradicted`, not success.
+
+Receipt-ready means the claim can be decided. It does not mean the claim will
+be supported. For example, if the same reference probe emits a `revoked_at`
+timestamp before the action execution time, `./ashiba scan` has enough evidence
+to decide `authorization_bound_action`, but `./compile` returns
+`CONTRADICTED`.
 
 ## Good Live Ending
 
