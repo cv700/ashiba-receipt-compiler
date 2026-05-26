@@ -712,6 +712,57 @@ def test_gap_card_and_ci_outputs() -> None:
     assert "CI ERROR: contradicted receipt present" in ci_contradicted.stderr
 
 
+def test_authorization_decision_id_mismatch_cannot_support() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "authorization.json").write_text(
+            json.dumps({
+                "authorization": {
+                    "grant_id": "grant-decision-mismatch",
+                    "grant_valid_from": "2026-05-14T16:00:00Z",
+                    "grant_valid_until": "2026-05-14T18:00:00Z",
+                    "revoked_at": None,
+                    "render_time_grant_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "execution_time_decision_id": "decision-expected",
+                    "grant_active_at_execution": True,
+                }
+            }),
+            encoding="utf-8",
+        )
+        (root / "parsed_actions.json").write_text(
+            json.dumps({
+                "parsed_actions": [
+                    {
+                        "action_id": "act-decision-mismatch",
+                        "tool": "lambda.amazonaws.com:Invoke",
+                        "executed_at": "2026-05-14T17:01:30Z",
+                        "source_kind": "cloudtrail_event",
+                    }
+                ]
+            }),
+            encoding="utf-8",
+        )
+        (root / "tool_call.json").write_text(
+            json.dumps({
+                "tool_call": {
+                    "action_id": "act-decision-mismatch",
+                    "tool_name": "lambda.amazonaws.com:Invoke",
+                    "invocation_context": {
+                        "decision_id": "decision-other",
+                    },
+                }
+            }),
+            encoding="utf-8",
+        )
+
+        receipt = run_compile_process(str(root), "--claim-type", "authorization_bound_action")
+        assert receipt.returncode == 0, receipt.stderr
+        data = json.loads(receipt.stdout)
+        assert data["verdict"]["status"] == CONTRADICTED
+        assert data["verdict"]["status"] != SUPPORTED
+        assert "runtime decision_id does not match" in data["verdict"]["basis"]
+
+
 def test_anthropic_importer_bridge() -> None:
     response_path = ROOT / "examples" / "anthropic_response_sample.json"
     policy_arg = ("--policy", "examples/policy_sample.json")
@@ -1669,6 +1720,7 @@ def main() -> int:
     test_one_line_compile_wrapper()
     test_one_line_compile_directory_errors_do_not_traceback()
     test_gap_card_and_ci_outputs()
+    test_authorization_decision_id_mismatch_cannot_support()
     test_anthropic_importer_bridge()
     test_anthropic_importer_missing_timestamp_fails_closed()
     test_openai_importer_bridge()

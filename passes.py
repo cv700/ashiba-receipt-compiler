@@ -371,6 +371,27 @@ def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -
             verdict_effect=UNKNOWN,
             metadata={"field": "authorization.grant_active_at_execution"},
         )
+
+    authorization_decision_id = authorization.get("execution_time_decision_id")
+    runtime_decision_id = (
+        get_path(ir.artifacts, "tool_call.invocation_context.decision_id")
+        or get_path(ir.artifacts, "tool_call.decision_id")
+    )
+    if runtime_decision_id is not None and str(runtime_decision_id) != str(authorization_decision_id):
+        return PassResult(
+            pass_id="grant_binding_present",
+            status=PASS_CONTRADICTED,
+            detail=(
+                "runtime decision_id does not match authorization execution_time_decision_id: "
+                f"{runtime_decision_id!r} != {authorization_decision_id!r}"
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "authorization_decision_id_path": "authorization.execution_time_decision_id",
+                "runtime_decision_id_path": "tool_call.invocation_context.decision_id",
+            },
+        )
+
     return PassResult(
         pass_id="grant_binding_present",
         status=PASS_SATISFIED,
