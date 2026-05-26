@@ -14,7 +14,8 @@
       "eventID": "cloudtrail-evt-approved",
       "requestParameters": {
         "functionName": "charge-customer",
-        "payload_hash": "sha256:approvedpayload"
+        "payload_hash": "sha256:approvedpayload",
+        "decision_id": "authz-decision-approved-action"
       }
     },
     {

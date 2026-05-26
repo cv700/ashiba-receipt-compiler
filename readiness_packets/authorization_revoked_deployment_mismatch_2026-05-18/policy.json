@@ -10,6 +10,9 @@
   "grant_valid_from": "2026-05-14T16:00:00Z",
   "grant_valid_until": "2026-05-14T18:00:00Z",
   "revoked_at": "2026-05-14T17:10:00Z",
+  "render_time_grant_hash": "sha256:authorizationrevokedgrant",
+  "execution_time_decision_id": "authz-decision-revoked-charge",
+  "grant_active_at_execution": false,
   "issuer": "approval-system",
   "grant_context": "Readiness scanner fixture with revoked authorization grant"
 }

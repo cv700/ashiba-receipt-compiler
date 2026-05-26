@@ -14,7 +14,8 @@
       "eventID": "hero-authz-charge-001",
       "requestParameters": {
         "functionName": "charge-customer",
-        "payload_hash": "sha256:herochargepayload"
+        "payload_hash": "sha256:herochargepayload",
+        "decision_id": "decision-hero-authz-001"
       }
     }
   ]

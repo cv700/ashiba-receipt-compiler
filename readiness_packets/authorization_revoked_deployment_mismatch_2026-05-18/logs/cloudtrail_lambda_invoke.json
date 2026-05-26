@@ -14,7 +14,8 @@
       "eventID": "cloudtrail-evt-01HXrevoked",
       "requestParameters": {
         "functionName": "charge-customer",
-        "payload_hash": "sha256:revokedcloudtrailpayload"
+        "payload_hash": "sha256:revokedcloudtrailpayload",
+        "decision_id": "authz-decision-revoked-charge"
       }
     }
   ]

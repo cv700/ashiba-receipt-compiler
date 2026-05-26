@@ -4,6 +4,10 @@
 Each pass is a function (ReceiptIR, params?) -> PassResult.
 Universal passes take only the IR. Claim-specific passes may accept
 parameters from the claim type config.
+
+Claims enter as priors, but passes are where the romance gets disciplined:
+small, inspectable questions over artifacts, each refusing to infer past what
+the evidence can bear.
 """
 
 from __future__ import annotations
@@ -16,63 +20,26 @@ from constants import (
     PASS_CONTRADICTED,
     PASS_ERROR,
     PASS_MISSING,
+    PASS_OK,
     PASS_SATISFIED,
     PASS_SKIPPED,
     PASS_UNKNOWN,
     SUPPORTED,
     UNKNOWN,
 )
+from evidence_paths import evidence_is_present, get_path, path_exists
+from execution_contexts import execution_context_disclosures as _execution_context_disclosures
+from pass_specs import PASS_SPECS, PassSpec, get_pass_spec as _get_pass_spec
 from receipt_ir import PassResult, ReceiptIR
+from side_effect_envelope import (
+    SIDE_EFFECT_ACTION_ID_PATH,
+    SIDE_EFFECT_DECISION_ID_PATH,
+    SIDE_EFFECT_EXECUTED_AT_PATH,
+    SIDE_EFFECTS_KEY,
+)
 
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def get_path(obj: Any, dotted: str) -> Any:
-    """Traverse dict/list objects using the scorer-compatible dotted path form."""
-    cur = obj
-    for part in dotted.split("."):
-        if isinstance(cur, dict) and part in cur:
-            cur = cur[part]
-        elif isinstance(cur, list) and part.isdigit():
-            idx = int(part)
-            if 0 <= idx < len(cur):
-                cur = cur[idx]
-            else:
-                return None
-        else:
-            return None
-    return cur
-
-
-def path_exists(obj: Any, dotted: str) -> bool:
-    """Return whether a dotted path exists, even when its value is explicit null."""
-    cur = obj
-    for part in dotted.split("."):
-        if isinstance(cur, dict) and part in cur:
-            cur = cur[part]
-        elif isinstance(cur, list) and part.isdigit():
-            idx = int(part)
-            if 0 <= idx < len(cur):
-                cur = cur[idx]
-            else:
-                return False
-        else:
-            return False
-    return True
-
-
-def evidence_is_present(value: Any) -> bool:
-    """Return whether an expected evidence path resolves to supplied evidence."""
-    if value is None:
-        return False
-    if isinstance(value, (str, list, dict)):
-        return len(value) > 0
-    return True
 
 
 def _parse_ts(raw: Any) -> datetime | None:
@@ -110,7 +77,7 @@ def _authorization_paths() -> tuple[str, str, str, str]:
     return (
         "authorization.grant_valid_from",
         "authorization.grant_valid_until",
-        "parsed_actions.0.executed_at",
+        SIDE_EFFECT_EXECUTED_AT_PATH,
         "authorization.revoked_at",
     )
 
@@ -166,6 +133,8 @@ def expected_evidence_absence(ir: ReceiptIR, params: dict[str, Any] | None = Non
     for path in ir.expected_evidence:
         value = get_path(ir.artifacts, path)
         if not evidence_is_present(value):
+            # Missing evidence is not contradiction. It is the compiler drawing
+            # a bright line from an unresolved claim to the next probe to build.
             absence.append(
                 {
                     "expected_path": path,
@@ -227,6 +196,25 @@ def no_future_evidence(ir: ReceiptIR, params: dict[str, Any] | None = None) -> P
         detail=f"all {len(inspected)} parsed evidence timestamp(s) are <= receipt creation time",
         verdict_effect=SUPPORTED,
         metadata={"created_at": ir.created_at, "inspected_paths": inspected},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Execution context disclosure pass
+# ---------------------------------------------------------------------------
+def execution_context_disclosure(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Disclose typed execution-context limits without changing the verdict."""
+    disclosures = _execution_context_disclosures(ir.execution_context)
+    schema_id = ir.execution_context.get("schema_id") if isinstance(ir.execution_context, dict) else None
+    return PassResult(
+        pass_id="execution_context_disclosure",
+        status=PASS_OK,
+        detail=f"execution context disclosed with {len(disclosures)} boundary disclosure(s)",
+        verdict_effect=None,
+        metadata={
+            "schema_id": schema_id or "",
+            "boundary_disclosures": disclosures,
+        },
     )
 
 
@@ -335,7 +323,7 @@ def revocation_before_action(ir: ReceiptIR, params: dict[str, Any] | None = None
 
 
 def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
-    """Check that authorization evidence includes render-time grant hash and execution-time decision ID."""
+    """Check that authorization evidence is bound to the executed tool call."""
     authorization = ir.artifacts.get("authorization", {})
     if not isinstance(authorization, dict):
         return PassResult(
@@ -345,9 +333,8 @@ def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -
             verdict_effect=UNKNOWN,
         )
 
-    required = {"render_time_grant_hash", "execution_time_decision_id", "grant_active_at_execution"}
-    present = set(authorization)
-    missing = sorted(required - present)
+    required = ("render_time_grant_hash", "execution_time_decision_id", "grant_active_at_execution")
+    missing = sorted(field for field in required if not evidence_is_present(authorization.get(field)))
     if missing:
         return PassResult(
             pass_id="grant_binding_present",
@@ -360,57 +347,77 @@ def grant_binding_present(ir: ReceiptIR, params: dict[str, Any] | None = None) -
             metadata={
                 "missing_fields": missing,
                 "missing_expected_paths": [f"authorization.{field}" for field in missing],
-                "present_fields": sorted(required & present),
+                "present_fields": sorted(field for field in required if field not in missing),
             },
         )
-    if authorization.get("grant_active_at_execution") is not True:
-        return PassResult(
-            pass_id="grant_binding_present",
-            status=PASS_UNKNOWN,
-            detail="grant binding could not support the claim; grant_active_at_execution is not true",
-            verdict_effect=UNKNOWN,
-            metadata={"field": "authorization.grant_active_at_execution"},
-        )
-
-    authorization_decision_id = authorization.get("execution_time_decision_id")
-    runtime_decision_id = (
-        get_path(ir.artifacts, "tool_call.invocation_context.decision_id")
-        or get_path(ir.artifacts, "tool_call.decision_id")
-    )
-    if runtime_decision_id is None:
-        return PassResult(
-            pass_id="grant_binding_present",
-            status=PASS_UNKNOWN,
-            detail="grant binding could not be determined; runtime decision_id is missing from tool_call",
-            verdict_effect=UNKNOWN,
-            metadata={
-                "missing_expected_paths": [
-                    "tool_call.invocation_context.decision_id",
-                    "tool_call.decision_id",
-                ],
-            },
-        )
-
-    if str(runtime_decision_id) != str(authorization_decision_id):
+    grant_active_at_execution = authorization.get("grant_active_at_execution")
+    if grant_active_at_execution is False:
         return PassResult(
             pass_id="grant_binding_present",
             status=PASS_CONTRADICTED,
             detail=(
-                "runtime decision_id does not match authorization execution_time_decision_id: "
-                f"{runtime_decision_id!r} != {authorization_decision_id!r}"
+                "grant binding contradicted the claim; "
+                "authorization.grant_active_at_execution is false"
             ),
             verdict_effect=CONTRADICTED,
             metadata={
-                "authorization_decision_id_path": "authorization.execution_time_decision_id",
-                "runtime_decision_id_path": "tool_call.invocation_context.decision_id",
+                "field": "authorization.grant_active_at_execution",
+                "observed_value": grant_active_at_execution,
+            },
+        )
+    if grant_active_at_execution is not True:
+        return PassResult(
+            pass_id="grant_binding_present",
+            status=PASS_UNKNOWN,
+            detail="grant binding could not be determined; grant_active_at_execution is not a boolean true/false value",
+            verdict_effect=UNKNOWN,
+            metadata={
+                "field": "authorization.grant_active_at_execution",
+                "observed_value": grant_active_at_execution,
+            },
+        )
+
+    auth_decision_id = str(authorization.get("execution_time_decision_id", ""))
+    tool_decision_path = SIDE_EFFECT_DECISION_ID_PATH
+    tool_decision_id = get_path(ir.artifacts, tool_decision_path)
+    if not evidence_is_present(tool_decision_id):
+        return PassResult(
+            pass_id="grant_binding_present",
+            status=PASS_UNKNOWN,
+            detail=(
+                "grant binding could not be determined; missing tool-call field: "
+                f"{tool_decision_path}"
+            ),
+            verdict_effect=UNKNOWN,
+            metadata={
+                "missing_fields": [SIDE_EFFECT_DECISION_ID_PATH],
+                "missing_expected_paths": [tool_decision_path],
+                "authorization_decision_id": auth_decision_id,
+            },
+        )
+    tool_decision_text = str(tool_decision_id)
+    if auth_decision_id != tool_decision_text:
+        return PassResult(
+            pass_id="grant_binding_present",
+            status=PASS_CONTRADICTED,
+            detail=(
+                "grant binding decision mismatch: "
+                f"authorization.execution_time_decision_id={auth_decision_id!r}; "
+                f"{tool_decision_path}={tool_decision_text!r}"
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "authorization_decision_id": auth_decision_id,
+                "tool_call_decision_id": tool_decision_text,
             },
         )
 
     return PassResult(
         pass_id="grant_binding_present",
         status=PASS_SATISFIED,
-        detail="render-time grant hash and execution-time decision evidence present",
+        detail="render-time grant hash and matching tool-call decision evidence present",
         verdict_effect=SUPPORTED,
+        metadata={"decision_id": auth_decision_id},
     )
 
 
@@ -418,12 +425,12 @@ def no_action_from_untrusted_literal(ir: ReceiptIR, params: dict[str, Any] | Non
     """Flag contradiction if any parsed action derives from an untrusted literal source."""
     params = params or {}
     forbidden_kinds = set(params.get("forbidden_source_kinds", ["literal_untrusted_text"]))
-    actions = ir.artifacts.get("parsed_actions", [])
+    actions = ir.artifacts.get(SIDE_EFFECTS_KEY, [])
     if not isinstance(actions, list):
         return PassResult(
             pass_id="no_action_from_untrusted_literal",
             status=PASS_SKIPPED,
-            detail="no parsed_actions array in artifacts",
+            detail="no side_effects array in artifacts",
             verdict_effect=None,
         )
 
@@ -433,7 +440,7 @@ def no_action_from_untrusted_literal(ir: ReceiptIR, params: dict[str, Any] | Non
             continue
         source_kind = action.get("source_kind", "")
         if source_kind in forbidden_kinds:
-            offenders.append(f"parsed_actions.{i} (source_kind={source_kind})")
+            offenders.append(f"side_effects.{i} (source_kind={source_kind})")
 
     if offenders:
         return PassResult(
@@ -534,13 +541,15 @@ def repair_writeback_recorded(ir: ReceiptIR, params: dict[str, Any] | None = Non
 
 def human_approval_before_action(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
     """Check that an explicit approval preceded an external side-effect action."""
+    approval_binding_path = "approval.tool_call_id"
+    action_id_path = SIDE_EFFECT_ACTION_ID_PATH
     approved_path = "approval.approved_at"
-    executed_path = "parsed_actions.0.executed_at"
+    executed_path = SIDE_EFFECT_EXECUTED_AT_PATH
     decision_path = "approval.decision"
     actor_path = "approval.actor"
     missing = [
         path
-        for path in (approved_path, executed_path, decision_path, actor_path)
+        for path in (approval_binding_path, action_id_path, approved_path, executed_path, decision_path, actor_path)
         if not evidence_is_present(get_path(ir.artifacts, path))
     ]
     missing.extend(path for path in _missing_or_invalid_timestamp_paths(ir, [approved_path, executed_path]) if path not in missing)
@@ -551,6 +560,23 @@ def human_approval_before_action(ir: ReceiptIR, params: dict[str, Any] | None = 
             detail="human approval ordering could not be determined; missing or invalid field(s): " + ", ".join(missing),
             verdict_effect=UNKNOWN,
             metadata={"missing_expected_paths": missing},
+        )
+
+    approval_binding = str(get_path(ir.artifacts, approval_binding_path))
+    action_id = str(get_path(ir.artifacts, action_id_path))
+    if approval_binding != action_id:
+        return PassResult(
+            pass_id="human_approval_before_action",
+            status=PASS_CONTRADICTED,
+            detail=(
+                f"approval.tool_call_id={approval_binding!r} does not match "
+                f"side_effect action_id={action_id!r}"
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "approval_tool_call_id": approval_binding,
+                "action_id": action_id,
+            },
         )
 
     decision = str(get_path(ir.artifacts, decision_path)).lower()
@@ -655,6 +681,228 @@ def deployment_matches_reviewed_commit(ir: ReceiptIR, params: dict[str, Any] | N
 
 
 # ---------------------------------------------------------------------------
+# GPU collateral passes
+# ---------------------------------------------------------------------------
+# v0 keeps identity, health, and economic value disentangled. Serial matching is
+# a collateral-identity update; diagnostics are a health update; valuation stays
+# outside the compiler because the evidence here cannot honestly price a GPU.
+
+def _string_list(value: Any) -> list[str] | None:
+    """Return a stringified list, or None when the value is not a non-empty list."""
+    if not isinstance(value, list) or not value:
+        return None
+    return [str(item) for item in value]
+
+
+def _number(value: Any) -> float | None:
+    """Return a numeric value without accepting booleans as numbers."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def gpu_serial_set_match(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check observed GPU serials against the declared collateral schedule."""
+    declared = _string_list(get_path(ir.artifacts, "gpu_inventory.declared_serials"))
+    observed = _string_list(get_path(ir.artifacts, "gpu_probe_observation.observed_serials"))
+    if declared is None or observed is None:
+        return PassResult(
+            pass_id="gpu_serial_set_match",
+            status=PASS_SKIPPED,
+            detail="serial set match skipped because declared or observed serial list is missing",
+        )
+
+    declared_set = set(declared)
+    observed_set = set(observed)
+    missing_from_hardware = sorted(declared_set - observed_set)
+    undeclared_on_hardware = sorted(observed_set - declared_set)
+    if missing_from_hardware or undeclared_on_hardware:
+        return PassResult(
+            pass_id="gpu_serial_set_match",
+            status=PASS_CONTRADICTED,
+            detail=(
+                "Serial set mismatch: declared but not observed: "
+                f"{missing_from_hardware}; observed but not declared: {undeclared_on_hardware}."
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "declared_count": len(declared_set),
+                "observed_count": len(observed_set),
+                "declared_but_not_observed": missing_from_hardware,
+                "observed_but_not_declared": undeclared_on_hardware,
+            },
+        )
+
+    return PassResult(
+        pass_id="gpu_serial_set_match",
+        status=PASS_SATISFIED,
+        detail=f"All {len(declared_set)} declared serial(s) matched observed serial(s).",
+        metadata={"serial_count": len(declared_set)},
+    )
+
+
+def gpu_node_id_match(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check observed GPU node identity against the declared collateral node."""
+    declared = get_path(ir.artifacts, "gpu_inventory.declared_node_id")
+    observed = get_path(ir.artifacts, "gpu_probe_observation.observed_node_id")
+    if not evidence_is_present(declared) or not evidence_is_present(observed):
+        return PassResult(
+            pass_id="gpu_node_id_match",
+            status=PASS_SKIPPED,
+            detail="node ID match skipped because declared or observed node ID is missing",
+        )
+
+    declared_text = str(declared)
+    observed_text = str(observed)
+    if declared_text != observed_text:
+        return PassResult(
+            pass_id="gpu_node_id_match",
+            status=PASS_CONTRADICTED,
+            detail=f"Node ID mismatch: declared '{declared_text}', observed '{observed_text}'.",
+            verdict_effect=CONTRADICTED,
+            metadata={"declared_node_id": declared_text, "observed_node_id": observed_text},
+        )
+
+    return PassResult(
+        pass_id="gpu_node_id_match",
+        status=PASS_SATISFIED,
+        detail=f"Node ID matched: {declared_text}.",
+        metadata={"node_id": declared_text},
+    )
+
+
+def dcgm_diag_result(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check DCGM diagnostic status without interpreting missing evidence."""
+    raw_result = get_path(ir.artifacts, "dcgm_diag.overall_result")
+    if not evidence_is_present(raw_result):
+        return PassResult(
+            pass_id="dcgm_diag_result",
+            status=PASS_SKIPPED,
+            detail="DCGM diagnostic result skipped because dcgm_diag.overall_result is missing",
+        )
+
+    result = str(raw_result)
+    if result == "Pass":
+        return PassResult(
+            pass_id="dcgm_diag_result",
+            status=PASS_SATISFIED,
+            detail="DCGM diagnostic result passed.",
+        )
+    if result == "Warn":
+        return PassResult(
+            pass_id="dcgm_diag_result",
+            status=PASS_UNKNOWN,
+            detail="DCGM reported warning status; health is indeterminate.",
+            verdict_effect=UNKNOWN,
+        )
+    if result == "Fail":
+        failed = []
+        test_results = get_path(ir.artifacts, "dcgm_diag.test_results")
+        if isinstance(test_results, list):
+            for item in test_results:
+                if not isinstance(item, dict) or item.get("result") != "Fail":
+                    continue
+                name = item.get("test_name", "unknown_test")
+                detail = item.get("detail")
+                failed.append(f"{name}: {detail}" if detail else str(name))
+        failed_text = "; ".join(failed) if failed else "no failed test detail supplied"
+        return PassResult(
+            pass_id="dcgm_diag_result",
+            status=PASS_CONTRADICTED,
+            detail=f"DCGM diagnostic failed: {failed_text}.",
+            verdict_effect=CONTRADICTED,
+            metadata={"failed_tests": failed},
+        )
+
+    return PassResult(
+        pass_id="dcgm_diag_result",
+        status=PASS_UNKNOWN,
+        detail=f"DCGM diagnostic result {result!r} is not recognized.",
+        verdict_effect=UNKNOWN,
+    )
+
+
+def ecc_threshold_check(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check uncorrectable ECC and retired-page thresholds."""
+    dbe = _number(get_path(ir.artifacts, "xid_ecc_log.volatile_dbe_errors"))
+    retired = _number(get_path(ir.artifacts, "xid_ecc_log.total_retired_pages"))
+    limit = _number(get_path(ir.artifacts, "xid_ecc_log.page_retirement_limit"))
+    if dbe is None or retired is None or limit is None:
+        return PassResult(
+            pass_id="ecc_threshold_check",
+            status=PASS_SKIPPED,
+            detail="ECC threshold check skipped because DBE or retired-page threshold evidence is missing",
+        )
+
+    contradictions = []
+    if dbe > 0:
+        contradictions.append(f"Uncorrectable double-bit ECC errors detected: {dbe:g} volatile DBE")
+    if retired >= limit:
+        contradictions.append(f"Retired page count ({retired:g}) meets or exceeds limit ({limit:g})")
+
+    if contradictions:
+        return PassResult(
+            pass_id="ecc_threshold_check",
+            status=PASS_CONTRADICTED,
+            detail="; ".join(contradictions) + ".",
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "volatile_dbe_errors": dbe,
+                "total_retired_pages": retired,
+                "page_retirement_limit": limit,
+            },
+        )
+
+    return PassResult(
+        pass_id="ecc_threshold_check",
+        status=PASS_SATISFIED,
+        detail=f"ECC within thresholds: 0 volatile DBE, {retired:g}/{limit:g} retired pages.",
+        metadata={
+            "volatile_dbe_errors": dbe,
+            "total_retired_pages": retired,
+            "page_retirement_limit": limit,
+        },
+    )
+
+
+def gpu_serial_cross_reference(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check that GPU health evidence sources refer to the same serial."""
+    sources = {
+        "dcgm_diag": get_path(ir.artifacts, "dcgm_diag.gpu_serial"),
+        "xid_ecc_log": get_path(ir.artifacts, "xid_ecc_log.gpu_serial"),
+        "nvidia_smi": get_path(ir.artifacts, "nvidia_smi.gpu_serial"),
+    }
+    present = {name: str(value) for name, value in sources.items() if evidence_is_present(value)}
+    if not present:
+        return PassResult(
+            pass_id="gpu_serial_cross_reference",
+            status=PASS_SKIPPED,
+            detail="GPU serial cross-reference skipped because no serial evidence is present",
+        )
+
+    serials = set(present.values())
+    if len(serials) > 1:
+        detail_parts = [f"{name}='{value}'" for name, value in sorted(present.items())]
+        return PassResult(
+            pass_id="gpu_serial_cross_reference",
+            status=PASS_CONTRADICTED,
+            detail="Evidence serial mismatch: " + ", ".join(detail_parts) + ".",
+            verdict_effect=CONTRADICTED,
+            metadata=present,
+        )
+
+    serial = next(iter(serials))
+    return PassResult(
+        pass_id="gpu_serial_cross_reference",
+        status=PASS_SATISFIED,
+        detail=f"All evidence sources reference same GPU: {serial}.",
+        metadata=present,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Prefix continuity passes
 # ---------------------------------------------------------------------------
 
@@ -728,29 +976,11 @@ def prefix_continuity(ir: ReceiptIR, params: dict[str, Any] | None = None) -> Pa
     )
 
 
-# ---------------------------------------------------------------------------
-# Pass registry
-# ---------------------------------------------------------------------------
+_missing_functions = sorted(pass_id for pass_id in PASS_SPECS if pass_id not in globals())
+if _missing_functions:
+    raise RuntimeError(f"pass registry/spec mismatch: missing functions={_missing_functions}")
 
-PASS_REGISTRY: dict[str, Any] = {
-    # Universal
-    "utc_timestamp_format": utc_timestamp_format,
-    "expected_evidence_absence": expected_evidence_absence,
-    "no_future_evidence": no_future_evidence,
-    # Authorization grant
-    "grant_active_at_event_time": grant_active_at_event_time,
-    "revocation_before_action": revocation_before_action,
-    "grant_binding_present": grant_binding_present,
-    "no_action_from_untrusted_literal": no_action_from_untrusted_literal,
-    # Parser repair
-    "parser_repair_logged": parser_repair_logged,
-    "repair_writeback_recorded": repair_writeback_recorded,
-    # Human approval and deployment
-    "human_approval_before_action": human_approval_before_action,
-    "deployment_matches_reviewed_commit": deployment_matches_reviewed_commit,
-    # Prefix continuity
-    "prefix_continuity": prefix_continuity,
-}
+PASS_REGISTRY: dict[str, Any] = {pass_id: globals()[pass_id] for pass_id in PASS_SPECS}
 
 
 def get_pass(pass_id: str) -> Any:
@@ -761,11 +991,6 @@ def get_pass(pass_id: str) -> Any:
     return PASS_REGISTRY[pass_id]
 
 
-# Legacy ordered passes list for v1 compatibility (bundle-mode)
-ORDERED_PASSES = [
-    utc_timestamp_format,
-    expected_evidence_absence,
-    grant_active_at_event_time,
-    revocation_before_action,
-    no_future_evidence,
-]
+def get_pass_spec(pass_id: str) -> PassSpec:
+    """Return the metadata contract for a pass_id, or raise ValueError."""
+    return _get_pass_spec(pass_id)

@@ -18,6 +18,7 @@ import sys
 from typing import Any
 
 from importer_common import (
+    authorization_decision_id_from_fields,
     authorization_from_policy,
     first_present,
     load_json_or_jsonl,
@@ -78,6 +79,17 @@ def _event_to_artifacts(event: dict[str, Any], policy: dict[str, Any] | None, ex
         nested_get(event, "annotations", "authorization.k8s.io/reason"),
         nested_get(event, "responseStatus", "code"),
     )
+    annotations = event.get("annotations") if isinstance(event.get("annotations"), dict) else {}
+    decision_id = authorization_decision_id_from_fields(event, annotations)
+    invocation_context = {
+        "source": "kubernetes_audit",
+        "user": nested_get(event, "user", "username"),
+        "groups": nested_get(event, "user", "groups"),
+        "namespace": nested_get(event, "objectRef", "namespace"),
+        "response_code": nested_get(event, "responseStatus", "code"),
+    }
+    if decision_id is not None:
+        invocation_context["decision_id"] = str(decision_id)
     return {
         **authorization_from_policy(policy),
         "parsed_actions": [
@@ -98,13 +110,7 @@ def _event_to_artifacts(event: dict[str, Any], policy: dict[str, Any] | None, ex
             "action_id": action_id,
             "tool_name": tool_name,
             "tool_version": "kubernetes-audit",
-            "invocation_context": {
-                "source": "kubernetes_audit",
-                "user": nested_get(event, "user", "username"),
-                "groups": nested_get(event, "user", "groups"),
-                "namespace": nested_get(event, "objectRef", "namespace"),
-                "response_code": nested_get(event, "responseStatus", "code"),
-            },
+            "invocation_context": invocation_context,
         },
     }
 

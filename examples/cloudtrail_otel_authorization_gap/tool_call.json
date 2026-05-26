@@ -1,0 +1,10 @@
+{
+  "action_id": "act-refund-7421",
+  "tool_name": "stripe.refunds.create",
+  "tool_schema_hash": "sha256:9d59f327d88dfd6a7148dc197f2f6e4a11ec32ef77182e0392d0d4b3643a76c5",
+  "invocation_context": {
+    "decision_id": "authz-decision-7421",
+    "trace_id": "trace-refund-7421",
+    "cloudtrail_event_id": "cloudtrail-evt-refund-7421"
+  }
+}

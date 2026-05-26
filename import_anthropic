@@ -36,6 +36,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from importer_common import authorization_from_policy
+
 
 # ---------------------------------------------------------------------------
 # Anthropic response parsing
@@ -120,25 +122,6 @@ def _build_tool_call(
     }
 
 
-def _build_authorization(policy: dict[str, Any]) -> dict[str, Any]:
-    """Build the authorization artifact from the policy file."""
-    grant_id = policy.get("grant_id", f"grant-{uuid.uuid4().hex[:8]}")
-
-    return {
-        "authorization": {
-            "grant_id": grant_id,
-            "principal": policy.get("principal", "unknown"),
-            "delegated_to": policy.get("delegated_to", "unknown"),
-            "scope": policy.get("scope", []),
-            "grant_valid_from": policy.get("grant_valid_from", ""),
-            "grant_valid_until": policy.get("grant_valid_until", ""),
-            "revoked_at": policy.get("revoked_at", None),
-            "issuer": policy.get("issuer", "policy_file"),
-            "grant_context": policy.get("grant_context", ""),
-        }
-    }
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -168,7 +151,7 @@ def import_response(
     executed_at = _infer_executed_at(response, executed_at_override)
 
     # Build artifacts
-    authorization = _build_authorization(policy)
+    authorization = authorization_from_policy(policy)
     parsed_action = _tool_use_to_parsed_action(tool_use, executed_at, action_index)
     tool_call = _build_tool_call(tool_use, response)
 

@@ -90,12 +90,13 @@ The added telemetry is intentionally small:
 
 ```text
 authorization.revoked_at = null
-approval.tool_call_id    = hero-authz-charge-001
-tool_call.action_id      = hero-authz-charge-001
+authorization.execution_time_decision_id = decision-hero-authz-001
+authorization.grant_active_at_execution  = true
+side_effects.0.invocation.decision_id    = decision-hero-authz-001
 ```
 
 Interpretation: the logs now say the revocation state was checked, and the
-approval binds to the exact side effect.
+authorization decision binds to the exact side effect.
 
 ## Receipt Card
 

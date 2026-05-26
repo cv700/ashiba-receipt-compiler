@@ -9,6 +9,9 @@
   "grant_valid_from": "2026-05-14T16:00:00Z",
   "grant_valid_until": "2026-05-14T18:00:00Z",
   "revoked_at": null,
+  "render_time_grant_hash": "sha256:authorizationreadygrant",
+  "execution_time_decision_id": "authz-decision-approved-charge",
+  "grant_active_at_execution": true,
   "issuer": "approval-system",
   "grant_context": "Readiness scanner fixture with explicit non-revocation export"
 }

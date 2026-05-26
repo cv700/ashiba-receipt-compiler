@@ -14,22 +14,17 @@ attached to this exact side effect.
 
 ## Scanner Readiness Contract
 
-The scanner reports an `authorization-to-action binding` as present when one of
-these joins can be made:
-
-- `approval.tool_call_id` equals `tool_call.action_id`
-- `approval.approval_id` or `approval.decision_id` equals
-  `tool_call.approval_id`, `tool_call.invocation_context.approval_id`, or
-  `tool_call.invocation_context.decision_id`
-- `authorization.decision_id` equals `tool_call.invocation_context.decision_id`,
-  `tool_call.approval_id`, or `tool_call.invocation_context.approval_id`
-
-The hero after packet uses the first form:
+For `authorization_bound_action`, the scanner reports an
+`authorization-to-action binding` as present when the authorization decision ID
+is carried into the side-effect envelope:
 
 ```text
-approval.tool_call_id = hero-authz-charge-001
-tool_call.action_id   = hero-authz-charge-001
+authorization.execution_time_decision_id == side_effects.0.invocation.decision_id
 ```
+
+Human approval joins such as `approval.tool_call_id == tool_call.action_id`
+remain useful for `human_approval_before_external_side_effect`, but they are
+not enough by themselves to support the authorization-bound-action claim.
 
 ## Compiler Receipt Contract
 
@@ -44,20 +39,15 @@ requires:
 - `authorization.render_time_grant_hash`
 - `authorization.execution_time_decision_id`
 - `authorization.grant_active_at_execution: true`
-- `parsed_actions.0.executed_at`
-- `tool_call.action_id`
+- `side_effects.0.executed_at`
+- `side_effects.0.action_id`
+- `side_effects.0.invocation.decision_id`
 
-If runtime decision evidence is present on the tool call, it must match the
-authorization execution-time decision:
-
-```text
-tool_call.invocation_context.decision_id == authorization.execution_time_decision_id
-```
-
-or:
+The runtime decision evidence must match the authorization execution-time
+decision:
 
 ```text
-tool_call.decision_id == authorization.execution_time_decision_id
+side_effects.0.invocation.decision_id == authorization.execution_time_decision_id
 ```
 
 A mismatch is `contradicted`, not `supported`.

@@ -1,0 +1,11 @@
+{
+  "authorization": {
+    "execution_time_decision_id": "decision-gpu-context-001",
+    "grant_active_at_execution": true,
+    "grant_id": "grant-gpu-context-001",
+    "grant_valid_from": "2026-05-20T10:00:00Z",
+    "grant_valid_until": "2026-05-20T18:00:00Z",
+    "render_time_grant_hash": "sha256:grant-context",
+    "revoked_at": null
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "act-gpu-context-001",
+      "executed_at": "2026-05-20T14:32:10Z",
+      "source_kind": "model_output",
+      "tool": "cluster_acceptance_probe"
+    }
+  ]
+}

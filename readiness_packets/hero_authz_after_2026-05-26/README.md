@@ -4,7 +4,8 @@ This packet is the second scan in the hero demo. It uses the same high-risk
 Lambda side effect as the before packet, but adds the telemetry ARC asked for:
 
 - explicit non-revocation export via `authorization.revoked_at: null`;
-- approval-to-action binding via `approval.tool_call_id`.
+- authorization decision export via `authorization.execution_time_decision_id`;
+- runtime binding via `side_effects.0.invocation.decision_id`.
 
 Expected result:
 

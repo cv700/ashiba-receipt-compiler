@@ -1,0 +1,10 @@
+{
+  "parsed_actions": [
+    {
+      "action_id": "act-refund-7421",
+      "tool": "stripe.refunds.create",
+      "executed_at": "2026-05-14T17:01:30Z",
+      "source_kind": "model_output"
+    }
+  ]
+}

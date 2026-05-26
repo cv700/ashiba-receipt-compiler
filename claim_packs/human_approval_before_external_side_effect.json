@@ -11,11 +11,25 @@
     "approval.approved_at",
     "approval.decision",
     "approval.actor",
-    "parsed_actions.0.executed_at",
-    "tool_call.action_id"
+    "approval.tool_call_id",
+    "side_effects.0.executed_at",
+    "side_effects.0.action_id"
   ],
   "applicability_evidence": [
     "approval"
+  ],
+  "support_requirements": [
+    {
+      "id": "approval-to-action binding",
+      "all_of": [
+        "approval.tool_call_id",
+        "side_effects.0.action_id"
+      ],
+      "same_value": [
+        "approval.tool_call_id",
+        "side_effects.0.action_id"
+      ]
+    }
   ],
   "passes": [
     "utc_timestamp_format",

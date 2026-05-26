@@ -18,6 +18,7 @@ import sys
 from typing import Any
 
 from importer_common import (
+    authorization_decision_id_from_fields,
     authorization_from_policy,
     first_present,
     load_json_or_jsonl,
@@ -37,11 +38,20 @@ def _event_to_artifacts(event: dict[str, Any], policy: dict[str, Any] | None, ex
     action = require_str(first_present(event.get("action"), event.get("operation"), event.get("event.action")), "action")
     resource = require_str(first_present(event.get("resource"), event.get("target"), event.get("object")), "resource")
     decision = first_present(event.get("decision"), event.get("outcome"), event.get("result"))
+    decision_id = authorization_decision_id_from_fields(event)
     executed_at = require_timestamp(
         first_present(executed_at_override, event.get("timestamp"), event.get("@timestamp"), event.get("time")),
         "SIEM event",
     )
     tool_name = f"siem.{action}.{resource}"
+    invocation_context = {
+        "source": "siem_jsonl",
+        "actor": actor,
+        "resource": resource,
+        "decision": decision,
+    }
+    if decision_id is not None:
+        invocation_context["decision_id"] = str(decision_id)
     return {
         **authorization_from_policy(policy),
         "parsed_actions": [
@@ -62,12 +72,7 @@ def _event_to_artifacts(event: dict[str, Any], policy: dict[str, Any] | None, ex
             "action_id": action_id,
             "tool_name": tool_name,
             "tool_version": "generic-siem-jsonl",
-            "invocation_context": {
-                "source": "siem_jsonl",
-                "actor": actor,
-                "resource": resource,
-                "decision": decision,
-            },
+            "invocation_context": invocation_context,
         },
     }
 

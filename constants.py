@@ -22,5 +22,6 @@ PASS_MISSING = "missing"
 PASS_ERROR = "error"
 PASS_SKIPPED = "skipped"
 PASS_NOT_APPLICABLE = "not_applicable"
+PASS_OK = "ok"
 
 CLAIM_APPLICABILITY_PASS_ID = "claim_applicability"

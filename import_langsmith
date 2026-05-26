@@ -26,6 +26,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from importer_common import authorization_decision_id_from_fields, authorization_from_policy
+
 
 def _epoch_to_utc(epoch_seconds: int | float) -> str:
     return datetime.fromtimestamp(epoch_seconds, timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -164,29 +166,26 @@ def _parameters(run: dict[str, Any]) -> Any:
     return {}
 
 
-def _build_authorization(policy: dict[str, Any]) -> dict[str, Any]:
-    grant_id = policy.get("grant_id", f"grant-{uuid.uuid4().hex[:8]}")
-    return {
-        "authorization": {
-            "grant_id": grant_id,
-            "principal": policy.get("principal", "unknown"),
-            "delegated_to": policy.get("delegated_to", "unknown"),
-            "scope": policy.get("scope", []),
-            "grant_valid_from": policy.get("grant_valid_from", ""),
-            "grant_valid_until": policy.get("grant_valid_until", ""),
-            "revoked_at": policy.get("revoked_at", None),
-            "issuer": policy.get("issuer", "policy_file"),
-            "grant_context": policy.get("grant_context", ""),
-        }
-    }
-
-
 def _run_to_artifacts(run: dict[str, Any], policy: dict[str, Any], executed_at_override: str | None) -> dict[str, Any]:
     action_id = _action_id(run)
     tool_name = _tool_name(run)
     executed_at = _timestamp(run, executed_at_override)
+    invocation_context = {
+        "source": "langsmith",
+        "run_id": action_id,
+        "parent_run_id": run.get("parent_run_id"),
+        "trace_id": run.get("trace_id"),
+        "session_id": run.get("session_id"),
+    }
+    decision_id = authorization_decision_id_from_fields(
+        run,
+        run.get("metadata") if isinstance(run.get("metadata"), dict) else {},
+        run.get("extra") if isinstance(run.get("extra"), dict) else {},
+    )
+    if decision_id is not None:
+        invocation_context["decision_id"] = str(decision_id)
     return {
-        **_build_authorization(policy),
+        **authorization_from_policy(policy),
         "parsed_actions": [
             {
                 "action_id": action_id,
@@ -200,13 +199,7 @@ def _run_to_artifacts(run: dict[str, Any], policy: dict[str, Any], executed_at_o
             "action_id": action_id,
             "tool_name": tool_name,
             "tool_version": "langsmith-trace-export",
-            "invocation_context": {
-                "source": "langsmith",
-                "run_id": action_id,
-                "parent_run_id": run.get("parent_run_id"),
-                "trace_id": run.get("trace_id"),
-                "session_id": run.get("session_id"),
-            },
+            "invocation_context": invocation_context,
         },
     }
 

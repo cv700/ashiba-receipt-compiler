@@ -12,18 +12,21 @@ Usage modes:
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
 from boundary import generate_boundary
+from claim_contracts import claim_has_action_scope
 from claim_types import CLAIM_TYPES, build_claim_registry, get_claim_type, list_claim_types
 from constants import CLAIM_APPLICABILITY_PASS_ID, COMPILER_VERSION, PASS_NOT_APPLICABLE, UNKNOWN
-from passes import ORDERED_PASSES, get_pass
+from passes import get_pass
 from receipt_explain import format_receipts_explanation
 from receipt_ir import ReceiptIR, utc_now
+from renderer_families import validate_renderer_family
+from side_effect_envelope import iter_action_scoped_artifacts, normalize_side_effect_artifacts
 from verdict import generate_verdict
 
 
@@ -42,6 +45,7 @@ class ArtifactLoad:
     artifact_manifest: list[dict[str, Any]]
     input_set_hash: str
     incident_manifest: dict[str, Any]
+    execution_context: dict[str, Any] = field(default_factory=dict)
 
 
 def _sha256_file(path: Path) -> str:
@@ -150,6 +154,10 @@ def load_artifacts_from_incident_manifest(artifacts_dir: Path, manifest_path: Pa
 
     merged: dict[str, Any] = {}
     artifact_manifest: list[dict[str, Any]] = [incident_manifest_record(manifest_path)]
+    execution_context: dict[str, Any] = {}
+    manifest_execution_context = incident_manifest.get("execution_context")
+    if isinstance(manifest_execution_context, dict):
+        execution_context = manifest_execution_context
 
     for idx, entry in enumerate(roles):
         if not isinstance(entry, dict):
@@ -172,7 +180,10 @@ def load_artifacts_from_incident_manifest(artifacts_dir: Path, manifest_path: Pa
             raise ValueError(f"duplicate artifact_key in incident manifest: {artifact_key}")
 
         data = load_json(path)
-        merged[artifact_key] = _merge_artifact(data, artifact_key)
+        if artifact_key == "execution_context" or role == "execution_context":
+            execution_context = data
+        else:
+            merged[artifact_key] = _merge_artifact(data, artifact_key)
         artifact_manifest.append(manifest_artifact_file_record(path, rel, artifact_key, role or ""))
 
     return ArtifactLoad(
@@ -180,6 +191,7 @@ def load_artifacts_from_incident_manifest(artifacts_dir: Path, manifest_path: Pa
         artifact_manifest=artifact_manifest,
         input_set_hash=_input_set_hash(artifact_manifest),
         incident_manifest=incident_manifest,
+        execution_context=execution_context,
     )
 
 
@@ -198,6 +210,7 @@ def load_artifacts_dir_bound(artifacts_dir: Path) -> ArtifactLoad:
 
     merged: dict[str, Any] = {}
     artifact_manifest: list[dict[str, Any]] = []
+    execution_context: dict[str, Any] = {}
     json_files = sorted(artifacts_dir.glob("*.json"))
     if not json_files:
         raise ValueError(f"no JSON files found in {artifacts_dir}")
@@ -206,7 +219,10 @@ def load_artifacts_dir_bound(artifacts_dir: Path) -> ArtifactLoad:
         data = load_json(path)
         stem = path.stem
 
-        merged[stem] = _merge_artifact(data, stem)
+        if stem == "execution_context":
+            execution_context = data
+        else:
+            merged[stem] = _merge_artifact(data, stem)
         artifact_manifest.append(artifact_file_manifest(path, stem))
 
     return ArtifactLoad(
@@ -214,6 +230,7 @@ def load_artifacts_dir_bound(artifacts_dir: Path) -> ArtifactLoad:
         artifact_manifest=artifact_manifest,
         input_set_hash=_input_set_hash(artifact_manifest),
         incident_manifest={},
+        execution_context=execution_context,
     )
 
 
@@ -235,7 +252,7 @@ def load_artifacts_dir(artifacts_dir: Path) -> dict[str, Any]:
 
 def _claim_surface_instantiated(artifacts: dict[str, Any], config: dict[str, Any]) -> bool:
     """Return whether the artifact class instantiates the configured claim type."""
-    from passes import evidence_is_present, get_path
+    from evidence_paths import evidence_is_present, get_path
 
     paths = config.get("applicability_evidence") or config.get("expected_evidence", [])
     for path in paths:
@@ -245,12 +262,17 @@ def _claim_surface_instantiated(artifacts: dict[str, Any], config: dict[str, Any
 
 
 def _finalize_receipt(ir: ReceiptIR) -> ReceiptIR:
+    if ir.execution_context and not any(
+        result.get("pass_id") == "execution_context_disclosure" for result in ir.pass_results
+    ):
+        _apply_pass_result(ir, get_pass("execution_context_disclosure")(ir, None))
     ir.verdict = generate_verdict(ir.pass_results, ir.absence)
     ir.boundary, ir.unsupported_inferences = generate_boundary(
         claim=ir.claim,
         verdict=ir.verdict,
         pass_results=ir.pass_results,
         absence=ir.absence,
+        renderer_family=ir.renderer_family,
     )
     return ir
 
@@ -276,32 +298,67 @@ def _run_pass_sequence(
     return _finalize_receipt(ir)
 
 
+def _bundle_claim_type_name(
+    bundle: dict[str, Any],
+    claim_types: dict[str, dict[str, Any]] | None = None,
+) -> str:
+    """Resolve a legacy bundle claim to the canonical claim-pack registry."""
+    registry = claim_types or CLAIM_TYPES
+    explicit = bundle.get("claim_type")
+    if isinstance(explicit, str) and explicit:
+        get_claim_type(explicit, registry)
+        return explicit
+
+    claim = bundle.get("claim")
+    claim_id = claim.get("id") if isinstance(claim, dict) else None
+    if isinstance(claim_id, str) and claim_id:
+        matches = sorted(
+            name
+            for name, config in registry.items()
+            if isinstance(config.get("claim"), dict) and config["claim"].get("id") == claim_id
+        )
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise ValueError(f"bundle claim id {claim_id!r} matches multiple claim types: {', '.join(matches)}")
+
+    raise ValueError(
+        "legacy bundle claim does not match a known claim pack; "
+        "add claim_type or convert the bundle to artifact-directory form"
+    )
+
+
 def compile_bundle(
     bundle: dict[str, Any],
     artifact_manifest: list[dict[str, Any]] | None = None,
     input_set_hash: str = "",
+    claim_types: dict[str, dict[str, Any]] | None = None,
 ) -> ReceiptIR:
-    """v1 compilation: single bundle with embedded claim + expected_evidence + artifacts."""
-    ir = ReceiptIR.from_bundle(
-        bundle,
+    """v1 compilation: single bundle routed through the canonical claim-pack path."""
+    artifacts = bundle.get("artifacts")
+    if not isinstance(artifacts, dict):
+        artifacts = {}
+    execution_context = bundle.get("execution_context")
+    return compile_claim(
+        artifacts=artifacts,
+        claim_type_name=_bundle_claim_type_name(bundle, claim_types),
         artifact_manifest=artifact_manifest,
         input_set_hash=input_set_hash,
+        execution_context=execution_context if isinstance(execution_context, dict) else {},
+        claim_types=claim_types,
     )
 
-    pass_ids = [compiler_pass.__name__ for compiler_pass in ORDERED_PASSES]
-    return _run_pass_sequence(ir, pass_ids)
 
-
-def compile_claim(
+def _compile_claim_normalized(
     artifacts: dict[str, Any],
     claim_type_name: str,
+    config: dict[str, Any],
+    renderer_family: str,
     artifact_manifest: list[dict[str, Any]] | None = None,
     input_set_hash: str = "",
     incident_manifest: dict[str, Any] | None = None,
-    claim_types: dict[str, dict[str, Any]] | None = None,
+    execution_context: dict[str, Any] | None = None,
 ) -> ReceiptIR:
-    """v2 compilation: artifacts dict + claim type config -> receipt."""
-    config = get_claim_type(claim_type_name, claim_types)
     ir = ReceiptIR.from_artifacts(
         artifacts=artifacts,
         claim=config["claim"],
@@ -310,6 +367,8 @@ def compile_claim(
         artifact_manifest=artifact_manifest,
         input_set_hash=input_set_hash,
         incident_manifest=incident_manifest,
+        execution_context=execution_context,
+        renderer_family=renderer_family,
     )
 
     if not _claim_surface_instantiated(artifacts, config):
@@ -329,6 +388,77 @@ def compile_claim(
     return _run_pass_sequence(ir, config["passes"], config.get("pass_params", {}))
 
 
+def compile_claim(
+    artifacts: dict[str, Any],
+    claim_type_name: str,
+    artifact_manifest: list[dict[str, Any]] | None = None,
+    input_set_hash: str = "",
+    incident_manifest: dict[str, Any] | None = None,
+    execution_context: dict[str, Any] | None = None,
+    claim_types: dict[str, dict[str, Any]] | None = None,
+) -> ReceiptIR:
+    """Compile one receipt for a claim type.
+
+    For action-scoped claim types, multi-action artifacts must go through
+    compile_claims so the caller cannot accidentally first-win the log.
+    """
+    config = get_claim_type(claim_type_name, claim_types)
+    renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim type {claim_type_name}")
+    artifacts = normalize_side_effect_artifacts(artifacts)
+    if claim_has_action_scope(config):
+        artifact_sets = iter_action_scoped_artifacts(artifacts)
+        if len(artifact_sets) > 1:
+            raise ValueError(
+                f"claim type {claim_type_name} is action-scoped; "
+                "use compile_claims for multi-action artifacts"
+            )
+        artifacts = artifact_sets[0]
+    return _compile_claim_normalized(
+        artifacts,
+        claim_type_name,
+        config,
+        renderer_family,
+        artifact_manifest=artifact_manifest,
+        input_set_hash=input_set_hash,
+        incident_manifest=incident_manifest,
+        execution_context=execution_context,
+    )
+
+
+def compile_claims(
+    artifacts: dict[str, Any],
+    claim_type_name: str,
+    artifact_manifest: list[dict[str, Any]] | None = None,
+    input_set_hash: str = "",
+    incident_manifest: dict[str, Any] | None = None,
+    execution_context: dict[str, Any] | None = None,
+    claim_types: dict[str, dict[str, Any]] | None = None,
+) -> list[ReceiptIR]:
+    """Compile every receipt implied by a claim type.
+
+    Claim-scoped packs produce one receipt. Action-scoped packs produce one
+    receipt per SideEffectEnvelope v1 action, with legacy parsed_actions/tool_call
+    projected into the same envelope shape at the boundary.
+    """
+    config = get_claim_type(claim_type_name, claim_types)
+    renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim type {claim_type_name}")
+    artifacts = normalize_side_effect_artifacts(artifacts)
+    artifact_sets = iter_action_scoped_artifacts(artifacts) if claim_has_action_scope(config) else [artifacts]
+    return [
+        _compile_claim_normalized(
+            scoped_artifacts,
+            claim_type_name,
+            config,
+            renderer_family,
+            artifact_manifest=artifact_manifest,
+            input_set_hash=input_set_hash,
+            incident_manifest=incident_manifest,
+            execution_context=execution_context,
+        )
+        for scoped_artifacts in artifact_sets
+    ]
+
+
 def detect_applicable_claim_types(
     artifacts: dict[str, Any],
     claim_types: dict[str, dict[str, Any]] | None = None,
@@ -338,8 +468,9 @@ def detect_applicable_claim_types(
     A claim type is applicable if at least one of its expected evidence paths
     resolves to a non-empty value.
     """
-    from passes import evidence_is_present, get_path
+    from evidence_paths import evidence_is_present, get_path
 
+    artifacts = normalize_side_effect_artifacts(artifacts)
     registry = claim_types or CLAIM_TYPES
     applicable = []
     for name, config in registry.items():
@@ -421,7 +552,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         active_claim_types: dict[str, dict[str, Any]] | None = None
-        if args.list_claim_types or args.artifacts_dir:
+        if args.list_claim_types or args.artifacts_dir or args.bundle or args.claim_packs_dir:
             active_claim_types = build_claim_registry(args.claim_packs_dir)
 
         if args.list_claim_types:
@@ -438,7 +569,12 @@ def main() -> int:
             # v1 mode: single bundle file
             bundle = load_json(args.bundle)
             artifact_manifest, input_hash = bundle_manifest(args.bundle)
-            receipt = compile_bundle(bundle, artifact_manifest=artifact_manifest, input_set_hash=input_hash)
+            receipt = compile_bundle(
+                bundle,
+                artifact_manifest=artifact_manifest,
+                input_set_hash=input_hash,
+                claim_types=active_claim_types,
+            )
             receipts = [receipt.to_dict()]
 
         else:
@@ -464,15 +600,15 @@ def main() -> int:
 
             receipts = []
             for ct in claim_types:
-                receipt = compile_claim(
+                receipts.extend(receipt.to_dict() for receipt in compile_claims(
                     artifacts,
                     ct,
                     artifact_manifest=artifact_manifest,
                     input_set_hash=input_hash,
                     incident_manifest=incident_manifest,
+                    execution_context=loaded.execution_context,
                     claim_types=active_claim_types,
-                )
-                receipts.append(receipt.to_dict())
+                ))
 
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(json.dumps(error_receipt(exc), indent=2, sort_keys=True))

@@ -1,0 +1,32 @@
+{
+  "schema_version": "receipt-claim-pack-v0.1",
+  "name": "gpu_serial_collateral_match",
+  "description": "Checks whether observed GPU serial numbers match a declared collateral schedule.",
+  "renderer_family": "gpu_collateral",
+  "claim": {
+    "id": "claim.gpu_serial_collateral_match",
+    "text": "The GPU serial numbers observed during probe execution matched the serial numbers declared in the collateral schedule."
+  },
+  "expected_evidence": [
+    "gpu_inventory.declared_serials",
+    "gpu_inventory.declared_node_id",
+    "gpu_probe_observation.observed_serials",
+    "gpu_probe_observation.observed_node_id",
+    "gpu_probe_observation.observed_at",
+    "probe_manifest.probe_id",
+    "probe_manifest.probe_hash",
+    "probe_manifest.committed_at"
+  ],
+  "applicability_evidence": [
+    "gpu_inventory",
+    "gpu_probe_observation"
+  ],
+  "passes": [
+    "utc_timestamp_format",
+    "expected_evidence_absence",
+    "no_future_evidence",
+    "gpu_serial_set_match",
+    "gpu_node_id_match"
+  ],
+  "pass_params": {}
+}

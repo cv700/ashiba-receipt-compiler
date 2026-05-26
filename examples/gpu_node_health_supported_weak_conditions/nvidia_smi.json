@@ -1,0 +1,8 @@
+{
+  "cuda_version": "12.4",
+  "driver_version": "545.23.08",
+  "gpu_serial": "GPU-H100-SXM-0001",
+  "power_draw_w": 435.0,
+  "queried_at": "2026-05-20T12:12:00Z",
+  "temperature_gpu_c": 91.0
+}

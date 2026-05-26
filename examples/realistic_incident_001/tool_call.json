@@ -8,7 +8,8 @@
       "conversation_id": "conv-20260514-alice-billing",
       "decision_id": "decision-20260514-143210-stripe-charge",
       "turn_number": 7,
-      "model": "claude-3.5-sonnet-20260514"
+      "model": "claude-3.5-sonnet-20260514",
+      "decision_id": "decision-20260514-143210-stripe-charge"
     }
   }
 }

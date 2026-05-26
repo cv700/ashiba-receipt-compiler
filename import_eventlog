@@ -33,6 +33,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from importer_common import authorization_decision_id_from_fields, authorization_from_policy
+
 
 def _epoch_to_utc(epoch_seconds: int | float) -> str:
     return datetime.fromtimestamp(epoch_seconds, timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -225,23 +227,6 @@ def _extract_tool_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [event for event in events if _is_tool_call_event(event)]
 
 
-def _build_authorization(policy: dict[str, Any]) -> dict[str, Any]:
-    grant_id = policy.get("grant_id", f"grant-{uuid.uuid4().hex[:8]}")
-    return {
-        "authorization": {
-            "grant_id": grant_id,
-            "principal": policy.get("principal", "unknown"),
-            "delegated_to": policy.get("delegated_to", "unknown"),
-            "scope": policy.get("scope", []),
-            "grant_valid_from": policy.get("grant_valid_from", ""),
-            "grant_valid_until": policy.get("grant_valid_until", ""),
-            "revoked_at": policy.get("revoked_at", None),
-            "issuer": policy.get("issuer", "policy_file"),
-            "grant_context": policy.get("grant_context", ""),
-        }
-    }
-
-
 def _event_to_artifacts(
     event: dict[str, Any],
     policy: dict[str, Any],
@@ -250,8 +235,15 @@ def _event_to_artifacts(
     action_id = _action_id(event)
     tool_name = _tool_name(event)
     executed_at = _timestamp(event, executed_at_override)
+    invocation_context = {
+        "source": "generic_event_log",
+        "event_type": _event_kind(event),
+    }
+    decision_id = authorization_decision_id_from_fields(event)
+    if decision_id is not None:
+        invocation_context["decision_id"] = str(decision_id)
     return {
-        **_build_authorization(policy),
+        **authorization_from_policy(policy),
         "parsed_actions": [
             {
                 "action_id": action_id,
@@ -265,10 +257,7 @@ def _event_to_artifacts(
             "action_id": action_id,
             "tool_name": tool_name,
             "tool_version": event.get("tool_version", "generic-event-log"),
-            "invocation_context": {
-                "source": "generic_event_log",
-                "event_type": _event_kind(event),
-            },
+            "invocation_context": invocation_context,
         },
     }
 

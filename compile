@@ -30,7 +30,7 @@ from receipt_compile import (
     bundle_manifest,
     claim_types_from_incident_manifest,
     compile_bundle,
-    compile_claim,
+    compile_claims,
     detect_applicable_claim_types,
     load_artifacts_dir_bound,
 )
@@ -55,6 +55,16 @@ def _is_v1_bundle(data: dict[str, Any]) -> bool:
     return isinstance(data.get("artifacts"), dict) and (
         "claim" in data or "expected_evidence" in data
     )
+
+
+def _split_execution_context(artifacts: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Separate reserved execution context from merged artifact JSON."""
+    execution_context = artifacts.get("execution_context")
+    if not isinstance(execution_context, dict):
+        return artifacts, {}
+    cleaned = dict(artifacts)
+    cleaned.pop("execution_context", None)
+    return cleaned, execution_context
 
 
 def _load_stdin_bound(tmp_root: Path) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
@@ -130,6 +140,22 @@ def _print_explanations(receipts: list[dict[str, Any]]) -> None:
         if not failing:
             passing = [p for p in receipt["pass_results"] if p.get("status") == "satisfied"]
             print(f"  {len(passing)} passes satisfied")
+        # The CLI keeps the update humble in public: even a SUPPORTED receipt
+        # should carry the conditions that were not observed.
+        context_disclosures = []
+        for result in receipt["pass_results"]:
+            if result.get("pass_id") != "execution_context_disclosure":
+                continue
+            metadata = result.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            disclosures = metadata.get("boundary_disclosures")
+            if isinstance(disclosures, list):
+                context_disclosures.extend(str(item) for item in disclosures if item)
+        if context_disclosures:
+            print("  Execution-context disclosures:")
+            for disclosure in context_disclosures:
+                print(f"    - {disclosure}")
         gaps = missing_evidence_gaps(receipt)
         if gaps:
             print("  Missing-evidence guidance:")
@@ -215,13 +241,21 @@ def main() -> int:
                 manifest = loaded.artifact_manifest
                 input_hash = loaded.input_set_hash
                 incident_manifest = loaded.incident_manifest
+                execution_context = loaded.execution_context
             elif p.is_file():
                 data, manifest, input_hash = _load_file_bound(p)
                 is_bundle = _is_v1_bundle(data)
                 artifacts = data.get("artifacts", {}) if is_bundle else data
+                execution_context = data.get("execution_context", {}) if is_bundle else {}
             else:
                 print(f"ERROR: {input_path} is not a file or directory", file=sys.stderr)
                 return 1
+        if input_path == "-":
+            execution_context = data.get("execution_context", {}) if is_bundle else {}
+        if not is_bundle:
+            artifacts, merged_execution_context = _split_execution_context(artifacts)
+            if merged_execution_context:
+                execution_context = merged_execution_context
 
         if is_bundle:
             receipts = [
@@ -229,21 +263,22 @@ def main() -> int:
                     data,
                     artifact_manifest=manifest,
                     input_set_hash=input_hash,
+                    claim_types=registry,
                 ).to_dict()
             ]
         else:
             claim_types = _select_claim_types(artifacts, args.claim_type, incident_manifest, registry)
-            receipts = [
-                compile_claim(
+            receipts = []
+            for claim_type in claim_types:
+                receipts.extend(receipt.to_dict() for receipt in compile_claims(
                     artifacts,
                     claim_type,
                     artifact_manifest=manifest,
                     input_set_hash=input_hash,
                     incident_manifest=incident_manifest,
+                    execution_context=execution_context,
                     claim_types=registry,
-                ).to_dict()
-                for claim_type in claim_types
-            ]
+                ))
 
     # Output
     if args.verdict:

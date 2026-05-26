@@ -18,12 +18,23 @@ import json
 from pathlib import Path
 from typing import Any
 
+from claim_contracts import validate_pass_required_paths, validate_support_requirements
+from pass_specs import PASS_SPECS
+from renderer_families import validate_renderer_family
+from side_effect_envelope import (
+    SIDE_EFFECT_ACTION_ID_PATH,
+    SIDE_EFFECT_DECISION_ID_PATH,
+    SIDE_EFFECT_EXECUTED_AT_PATH,
+    SIDE_EFFECTS_KEY,
+)
+
 
 DEFAULT_CLAIM_PACKS_DIR = Path(__file__).resolve().parent / "claim_packs"
 
 
 def _auth_grant_config() -> dict[str, Any]:
     return {
+        "renderer_family": "cyber_tool_use",
         "claim": {
             "id": "claim.authorization_bound_action",
             "text": "The tool action was executed under an active authorization grant.",
@@ -32,13 +43,32 @@ def _auth_grant_config() -> dict[str, Any]:
             "authorization.grant_id",
             "authorization.grant_valid_from",
             "authorization.grant_valid_until",
-            "parsed_actions.0.executed_at",
-            "tool_call.action_id",
+            SIDE_EFFECT_EXECUTED_AT_PATH,
+            SIDE_EFFECT_ACTION_ID_PATH,
         ],
         "applicability_evidence": [
             "authorization",
-            "parsed_actions",
-            "tool_call",
+            SIDE_EFFECTS_KEY,
+        ],
+        "support_requirements": [
+            {
+                "id": "authorization.revoked_at",
+                "path": "authorization.revoked_at",
+                "presence": "path_exists",
+            },
+            {
+                "id": "authorization-to-action binding",
+                "all_of": [
+                    "authorization.render_time_grant_hash",
+                    "authorization.execution_time_decision_id",
+                    "authorization.grant_active_at_execution",
+                    SIDE_EFFECT_DECISION_ID_PATH,
+                ],
+                "same_value": [
+                    "authorization.execution_time_decision_id",
+                    SIDE_EFFECT_DECISION_ID_PATH,
+                ],
+            },
         ],
         "passes": [
             "utc_timestamp_format",
@@ -59,6 +89,7 @@ def _auth_grant_config() -> dict[str, Any]:
 
 def _parser_repair_config() -> dict[str, Any]:
     return {
+        "renderer_family": "agent_trace_integrity",
         "claim": {
             "id": "claim.parser_repair_visibility",
             "text": "A parser repair event was logged with full provenance and the writeback decision is recorded.",
@@ -87,6 +118,7 @@ def _parser_repair_config() -> dict[str, Any]:
 
 def _prefix_continuity_config() -> dict[str, Any]:
     return {
+        "renderer_family": "agent_trace_integrity",
         "claim": {
             "id": "claim.prefix_continuity",
             "text": "The next prompt preserves the exact token prefix from the previous prompt plus completion.",
@@ -156,21 +188,25 @@ def _validate_claim_pack(name: str, config: dict[str, Any], source: Path) -> dic
             raise ValueError(f"claim pack {source} pass_params keys must be non-empty strings")
         if not isinstance(params, dict):
             raise ValueError(f"claim pack {source} pass_params.{pass_id} must be an object")
+    source_label = f"claim pack {source}"
+    support_requirements = validate_support_requirements(source_label, config.get("support_requirements"))
+    renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim pack {source}")
 
-    from passes import PASS_REGISTRY
-
-    unknown_passes = sorted(set(passes) - set(PASS_REGISTRY))
+    unknown_passes = sorted(set(passes) - set(PASS_SPECS))
     if unknown_passes:
         raise ValueError(f"claim pack {source} references unknown pass(es): {', '.join(unknown_passes)}")
+    validate_pass_required_paths(source_label, passes, expected_evidence, support_requirements)
 
     out = {
         "claim": {"id": claim["id"], "text": claim["text"]},
         "expected_evidence": expected_evidence,
         "applicability_evidence": applicability,
+        "support_requirements": support_requirements,
         "passes": passes,
         "pass_params": pass_params,
+        "renderer_family": renderer_family,
     }
-    for optional_key in ("schema_version", "description", "owner", "renderer_family"):
+    for optional_key in ("schema_version", "description", "owner"):
         if optional_key in config:
             out[optional_key] = config[optional_key]
     out["name"] = str(config.get("name") or name)

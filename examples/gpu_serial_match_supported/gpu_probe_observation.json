@@ -1,0 +1,15 @@
+{
+  "observation_method": "nvidia-smi --query-gpu=serial",
+  "observed_at": "2026-05-20T12:00:00Z",
+  "observed_node_id": "node-cluster-a-042",
+  "observed_serials": [
+    "GPU-H100-SXM-0001",
+    "GPU-H100-SXM-0002",
+    "GPU-H100-SXM-0003",
+    "GPU-H100-SXM-0004",
+    "GPU-H100-SXM-0005",
+    "GPU-H100-SXM-0006",
+    "GPU-H100-SXM-0007",
+    "GPU-H100-SXM-0008"
+  ]
+}

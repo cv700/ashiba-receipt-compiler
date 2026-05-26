@@ -9,22 +9,32 @@ security, safety, intent, custody, authenticity, or general system reliability.
 
 ## What It Does
 
-Ashiba answers a narrow question:
+Drop in CloudTrail, OpenTelemetry, GitHub Actions, Kubernetes audit logs, SIEM
+JSONL, or agent/tool traces. Ashiba groups side-effect actions, checks whether
+operational claims are receipt-ready, and emits bounded receipts:
+`supported`, `contradicted`, `unknown`, or `not_applicable`.
+
+The narrow question is:
 
 > Do the available logs and artifacts support this operational claim, contradict
 > it, or leave it unknown?
 
-The intended workflow has two steps:
+The intended workflow has two local steps:
 
 ```bash
 ./ashiba scan ./logs --policy policy.json --report --out /tmp/ashiba_report
 ./compile ./evidence --card
 ```
 
-`./ashiba scan` reads existing logs and tells you which claims are decidable and
-which probes are missing. `./compile` turns evidence that is already in compiler
-artifact shape into a receipt with a verdict, basis, input binding, missing
-evidence, and boundary language.
+`./ashiba scan` reads existing logs and tells you which actions are
+receipt-ready, which claims are blocked, and which probes are missing.
+`./compile` turns evidence that is already in compiler artifact shape into a
+receipt with a verdict, basis, input binding, missing evidence, and boundary
+language.
+
+Ashiba is not a replacement for CloudTrail, OTEL, Sigstore, SLSA, TEEs, SIEM,
+SOC 2, or GRC workflows. Those systems produce or organize evidence. Ashiba
+compiles a bounded decision artifact over that evidence.
 
 ## Thirty-Second Demo
 
@@ -40,6 +50,33 @@ The demo shows:
 - a generated missing-evidence report;
 - a bounded receipt card for a supported authorization claim;
 - fail-closed behavior on invalid input.
+
+## Canonical Authorization Gap Demo
+
+This is the smallest concrete incident story in the repo:
+
+```bash
+./compile examples/cloudtrail_otel_authorization_gap \
+  --claim-type authorization_bound_action \
+  --card
+```
+
+The packet includes CloudTrail-shaped evidence, OTEL-shaped evidence, a policy
+grant, normalized parsed action, and tool-call binding. The action executes
+90 seconds after grant expiry, so the receipt is `contradicted`.
+
+Use this example when explaining the product to someone new:
+
+```text
+Logs say the action happened.
+Policy says the grant expired.
+The receipt says the authorization claim is contradicted.
+The boundary says not to overread that into general agent unsafety.
+```
+
+For field-by-field receipt semantics, see `docs/receipt_anatomy.md`.
+For why this is not meant to be another logging standard, see
+`docs/not_a_standard.md`.
 
 ## Current Commands
 
@@ -90,6 +127,22 @@ Claim definitions live in `claim_packs/`. The current preview includes:
 - `parser_repair_visibility`: was parser repair logged with provenance?
 - `prefix_continuity`: did the next prompt preserve the expected token prefix?
 
+### GPU Collateral Claims (v0)
+
+Two claim packs exercise the GPU-backed lending verification shape:
+
+- `gpu_serial_collateral_match`: verifies that GPU serial numbers observed
+  during probe execution match the serials declared in the collateral schedule.
+  This catches collateral-identity discrepancies.
+- `gpu_node_health_diagnostic`: verifies that a GPU node passed DCGM Level 2
+  health diagnostics with ECC error counts below stated thresholds at probe
+  time. This catches point-in-time hardware-health failures.
+
+These are synthetic, point-in-time, node-level demos. They do not assess cluster
+health, goodput, residual value, firmware authenticity, or ongoing performance.
+The receipt boundary section is part of the output and should not be treated as
+boilerplate.
+
 ## Verdicts
 
 Receipts use four states:
@@ -104,6 +157,21 @@ Important invariant:
 
 > If the scanner says a claim is not decidable for a packet, the compiler must
 > not emit `supported` for the same claim on that same packet.
+
+## Execution Context
+
+Receipts may include an optional `execution_context` extension object. This is
+domain-specific context for test conditions and anti-gaming disclosures. It is
+not ordinary claim evidence and does not change verdict logic.
+
+If an artifact directory contains `execution_context.json`, the compiler binds
+that file in `artifact_manifest`, stores it as `execution_context`, and keeps it
+out of the normal `artifacts` object used by verdict-determining passes.
+
+The first supported schema is `gpu_goodput_context_v0`, used to disclose limits
+such as node coverage, freshly rebooted nodes, ECC reboot suspects, negligible
+fabric load, missing software stack capture, missing challenge nonce, and
+missing pre-committed probe manifest.
 
 ## Repository Layout
 
@@ -133,16 +201,17 @@ Before sharing changes, run:
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 test_receipt_compiler.py
 PYTHONDONTWRITEBYTECODE=1 python3 demo_gallery.py --json
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/discover_claim_contract.py --json
 PYTHONDONTWRITEBYTECODE=1 python3 demo_real_world_importers.py
 PYTHONDONTWRITEBYTECODE=1 python3 environments/trace_receipt_minimizer_v0/test_score.py
 PYTHONDONTWRITEBYTECODE=1 ./demo_30s.sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile \
   ashiba receipt_scan.py compile receipt_validate.py receipt_compile.py \
-  passes.py claim_types.py import_cloudtrail import_github_actions import_otel \
+  passes.py claim_types.py claim_contracts.py side_effect_envelope.py import_cloudtrail import_github_actions import_otel \
   import_kubernetes_audit import_siem_jsonl import_anthropic import_openai \
   import_eventlog import_langsmith importer_common.py demo_real_world_importers.py \
-  demo.py constants.py receipt_ir.py verdict.py boundary.py demo_gallery.py \
-  demo_llm_comparison.py receipt_explain.py test_receipt_compiler.py \
+  demo.py constants.py receipt_ir.py verdict.py boundary.py renderer_families.py demo_gallery.py \
+  demo_llm_comparison.py receipt_explain.py scripts/discover_claim_contract.py test_receipt_compiler.py \
   environments/trace_receipt_minimizer_v0/*.py
 find . -type d -name __pycache__ -prune -exec rm -rf {} +
 ```
@@ -150,16 +219,25 @@ find . -type d -name __pycache__ -prune -exec rm -rf {} +
 Expected gallery summary:
 
 ```text
-25 receipts from 24 incident directories
-supported: 6 | contradicted: 8 | unknown: 10 | not_applicable: 1
+38 receipts from 33 incident directories
+supported: 16 | contradicted: 11 | unknown: 10 | not_applicable: 1
 compiler_errors: 0 | validation_errors: 0
 ```
 
+## Discovering Contracts
+
+Before adding a new schema field, run:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/discover_claim_contract.py --json
+```
+
+The report derives required runtime facts from active claim packs and pass
+metadata, then separates proposed SideEffectEnvelope fields that no current
+claim consumes yet.
+
 ## Known Preview Rough Edges
 
-- Some fixture directory names predate the stricter authorization-binding rule.
-  The manifest is authoritative when a legacy name says `supported` but the
-  current verdict is `unknown`.
 - The importers are intentionally conservative. They preserve missing evidence
   as missing evidence instead of inventing policy, revocation, or binding facts.
 - This is a local prototype, not a packaged service. Use the root-level scripts

@@ -1,0 +1,9 @@
+{
+  "tool_call": {
+    "action_id": "act-gpu-context-001",
+    "tool_schema_hash": "sha256:tool-context",
+    "invocation_context": {
+      "decision_id": "decision-gpu-context-001"
+    }
+  }
+}

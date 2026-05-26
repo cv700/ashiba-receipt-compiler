@@ -1,6 +1,9 @@
 {
   "tool_call": {
     "action_id": "act-001",
-    "tool_schema_hash": "sha256:abc123"
+    "tool_schema_hash": "sha256:abc123",
+    "invocation_context": {
+      "decision_id": "decision-act-001"
+    }
   }
 }

@@ -9,16 +9,45 @@ import sys
 import tempfile
 from pathlib import Path
 
-from constants import CONTRADICTED, NOT_APPLICABLE, SUPPORTED, UNKNOWN, VERDICT_STATUSES
+from claim_contracts import claim_conflicts, claim_has_action_scope, claim_missing
+from constants import (
+    CONTRADICTED,
+    NOT_APPLICABLE,
+    PASS_CONTRADICTED,
+    PASS_OK,
+    PASS_SATISFIED,
+    PASS_SKIPPED,
+    SUPPORTED,
+    UNKNOWN,
+    VERDICT_STATUSES,
+)
 from demo_gallery import run_gallery
+from passes import (
+    dcgm_diag_result,
+    ecc_threshold_check,
+    get_pass_spec,
+    grant_binding_present,
+    gpu_node_id_match,
+    gpu_serial_cross_reference,
+    gpu_serial_set_match,
+)
 from receipt_compile import (
     build_claim_registry,
+    compile_bundle,
     compile_claim,
+    compile_claims,
     detect_applicable_claim_types,
     load_artifacts_dir_bound,
     load_artifacts_dir_with_manifest,
 )
+from receipt_ir import ReceiptIR
 from receipt_validate import validate_receipt
+from side_effect_envelope import (
+    SIDE_EFFECT_ACTION_ID_PATH,
+    SIDE_EFFECT_DECISION_ID_PATH,
+    SIDE_EFFECT_EXECUTED_AT_PATH,
+    SIDE_EFFECTS_KEY,
+)
 
 
 ROOT = Path(__file__).resolve().parent
@@ -207,19 +236,34 @@ def verdict_word_in_directory(directory: str) -> str | None:
 
 def test_v1_bundles() -> None:
     supported = run_json("--bundle", "examples/auth_grant_supported.json")
-    assert_receipt(supported, SUPPORTED, 5, 0)
+    assert_receipt(supported, SUPPORTED, 7, 0)
     assert supported["artifact_manifest"][0]["source"] == "bundle"
     assert supported["artifact_manifest"][0]["filename"] == "auth_grant_supported.json"
     assert supported["artifact_manifest"][0]["relative_path"] == "auth_grant_supported.json"
     assert validate_receipt(supported, source_root=ROOT / "examples") == []
-    assert_receipt(run_json("--bundle", "examples/auth_grant_contradicted.json"), CONTRADICTED, 5, 0)
-    assert_receipt(run_json("--bundle", "examples/auth_grant_unknown.json"), UNKNOWN, 5, 2)
+    assert_receipt(run_json("--bundle", "examples/auth_grant_contradicted.json"), CONTRADICTED, 7, 0)
+    assert_receipt(run_json("--bundle", "examples/auth_grant_unknown.json"), UNKNOWN, 7, 2)
+
+    no_binding_bundle = json.loads((ROOT / "examples" / "auth_grant_supported.json").read_text(encoding="utf-8"))
+    authorization = no_binding_bundle["artifacts"]["authorization"]
+    authorization.pop("render_time_grant_hash")
+    authorization.pop("execution_time_decision_id")
+    authorization.pop("grant_active_at_execution")
+    no_binding_bundle["artifacts"]["tool_call"].pop("invocation_context")
+    with tempfile.TemporaryDirectory() as tmp:
+        no_binding_path = Path(tmp) / "no_binding_bundle.json"
+        no_binding_path.write_text(json.dumps(no_binding_bundle), encoding="utf-8")
+        no_binding = run_json("--bundle", str(no_binding_path))
+    assert_receipt(no_binding, UNKNOWN, 7, 0)
+    binding_pass = [result for result in no_binding["pass_results"] if result["pass_id"] == "grant_binding_present"][0]
+    assert binding_pass["status"] == UNKNOWN
+    assert "missing authorization field" in binding_pass["detail"]
 
 
 def test_v2_explicit_claim_types() -> None:
     assert_receipt(
         run_json("--artifacts-dir", "examples/auth_grant_dir_supported", "--claim-type", "authorization_bound_action"),
-        UNKNOWN,
+        SUPPORTED,
         7,
         0,
     )
@@ -276,7 +320,7 @@ def test_v4_adversarial_controls_and_not_applicable() -> None:
         ("adv_offset_timestamp_unknown", UNKNOWN),
         ("adv_natural_language_timestamp_unknown", UNKNOWN),
         ("adv_revoked_equal_executed_contradicted", CONTRADICTED),
-        ("adv_grant_expires_equal_executed_supported", UNKNOWN),
+        ("adv_grant_expires_equal_executed_supported", SUPPORTED),
     ]
     for directory, expected_verdict in adversarial:
         receipt = run_json(
@@ -287,13 +331,10 @@ def test_v4_adversarial_controls_and_not_applicable() -> None:
         )
         assert_receipt(receipt, expected_verdict, 7, 0)
 
-    # Existing v3 adversarial controls remain in the suite.
-    assert_receipt(
-        run_json("--artifacts-dir", "examples/mixed_actions_incident", "--claim-type", "authorization_bound_action"),
-        CONTRADICTED,
-        7,
-        0,
-    )
+    # Existing v3 adversarial controls now compile per side effect.
+    mixed = run_json("--artifacts-dir", "examples/mixed_actions_incident", "--claim-type", "authorization_bound_action")
+    assert [receipt["verdict"]["status"] for receipt in mixed["receipts"]] == [UNKNOWN, CONTRADICTED]
+    assert [len(receipt["absence"]) for receipt in mixed["receipts"]] == [0, 0]
     assert_receipt(
         run_json("--artifacts-dir", "examples/parser_repair_unknown", "--claim-type", "parser_repair_visibility"),
         UNKNOWN,
@@ -399,9 +440,31 @@ def test_v6_external_claim_pack_registry() -> None:
     default_pack_list = run_text("--list-claim-types", "--claim-packs-dir", "claim_packs")
     assert "authorization_bound_action" in default_pack_list
 
+    auth_pack = build_claim_registry()["authorization_bound_action"]
+    assert auth_pack["renderer_family"] == "cyber_tool_use"
+    support_requirements = {item["id"]: item for item in auth_pack["support_requirements"]}
+    assert support_requirements["authorization.revoked_at"]["presence"] == "path_exists"
+    binding = support_requirements["authorization-to-action binding"]
+    assert binding["all_of"] == [
+        "authorization.render_time_grant_hash",
+        "authorization.execution_time_decision_id",
+        "authorization.grant_active_at_execution",
+        SIDE_EFFECT_DECISION_ID_PATH,
+    ]
+    assert binding["same_value"] == [
+        "authorization.execution_time_decision_id",
+        SIDE_EFFECT_DECISION_ID_PATH,
+    ]
+    binding_spec = get_pass_spec("grant_binding_present")
+    assert binding_spec.family == "authorization"
+    assert binding_spec.scope == "action"
+    assert set(binding_spec.required_paths) <= set(binding["all_of"])
+    assert "authorization.grant_active_at_execution" in binding_spec.contradiction_paths
+
     external_pack = {
         "schema_version": "receipt-claim-pack-v0.1",
         "name": "authz_external_pack",
+        "renderer_family": "cyber_tool_use",
         "claim": {
             "id": "claim.authz_external_pack",
             "text": "The external pack claim is supported by active authorization evidence.",
@@ -410,13 +473,19 @@ def test_v6_external_claim_pack_registry() -> None:
             "authorization.grant_id",
             "authorization.grant_valid_from",
             "authorization.grant_valid_until",
-            "parsed_actions.0.executed_at",
-            "tool_call.action_id",
+            SIDE_EFFECT_EXECUTED_AT_PATH,
+            SIDE_EFFECT_ACTION_ID_PATH,
         ],
         "applicability_evidence": [
             "authorization",
-            "parsed_actions",
-            "tool_call",
+            SIDE_EFFECTS_KEY,
+        ],
+        "support_requirements": [
+            {
+                "id": "authorization.revoked_at",
+                "path": "authorization.revoked_at",
+                "presence": "path_exists",
+            }
         ],
         "passes": [
             "utc_timestamp_format",
@@ -462,6 +531,7 @@ def test_v6_external_claim_pack_registry() -> None:
     invalid_pack = {
         "schema_version": "receipt-claim-pack-v0.1",
         "name": "invalid_unknown_pass",
+        "renderer_family": "cyber_tool_use",
         "claim": {
             "id": "claim.invalid_unknown_pass",
             "text": "This invalid pack references a missing deterministic pass.",
@@ -475,14 +545,19 @@ def test_v6_external_claim_pack_registry() -> None:
         pack_dir = Path(tmp)
         (pack_dir / "invalid_unknown_pass.json").write_text(json.dumps(invalid_pack), encoding="utf-8")
 
-        # Bundle mode does not need claim packs, so unrelated bad pack dirs are ignored.
-        bundle_receipt = run_json(
+        # Bundle mode now resolves through claim packs, so invalid packs fail closed here too.
+        bundle_proc = run_process(
             "--bundle",
             "examples/auth_grant_supported.json",
             "--claim-packs-dir",
             str(pack_dir),
         )
-        assert_receipt(bundle_receipt, SUPPORTED, 5, 0)
+        assert bundle_proc.returncode == 1
+        assert "Traceback" not in bundle_proc.stdout
+        assert "Traceback" not in bundle_proc.stderr
+        bundle_error = json.loads(bundle_proc.stdout)
+        assert bundle_error["verdict"]["status"] == UNKNOWN
+        assert "definitely_not_a_registered_pass" in bundle_error["compiler_errors"][0]["detail"]
 
         # Claim-pack failures produce structured compiler errors, not Python tracebacks.
         proc = run_process("--list-claim-types", "--claim-packs-dir", str(pack_dir))
@@ -492,6 +567,75 @@ def test_v6_external_claim_pack_registry() -> None:
         error = json.loads(proc.stdout)
         assert error["verdict"]["status"] == UNKNOWN
         assert "definitely_not_a_registered_pass" in error["compiler_errors"][0]["detail"]
+
+    missing_renderer_family = dict(external_pack)
+    missing_renderer_family.pop("renderer_family")
+    missing_renderer_family["name"] = "missing_renderer_family"
+    missing_renderer_family["claim"] = {
+        "id": "claim.missing_renderer_family",
+        "text": "This invalid pack omits the renderer-family contract.",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        pack_dir = Path(tmp)
+        (pack_dir / "missing_renderer_family.json").write_text(
+            json.dumps(missing_renderer_family),
+            encoding="utf-8",
+        )
+        proc = run_process("--list-claim-types", "--claim-packs-dir", str(pack_dir))
+        assert proc.returncode == 1
+        assert "Traceback" not in proc.stdout
+        assert "Traceback" not in proc.stderr
+        error = json.loads(proc.stdout)
+        assert error["verdict"]["status"] == UNKNOWN
+        assert "renderer_family" in error["compiler_errors"][0]["detail"]
+
+    unknown_renderer_family = dict(external_pack)
+    unknown_renderer_family["name"] = "unknown_renderer_family"
+    unknown_renderer_family["renderer_family"] = "gpu_colateral"
+    unknown_renderer_family["claim"] = {
+        "id": "claim.unknown_renderer_family",
+        "text": "This invalid pack misspells a registered renderer family.",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        pack_dir = Path(tmp)
+        (pack_dir / "unknown_renderer_family.json").write_text(
+            json.dumps(unknown_renderer_family),
+            encoding="utf-8",
+        )
+        proc = run_process("--list-claim-types", "--claim-packs-dir", str(pack_dir))
+        assert proc.returncode == 1
+        assert "Traceback" not in proc.stdout
+        assert "Traceback" not in proc.stderr
+        error = json.loads(proc.stdout)
+        assert error["verdict"]["status"] == UNKNOWN
+        assert "gpu_colateral" in error["compiler_errors"][0]["detail"]
+        assert "is not registered" in error["compiler_errors"][0]["detail"]
+
+    missing_binding_contract = dict(external_pack)
+    missing_binding_contract["name"] = "missing_binding_contract"
+    missing_binding_contract["claim"] = {
+        "id": "claim.missing_binding_contract",
+        "text": "This invalid pack names the binding pass but omits its evidence contract.",
+    }
+    missing_binding_contract["passes"] = [
+        "utc_timestamp_format",
+        "expected_evidence_absence",
+        "grant_binding_present",
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        pack_dir = Path(tmp)
+        (pack_dir / "missing_binding_contract.json").write_text(
+            json.dumps(missing_binding_contract),
+            encoding="utf-8",
+        )
+        proc = run_process("--list-claim-types", "--claim-packs-dir", str(pack_dir))
+        assert proc.returncode == 1
+        assert "Traceback" not in proc.stdout
+        assert "Traceback" not in proc.stderr
+        error = json.loads(proc.stdout)
+        assert error["verdict"]["status"] == UNKNOWN
+        assert "grant_binding_present" in error["compiler_errors"][0]["detail"]
+        assert "authorization.execution_time_decision_id" in error["compiler_errors"][0]["detail"]
 
     duplicate_pack = dict(external_pack)
     duplicate_pack["name"] = "authorization_bound_action"
@@ -509,6 +653,207 @@ def test_v6_external_claim_pack_registry() -> None:
         error = json.loads(proc.stdout)
         assert error["verdict"]["status"] == UNKNOWN
         assert "duplicate existing claim type" in error["compiler_errors"][0]["detail"]
+
+
+def test_claim_contract_helpers_drive_readiness_semantics() -> None:
+    registry = build_claim_registry()
+    auth_pack = registry["authorization_bound_action"]
+    deployment_pack = registry["deployment_matches_reviewed_commit"]
+
+    assert claim_has_action_scope(auth_pack)
+    assert not claim_has_action_scope(deployment_pack)
+
+    artifacts = {
+        "authorization": {
+            "grant_id": "grant-contract",
+            "grant_valid_from": "2026-05-14T16:00:00Z",
+            "grant_valid_until": "2026-05-14T18:00:00Z",
+            "revoked_at": None,
+            "render_time_grant_hash": "sha256:contract",
+            "execution_time_decision_id": "authz-decision-contract",
+            "grant_active_at_execution": True,
+        },
+        SIDE_EFFECTS_KEY: [
+            {
+                "action_id": "act-contract",
+                "tool": "lambda.amazonaws.com:Invoke",
+                "executed_at": "2026-05-14T17:01:30Z",
+                "invocation": {"decision_id": "authz-decision-contract"},
+            }
+        ],
+    }
+    assert claim_missing(artifacts, auth_pack) == []
+
+    no_revocation_state = dict(artifacts)
+    no_revocation_state["authorization"] = dict(artifacts["authorization"])
+    no_revocation_state["authorization"].pop("revoked_at")
+    assert claim_missing(no_revocation_state, auth_pack) == ["authorization.revoked_at"]
+
+    mismatched_binding = dict(artifacts)
+    mismatched_binding[SIDE_EFFECTS_KEY] = [{
+        "action_id": "act-contract",
+        "tool": "lambda.amazonaws.com:Invoke",
+        "executed_at": "2026-05-14T17:01:30Z",
+        "invocation": {"decision_id": "authz-decision-other"},
+    }]
+    assert claim_missing(mismatched_binding, auth_pack) == ["authorization-to-action binding"]
+    assert claim_conflicts(
+        auth_pack,
+        [{"path": "authorization.execution_time_decision_id"}],
+    ) == ["authorization.execution_time_decision_id"]
+    assert claim_conflicts(auth_pack, [{"path": "deployment.commit_sha"}]) == []
+
+
+def test_claim_contract_discovery_surfaces_minimum_runtime_facts() -> None:
+    proc = subprocess.run(
+        [PYTHON, "scripts/discover_claim_contract.py", "--json"],
+        cwd=ROOT,
+        env=ENV,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    discovery = json.loads(proc.stdout)
+    assert discovery["schema_version"] == "ashiba-claim-contract-discovery-v0.1"
+    side_effect_minimum = discovery["side_effect_envelope_v1_minimum"]
+    assert side_effect_minimum["required_by_current_claims"] == [
+        "action_id",
+        "executed_at",
+        "invocation.decision_id",
+    ]
+    assert "action_id" in side_effect_minimum["contradiction_relevant"]
+    assert "source_kind" in side_effect_minimum["contradiction_relevant"]
+    for unclaimed in ("episode_id", "parent_action_id", "principal", "agent_id", "evidence_refs"):
+        assert unclaimed in side_effect_minimum["proposed_but_unclaimed"]
+
+    claims = {claim["name"]: claim for claim in discovery["claims"]}
+    auth_binding = claims["authorization_bound_action"]["binding_requirements"]
+    assert auth_binding == [{
+        "id": "authorization-to-action binding",
+        "same_value": [
+            "authorization.execution_time_decision_id",
+            SIDE_EFFECT_DECISION_ID_PATH,
+        ],
+    }]
+
+    approval_binding = claims["human_approval_before_external_side_effect"]["binding_requirements"]
+    assert approval_binding == [{
+        "id": "approval-to-action binding",
+        "same_value": [
+            "approval.tool_call_id",
+            SIDE_EFFECT_ACTION_ID_PATH,
+        ],
+    }]
+    assert "discovered_gaps" not in claims["human_approval_before_external_side_effect"]
+    assert discovery["discovered_gaps"] == []
+
+    text = subprocess.run(
+        [PYTHON, "scripts/discover_claim_contract.py"],
+        cwd=ROOT,
+        env=ENV,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    assert "SideEffectEnvelope v1 minimum required by current claims" in text.stdout
+    assert "approval-to-action binding" in proc.stdout
+
+
+def test_side_effect_envelope_v1_compiles_and_scans() -> None:
+    authorization = {
+        "grant_id": "grant-envelope",
+        "grant_valid_from": "2026-05-14T16:00:00Z",
+        "grant_valid_until": "2026-05-14T18:00:00Z",
+        "revoked_at": None,
+        "render_time_grant_hash": "sha256:envelope",
+        "execution_time_decision_id": "authz-decision-envelope",
+        "grant_active_at_execution": True,
+    }
+    side_effect = {
+        "schema_version": "side_effect_envelope_v1",
+        "action_id": "act-envelope",
+        "tool": "stripe.charges.create",
+        "executed_at": "2026-05-14T17:01:30Z",
+        "source_kind": "event_log",
+        "invocation": {"decision_id": "authz-decision-envelope"},
+    }
+    artifacts = {
+        "authorization": authorization,
+        SIDE_EFFECTS_KEY: [side_effect],
+    }
+
+    receipt = compile_claim(artifacts, "authorization_bound_action").to_dict()
+    assert receipt["verdict"]["status"] == SUPPORTED
+    assert SIDE_EFFECT_EXECUTED_AT_PATH in receipt["expected_evidence"]
+    assert receipt["artifacts"][SIDE_EFFECTS_KEY][0]["action_id"] == "act-envelope"
+    assert receipt["artifacts"]["parsed_actions"][0]["action_id"] == "act-envelope"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        log_path = Path(tmp) / "side_effect.json"
+        log_path.write_text(json.dumps(artifacts), encoding="utf-8")
+        proc = run_ashiba_process("scan", str(log_path), "--json")
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout)
+    assert "authorization_bound_action" in result["can_decide"]
+    assert result["actions"][0]["action_id"] == "act-envelope"
+    assert "authorization_bound_action" in result["actions"][0]["can_decide"]
+
+
+def test_action_scoped_side_effect_envelopes_compile_independently() -> None:
+    authorization = {
+        "grant_id": "grant-envelope",
+        "grant_valid_from": "2026-05-14T16:00:00Z",
+        "grant_valid_until": "2026-05-14T18:00:00Z",
+        "revoked_at": None,
+        "render_time_grant_hash": "sha256:envelope",
+        "execution_time_decision_id": "authz-decision-envelope",
+        "grant_active_at_execution": True,
+    }
+    artifacts = {
+        "authorization": authorization,
+        SIDE_EFFECTS_KEY: [
+            {
+                "action_id": "act-supported",
+                "tool": "stripe.charges.create",
+                "executed_at": "2026-05-14T17:01:30Z",
+                "source_kind": "event_log",
+                "invocation": {"decision_id": "authz-decision-envelope"},
+            },
+            {
+                "action_id": "act-blocked",
+                "tool": "stripe.charges.create",
+                "executed_at": "2026-05-14T17:02:30Z",
+                "source_kind": "event_log",
+                "invocation": {"decision_id": "other-decision"},
+            },
+        ],
+    }
+
+    receipts = [receipt.to_dict() for receipt in compile_claims(artifacts, "authorization_bound_action")]
+    assert [receipt["artifacts"][SIDE_EFFECTS_KEY][0]["action_id"] for receipt in receipts] == [
+        "act-supported",
+        "act-blocked",
+    ]
+    assert [receipt["verdict"]["status"] for receipt in receipts] == [SUPPORTED, CONTRADICTED]
+    assert all(len(receipt["artifacts"][SIDE_EFFECTS_KEY]) == 1 for receipt in receipts)
+    try:
+        compile_claim(artifacts, "authorization_bound_action")
+    except ValueError as exc:
+        assert "use compile_claims for multi-action artifacts" in str(exc)
+    else:
+        raise AssertionError("compile_claim should reject multi-action action-scoped artifacts")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "authorization.json").write_text(json.dumps({"authorization": authorization}), encoding="utf-8")
+        (root / "side_effects.json").write_text(json.dumps({SIDE_EFFECTS_KEY: artifacts[SIDE_EFFECTS_KEY]}), encoding="utf-8")
+        proc = run_compile_process(str(root), "--claim-type", "authorization_bound_action")
+    assert proc.returncode == 0, proc.stderr
+    compiled = json.loads(proc.stdout)
+    assert [receipt["artifacts"][SIDE_EFFECTS_KEY][0]["action_id"] for receipt in compiled["receipts"]] == [
+        "act-supported",
+        "act-blocked",
+    ]
 
 
 def test_v6_incident_manifest_path_boundaries() -> None:
@@ -535,6 +880,487 @@ def test_v6_incident_manifest_path_boundaries() -> None:
         error = json.loads(proc.stdout)
         assert error["verdict"]["status"] == UNKNOWN
         assert "must be relative and stay under the incident directory" in error["compiler_errors"][0]["detail"]
+
+
+def _supported_authorization_fixture() -> tuple[dict, list[dict], str]:
+    loaded = load_artifacts_dir_bound(ROOT / "examples" / "execution_context_gpu_disclosure")
+    return loaded.artifacts, loaded.artifact_manifest, loaded.input_set_hash
+
+
+def _complete_gpu_context() -> dict:
+    return {
+        "schema_id": "gpu_goodput_context_v0",
+        "topology_manifest": {
+            "node_guids": ["0xaaa"],
+            "switch_guids": ["0xbbb"],
+            "gpu_serials": ["GPU-aaa"],
+            "nodes_tested": 4,
+            "nodes_provisioned": 4,
+            "coverage_ratio": 1.0,
+        },
+        "system_state": {
+            "uptimes_seconds": [172800],
+            "ecc_volatile": [0],
+            "ecc_aggregate": [0],
+            "thermal_history_c": [72.5],
+            "freshly_rebooted_nodes": 0,
+            "ecc_reboot_suspects": 0,
+        },
+        "probe_manifest_commitment": {
+            "committed_at": "2026-05-20T14:00:00Z",
+            "committed_by": "customer",
+            "probe_ids": ["nccl_allreduce", "ecc_check"],
+            "commitment_hash": "sha256:abc123",
+        },
+        "challenge_nonce": "a3f7c9e2b1d04568",
+        "ambient_load": {
+            "test_window_start": "2026-05-20T03:00:00Z",
+            "test_window_end": "2026-05-20T03:32:00Z",
+            "fabric_utilization_pct": 31.0,
+            "congestion_events": 2,
+            "ambient_load_level": "moderate",
+            "port_counter_samples": [],
+        },
+        "software_stack": {
+            "nvidia_driver": "545.23.08",
+            "cuda_version": "12.4",
+            "nccl_version": "2.20.5",
+            "connectx_firmware": "28.39.1002",
+            "os_kernel": "5.15.0-91-generic",
+            "ib_driver": "23.10-1.1.9.0",
+            "nccl_env_hash": "sha256:def456",
+            "stack_fingerprint": "sha256:789abc",
+        },
+    }
+
+
+def test_v7_execution_context_absent_is_noop() -> None:
+    receipt = run_json("--bundle", "examples/auth_grant_supported.json")
+    assert_receipt(receipt, SUPPORTED, 7, 0)
+    assert "execution_context" not in receipt
+    assert all(result["pass_id"] != "execution_context_disclosure" for result in receipt["pass_results"])
+    assert not any("Execution context" in line for line in receipt["boundary"]["does_not_support"])
+
+
+def test_v7_execution_context_round_trip_and_unknown_schema() -> None:
+    bundle = json.loads((ROOT / "examples" / "auth_grant_supported.json").read_text(encoding="utf-8"))
+    bundle["execution_context"] = {"schema_id": "future_thing_v0", "data": {"field": "value"}}
+    receipt = compile_bundle(bundle).to_dict()
+    assert receipt["execution_context"] == bundle["execution_context"]
+    assert receipt["verdict"]["status"] == SUPPORTED
+    assert len(receipt["pass_results"]) == 8
+    assert len(receipt.get("absence", [])) == 0
+    assert len(receipt.get("compiler_errors", [])) == 0
+
+    context_passes = [result for result in receipt["pass_results"] if result["pass_id"] == "execution_context_disclosure"]
+    assert len(context_passes) == 1
+    assert context_passes[0]["status"] == PASS_OK
+    assert context_passes[0].get("verdict_effect") is None
+    assert any("future_thing_v0" in line for line in receipt["boundary"]["does_not_support"])
+
+
+def test_v7_gpu_execution_context_disclosures() -> None:
+    artifacts, artifact_manifest, input_hash = _supported_authorization_fixture()
+    context = {
+        "schema_id": "gpu_goodput_context_v0",
+        "topology_manifest": {
+            "nodes_tested": 64,
+            "nodes_provisioned": 256,
+            "coverage_ratio": 0.25,
+        },
+        "system_state": {
+            "freshly_rebooted_nodes": 3,
+            "ecc_reboot_suspects": 2,
+        },
+        "ambient_load": {
+            "ambient_load_level": "negligible",
+        },
+    }
+    receipt = compile_claim(
+        artifacts,
+        "authorization_bound_action",
+        artifact_manifest=artifact_manifest,
+        input_set_hash=input_hash,
+        execution_context=context,
+    ).to_dict()
+
+    assert_receipt(receipt, SUPPORTED, 8, 0)
+    assert receipt["execution_context"] == context
+    boundary = "\n".join(receipt["boundary"]["does_not_support"])
+    assert "Receipt covers 64/256 provisioned nodes (25.0% coverage)" in boundary
+    assert "3 nodes were rebooted within 1 hour of test" in boundary
+    assert "2 nodes show zero volatile ECC errors but nonzero aggregate" in boundary
+    assert "negligible fabric load" in boundary
+    assert "Software stack not captured" in boundary
+    assert "No challenge nonce" in boundary
+    assert "No pre-committed probe manifest" in boundary
+
+    context_pass = [result for result in receipt["pass_results"] if result["pass_id"] == "execution_context_disclosure"][0]
+    assert context_pass["status"] == PASS_OK
+    assert context_pass.get("verdict_effect") is None
+
+
+def test_v7_complete_gpu_execution_context_adds_no_negative_context_disclosures() -> None:
+    artifacts, artifact_manifest, input_hash = _supported_authorization_fixture()
+    receipt = compile_claim(
+        artifacts,
+        "authorization_bound_action",
+        artifact_manifest=artifact_manifest,
+        input_set_hash=input_hash,
+        execution_context=_complete_gpu_context(),
+    ).to_dict()
+
+    assert_receipt(receipt, SUPPORTED, 8, 0)
+    boundary = "\n".join(receipt["boundary"]["does_not_support"])
+    assert "Receipt covers" not in boundary
+    assert "rebooted within 1 hour" not in boundary
+    assert "possible reboot to clear errors" not in boundary
+    assert "negligible fabric load" not in boundary
+    assert "Software stack not captured" not in boundary
+    assert "No challenge nonce" not in boundary
+    assert "No pre-committed probe manifest" not in boundary
+
+
+def test_v7_execution_context_file_loaded_outside_artifacts() -> None:
+    receipt = run_json(
+        "--artifacts-dir",
+        "examples/execution_context_gpu_disclosure",
+        "--claim-type",
+        "authorization_bound_action",
+    )
+    assert_receipt(receipt, SUPPORTED, 8, 0)
+    assert receipt["execution_context"]["schema_id"] == "gpu_goodput_context_v0"
+    assert "execution_context" not in receipt["artifacts"]
+    assert any(record.get("artifact_key") == "execution_context" for record in receipt["artifact_manifest"])
+    assert any("Receipt covers 64/256" in line for line in receipt["boundary"]["does_not_support"])
+
+
+def test_gpu_collateral_gallery_fixtures() -> None:
+    cases = [
+        (
+            "gpu_serial_match_supported",
+            "gpu_serial_collateral_match",
+            SUPPORTED,
+            0,
+            {"gpu_serial_set_match", "gpu_node_id_match"},
+        ),
+        (
+            "gpu_serial_match_unknown",
+            "gpu_serial_collateral_match",
+            UNKNOWN,
+            3,
+            {"gpu_serial_set_match", "gpu_node_id_match"},
+        ),
+        (
+            "gpu_serial_match_contradicted",
+            "gpu_serial_collateral_match",
+            CONTRADICTED,
+            0,
+            {"gpu_serial_set_match", "gpu_node_id_match"},
+        ),
+        (
+            "gpu_node_health_supported",
+            "gpu_node_health_diagnostic",
+            SUPPORTED,
+            0,
+            {"dcgm_diag_result", "ecc_threshold_check", "gpu_serial_cross_reference"},
+        ),
+        (
+            "gpu_node_health_unknown",
+            "gpu_node_health_diagnostic",
+            UNKNOWN,
+            4,
+            {"dcgm_diag_result", "ecc_threshold_check", "gpu_serial_cross_reference"},
+        ),
+        (
+            "gpu_node_health_contradicted",
+            "gpu_node_health_diagnostic",
+            CONTRADICTED,
+            0,
+            {"dcgm_diag_result", "ecc_threshold_check", "gpu_serial_cross_reference"},
+        ),
+        (
+            "gpu_node_health_supported_weak_conditions",
+            "gpu_node_health_diagnostic",
+            SUPPORTED,
+            0,
+            {
+                "dcgm_diag_result",
+                "ecc_threshold_check",
+                "gpu_serial_cross_reference",
+                "execution_context_disclosure",
+            },
+        ),
+    ]
+
+    for directory, claim_type, verdict, absence_count, expected_passes in cases:
+        receipt = run_json("--artifacts-dir", f"examples/{directory}", "--claim-type", claim_type)
+        assert receipt["verdict"]["status"] == verdict, (directory, receipt)
+        assert len(receipt.get("absence", [])) == absence_count, (directory, receipt)
+        pass_ids = {result["pass_id"] for result in receipt["pass_results"]}
+        assert expected_passes <= pass_ids, (directory, pass_ids)
+        if verdict == CONTRADICTED:
+            assert any(result.get("verdict_effect") == CONTRADICTED for result in receipt["pass_results"])
+        if verdict == UNKNOWN:
+            assert receipt.get("absence"), directory
+
+    weak = run_json(
+        "--artifacts-dir",
+        "examples/gpu_node_health_supported_weak_conditions",
+        "--claim-type",
+        "gpu_node_health_diagnostic",
+    )
+    assert weak["verdict"]["status"] == SUPPORTED
+    context_passes = [
+        result for result in weak["pass_results"] if result["pass_id"] == "execution_context_disclosure"
+    ]
+    assert len(context_passes) == 1
+    assert len(context_passes[0]["metadata"]["boundary_disclosures"]) >= 3
+    gpu_boundary = "\n".join(weak["boundary"]["does_not_support"])
+    assert "representative production load" in gpu_boundary
+    assert "recently rebooted" in gpu_boundary
+    assert "No challenge nonce" in gpu_boundary
+
+    explained = run_compile_process(
+        "examples/gpu_node_health_supported_weak_conditions",
+        "--claim-type",
+        "gpu_node_health_diagnostic",
+        "--explain",
+    )
+    assert explained.returncode == 0, explained.stderr
+    assert "Execution-context disclosures:" in explained.stdout
+    assert "No challenge nonce" in explained.stdout
+
+
+def test_gpu_boundary_uses_renderer_family_not_claim_id_prefix() -> None:
+    custom_gpu_pack = {
+        "schema_version": "receipt-claim-pack-v0.1",
+        "name": "collateral_schedule_attestation",
+        "description": "GPU-family claim with a deliberately non-GPU claim id.",
+        "renderer_family": "gpu_collateral",
+        "claim": {
+            "id": "claim.collateral_schedule_attestation",
+            "text": "The collateral schedule matched observed hardware.",
+        },
+        "expected_evidence": [
+            "gpu_inventory.declared_serials",
+            "gpu_inventory.declared_node_id",
+            "gpu_probe_observation.observed_serials",
+            "gpu_probe_observation.observed_node_id",
+            "gpu_probe_observation.observed_at",
+            "probe_manifest.probe_id",
+            "probe_manifest.probe_hash",
+            "probe_manifest.committed_at",
+        ],
+        "applicability_evidence": [
+            "gpu_inventory",
+            "gpu_probe_observation",
+        ],
+        "passes": [
+            "utc_timestamp_format",
+            "expected_evidence_absence",
+            "no_future_evidence",
+            "gpu_serial_set_match",
+            "gpu_node_id_match",
+        ],
+        "pass_params": {},
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        pack_dir = Path(tmp)
+        (pack_dir / "collateral_schedule_attestation.json").write_text(
+            json.dumps(custom_gpu_pack),
+            encoding="utf-8",
+        )
+        registry = build_claim_registry(pack_dir)
+        artifacts, artifact_manifest, input_hash = load_artifacts_dir_with_manifest(
+            ROOT / "examples" / "gpu_serial_match_supported"
+        )
+        receipt = compile_claim(
+            artifacts,
+            "collateral_schedule_attestation",
+            artifact_manifest=artifact_manifest,
+            input_set_hash=input_hash,
+            claim_types=registry,
+        ).to_dict()
+
+    assert receipt["verdict"]["status"] == SUPPORTED
+    assert receipt["claim"]["id"] == "claim.collateral_schedule_attestation"
+    assert receipt["renderer_family"] == "gpu_collateral"
+    gpu_boundary = "\n".join(receipt["boundary"]["does_not_support"])
+    assert "representative production load" in gpu_boundary
+    assert "residual economic value" in gpu_boundary
+    assert "That the collateral is worth any specific dollar amount." in receipt["unsupported_inferences"]
+
+
+def _pass_ir(artifacts: dict) -> ReceiptIR:
+    return ReceiptIR(claim={"id": "claim.test", "text": "test"}, expected_evidence=[], artifacts=artifacts)
+
+
+def test_grant_binding_cross_boundary_pass_units() -> None:
+    matched = _pass_ir({
+        "authorization": {
+            "render_time_grant_hash": "sha256:test-grant",
+            "execution_time_decision_id": "decision-123",
+            "grant_active_at_execution": True,
+        },
+        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "decision-123"}}],
+    })
+    assert grant_binding_present(matched).status == PASS_SATISFIED
+
+    missing_tool_side = _pass_ir({
+        "authorization": {
+            "render_time_grant_hash": "sha256:test-grant",
+            "execution_time_decision_id": "decision-123",
+            "grant_active_at_execution": True,
+        },
+        SIDE_EFFECTS_KEY: [{"invocation": {}}],
+    })
+    missing_result = grant_binding_present(missing_tool_side)
+    assert missing_result.status == UNKNOWN
+    assert missing_result.verdict_effect == UNKNOWN
+    assert missing_result.metadata["missing_expected_paths"] == [SIDE_EFFECT_DECISION_ID_PATH]
+
+    missing_active = _pass_ir({
+        "authorization": {
+            "render_time_grant_hash": "sha256:test-grant",
+            "execution_time_decision_id": "decision-123",
+        },
+        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "decision-123"}}],
+    })
+    missing_active_result = grant_binding_present(missing_active)
+    assert missing_active_result.status == UNKNOWN
+    assert missing_active_result.verdict_effect == UNKNOWN
+    assert missing_active_result.metadata["missing_expected_paths"] == ["authorization.grant_active_at_execution"]
+
+    inactive = _pass_ir({
+        "authorization": {
+            "render_time_grant_hash": "sha256:test-grant",
+            "execution_time_decision_id": "decision-123",
+            "grant_active_at_execution": False,
+        },
+        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "decision-123"}}],
+    })
+    inactive_result = grant_binding_present(inactive)
+    assert inactive_result.status == PASS_CONTRADICTED
+    assert inactive_result.verdict_effect == CONTRADICTED
+    assert inactive_result.metadata["field"] == "authorization.grant_active_at_execution"
+
+    mismatched = _pass_ir({
+        "authorization": {
+            "render_time_grant_hash": "sha256:test-grant",
+            "execution_time_decision_id": "decision-123",
+            "grant_active_at_execution": True,
+        },
+        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "decision-999"}}],
+    })
+    mismatch_result = grant_binding_present(mismatched)
+    assert mismatch_result.status == PASS_CONTRADICTED
+    assert mismatch_result.verdict_effect == CONTRADICTED
+
+
+def test_inactive_grant_execution_flag_contradicts_authorization_claim() -> None:
+    receipt = compile_claim(
+        {
+            "authorization": {
+                "grant_id": "grant-inactive-at-execution",
+                "grant_valid_from": "2026-05-14T16:00:00Z",
+                "grant_valid_until": "2026-05-14T18:00:00Z",
+                "revoked_at": None,
+                "render_time_grant_hash": "sha256:test-grant",
+                "execution_time_decision_id": "decision-inactive",
+                "grant_active_at_execution": False,
+            },
+            "parsed_actions": [
+                {
+                    "action_id": "action-inactive",
+                    "tool": "stripe.charges.create",
+                    "executed_at": "2026-05-14T17:01:30Z",
+                    "source_kind": "model_output",
+                }
+            ],
+            "tool_call": {
+                "action_id": "action-inactive",
+                "tool_name": "stripe.charges.create",
+                "invocation_context": {"decision_id": "decision-inactive"},
+            },
+        },
+        "authorization_bound_action",
+    )
+    assert receipt.verdict["status"] == CONTRADICTED
+    binding_pass = [result for result in receipt.pass_results if result["pass_id"] == "grant_binding_present"][0]
+    assert binding_pass["status"] == PASS_CONTRADICTED
+    assert binding_pass["verdict_effect"] == CONTRADICTED
+    assert "grant_active_at_execution is false" in binding_pass["detail"]
+
+
+def test_gpu_collateral_pass_units() -> None:
+    serial_ir = _pass_ir({
+        "gpu_inventory": {
+            "declared_serials": ["GPU-A", "GPU-B"],
+            "declared_node_id": "node-1",
+        },
+        "gpu_probe_observation": {
+            "observed_serials": ["GPU-B", "GPU-A"],
+            "observed_node_id": "node-1",
+        },
+    })
+    assert gpu_serial_set_match(serial_ir).status == PASS_SATISFIED
+    assert gpu_node_id_match(serial_ir).status == PASS_SATISFIED
+
+    serial_bad = _pass_ir({
+        "gpu_inventory": {
+            "declared_serials": ["GPU-A", "GPU-B"],
+            "declared_node_id": "node-1",
+        },
+        "gpu_probe_observation": {
+            "observed_serials": ["GPU-A", "GPU-Z"],
+            "observed_node_id": "node-2",
+        },
+    })
+    assert gpu_serial_set_match(serial_bad).status == PASS_CONTRADICTED
+    assert gpu_node_id_match(serial_bad).status == PASS_CONTRADICTED
+    assert gpu_serial_set_match(_pass_ir({})).status == PASS_SKIPPED
+    assert gpu_node_id_match(_pass_ir({})).status == PASS_SKIPPED
+
+    health_ir = _pass_ir({
+        "dcgm_diag": {
+            "gpu_serial": "GPU-A",
+            "overall_result": "Pass",
+            "test_results": [{"test_name": "memory_stress", "result": "Pass"}],
+        },
+        "xid_ecc_log": {
+            "gpu_serial": "GPU-A",
+            "volatile_dbe_errors": 0,
+            "total_retired_pages": 2,
+            "page_retirement_limit": 512,
+        },
+        "nvidia_smi": {"gpu_serial": "GPU-A"},
+    })
+    assert dcgm_diag_result(health_ir).status == PASS_SATISFIED
+    assert ecc_threshold_check(health_ir).status == PASS_SATISFIED
+    assert gpu_serial_cross_reference(health_ir).status == PASS_SATISFIED
+
+    health_bad = _pass_ir({
+        "dcgm_diag": {
+            "gpu_serial": "GPU-A",
+            "overall_result": "Fail",
+            "test_results": [{"test_name": "memory_stress", "result": "Fail"}],
+        },
+        "xid_ecc_log": {
+            "gpu_serial": "GPU-B",
+            "volatile_dbe_errors": 1,
+            "total_retired_pages": 512,
+            "page_retirement_limit": 512,
+        },
+        "nvidia_smi": {"gpu_serial": "GPU-A"},
+    })
+    assert dcgm_diag_result(health_bad).status == PASS_CONTRADICTED
+    assert ecc_threshold_check(health_bad).status == PASS_CONTRADICTED
+    assert gpu_serial_cross_reference(health_bad).status == PASS_CONTRADICTED
+    assert dcgm_diag_result(_pass_ir({})).status == PASS_SKIPPED
+    assert ecc_threshold_check(_pass_ir({})).status == PASS_SKIPPED
+    assert gpu_serial_cross_reference(_pass_ir({})).status == PASS_SKIPPED
 
 
 def test_one_line_compile_wrapper() -> None:
@@ -696,12 +1522,24 @@ def test_gap_card_and_ci_outputs() -> None:
             }),
             encoding="utf-8",
         )
+        (root / "parsed_actions.json").write_text(
+            json.dumps({
+                "parsed_actions": [
+                    {
+                        "tool": "stripe.charges.create",
+                        "executed_at": "2026-05-14T17:01:30Z",
+                        "source_kind": "model_output",
+                    }
+                ]
+            }),
+            encoding="utf-8",
+        )
         (root / "tool_call.json").write_text(json.dumps({"tool_call": {}}), encoding="utf-8")
         tool_gap = run_compile_process(str(root), "--gaps")
         assert tool_gap.returncode == 0, tool_gap.stderr
-        assert "missing expected path: tool_call.action_id" in tool_gap.stdout
+        assert f"missing expected path: {SIDE_EFFECT_ACTION_ID_PATH}" in tool_gap.stdout
 
-    ci_unknown = run_compile_process("examples/auth_grant_dir_supported", "--ci")
+    ci_unknown = run_compile_process("examples/auth_grant_unknown.json", "--ci")
     assert ci_unknown.returncode == 0, ci_unknown.stderr
     assert "UNKNOWN" in ci_unknown.stdout
     assert "CI WARNING: unknown receipt present" in ci_unknown.stderr
@@ -760,7 +1598,7 @@ def test_authorization_decision_id_mismatch_cannot_support() -> None:
         data = json.loads(receipt.stdout)
         assert data["verdict"]["status"] == CONTRADICTED
         assert data["verdict"]["status"] != SUPPORTED
-        assert "runtime decision_id does not match" in data["verdict"]["basis"]
+        assert "grant binding decision mismatch" in data["verdict"]["basis"]
 
 
 def test_authorization_missing_runtime_decision_id_cannot_support() -> None:
@@ -811,10 +1649,10 @@ def test_authorization_missing_runtime_decision_id_cannot_support() -> None:
         data = json.loads(receipt.stdout)
         assert data["verdict"]["status"] == UNKNOWN
         assert data["verdict"]["status"] != SUPPORTED
-        assert "runtime decision_id is missing" in data["verdict"]["basis"]
+        assert "missing tool-call field: side_effects.0.invocation.decision_id" in data["verdict"]["basis"]
         gaps = run_compile_process(str(root), "--claim-type", "authorization_bound_action", "--gaps")
         assert gaps.returncode == 0, gaps.stderr
-        assert "missing expected path: tool_call.invocation_context.decision_id" in gaps.stdout
+        assert "missing expected path: side_effects.0.invocation.decision_id" in gaps.stdout
 
 
 def test_hero_authorization_demo_packets() -> None:
@@ -1279,6 +2117,7 @@ def test_human_approval_claim_pack() -> None:
         (root / "approval.json").write_text(
             json.dumps({
                 "approval": {
+                    "tool_call_id": "approved-action-1",
                     "approved_at": "2026-05-14T17:00:00Z",
                     "decision": "approved",
                     "actor": "ops@example.com",
@@ -1310,6 +2149,7 @@ def test_human_approval_claim_pack() -> None:
         (root / "approval.json").write_text(
             json.dumps({
                 "approval": {
+                    "tool_call_id": "approved-action-1",
                     "approved_at": "2026-05-14T17:02:00Z",
                     "decision": "approved",
                     "actor": "ops@example.com",
@@ -1325,6 +2165,26 @@ def test_human_approval_claim_pack() -> None:
         )
         assert contradicted.returncode == 1
         assert "CONTRADICTED" in contradicted.stdout
+
+        (root / "approval.json").write_text(
+            json.dumps({
+                "approval": {
+                    "tool_call_id": "different-action",
+                    "approved_at": "2026-05-14T17:00:00Z",
+                    "decision": "approved",
+                    "actor": "ops@example.com",
+                }
+            }),
+            encoding="utf-8",
+        )
+        mismatched = run_compile_process(
+            str(root),
+            "--claim-type",
+            "human_approval_before_external_side_effect",
+            "--ci",
+        )
+        assert mismatched.returncode == 1
+        assert "CONTRADICTED" in mismatched.stdout
 
 
 def test_new_importers_missing_timestamps_fail_closed() -> None:
@@ -1465,16 +2325,18 @@ def test_ashiba_scan_readiness_gaps() -> None:
     proc = run_ashiba_process("scan", str(root / "logs"), "--policy", str(root / "policy.json"))
     assert proc.returncode == 0, proc.stderr
     assert "Ashiba scan" in proc.stdout
-    assert "Found:\n- 2 files scanned\n- 1 side-effect action found" in proc.stdout
-    assert "Action readiness:\n- 0 decidable, 1 blocked" in proc.stdout
+    assert "Summary:\n- Files scanned: 2\n- Side-effect actions found: 1" in proc.stdout
+    assert "- Receipt-ready actions: 0" in proc.stdout
+    assert "- Blocked actions: 1" in proc.stdout
+    assert "Action groups:\n- 0 receipt-ready, 1 blocked" in proc.stdout
+    assert "Top missing evidence:" in proc.stdout
     assert "Punch list:\n- add revocation_state export (1 action blocked)" in proc.stdout
-    assert "You can decide:\n- deployment_matches_reviewed_commit" in proc.stdout
-    assert "You cannot decide:\n- authorization_bound_action" in proc.stdout
-    assert "  missing authorization.revoked_at" in proc.stdout
-    assert "  missing authorization-to-action binding" in proc.stdout
+    assert "- Claim families ready: deployment_matches_reviewed_commit" in proc.stdout
+    assert "- Claim families blocked: authorization_bound_action" in proc.stdout
+    assert "authorization.revoked_at: 1 action blocked -> add revocation_state export" in proc.stdout
     assert (
-        "Probe-able next:\n- add revocation_state export\n"
-        "- log authorization decision_id or approval_id on the tool call"
+        "authorization-to-action binding: 1 action blocked -> "
+        "carry authorization execution_time_decision_id into the tool call"
     ) in proc.stdout
 
 
@@ -1525,7 +2387,7 @@ def test_ashiba_scan_action_readiness_json() -> None:
     blocked_claims = {c["claim"] for c in missing_authorization_binding["cannot_decide"]}
     assert "authorization_bound_action" in blocked_claims
     assert (
-        "log authorization decision_id or approval_id on the tool call"
+        "carry authorization execution_time_decision_id into the tool call"
         in missing_authorization_binding["probeable_next"]
     )
     assert result["summary"]["actions_found"] == 2
@@ -1533,9 +2395,94 @@ def test_ashiba_scan_action_readiness_json() -> None:
     assert result["summary"]["actions_blocked"] == 1
     assert "CloudTrail" in result["summary"]["input_kinds"]
     assert (
-        "log authorization decision_id or approval_id on the tool call (1 action blocked)"
+        "carry authorization execution_time_decision_id into the tool call (1 action blocked)"
         in result["punch_list"]
     )
+
+
+def test_ashiba_scan_requires_cross_boundary_authorization_decision_id() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        logs = root / "logs"
+        logs.mkdir()
+        policy = root / "policy.json"
+        policy.write_text(
+            json.dumps({
+                "grant_id": "grant-cross-boundary",
+                "grant_valid_from": "2026-05-14T16:00:00Z",
+                "grant_valid_until": "2026-05-14T18:00:00Z",
+                "revoked_at": None,
+                "render_time_grant_hash": "sha256:crossboundarygrant",
+                "execution_time_decision_id": "authz-decision-123",
+                "grant_active_at_execution": True,
+            }),
+            encoding="utf-8",
+        )
+        (logs / "cloudtrail.json").write_text(
+            json.dumps({
+                "Records": [
+                    {
+                        "eventID": "act-matched-authz",
+                        "eventSource": "lambda.amazonaws.com",
+                        "eventName": "Invoke",
+                        "eventTime": "2026-05-14T17:01:30Z",
+                        "requestParameters": {"decision_id": "authz-decision-123"},
+                    },
+                    {
+                        "eventID": "act-approval-only",
+                        "eventSource": "lambda.amazonaws.com",
+                        "eventName": "Invoke",
+                        "eventTime": "2026-05-14T17:02:30Z",
+                    },
+                    {
+                        "eventID": "act-mismatched-authz",
+                        "eventSource": "lambda.amazonaws.com",
+                        "eventName": "Invoke",
+                        "eventTime": "2026-05-14T17:03:30Z",
+                        "requestParameters": {"decision_id": "authz-decision-999"},
+                    },
+                ]
+            }),
+            encoding="utf-8",
+        )
+        (logs / "approval.json").write_text(
+            json.dumps({
+                "approval": {
+                    "approval_id": "approval-for-human-claim",
+                    "tool_call_id": "act-approval-only",
+                    "approved_at": "2026-05-14T17:00:00Z",
+                    "decision": "approved",
+                    "actor": "ops@example.com",
+                }
+            }),
+            encoding="utf-8",
+        )
+
+        proc = run_ashiba_process("scan", str(logs), "--policy", str(policy), "--json")
+        assert proc.returncode == 0, proc.stderr
+        result = json.loads(proc.stdout)
+        actions = {action["action_id"]: action for action in result["actions"]}
+
+        assert "authorization_bound_action" in actions["act-matched-authz"]["can_decide"]
+
+        approval_only = actions["act-approval-only"]
+        assert "human_approval_before_external_side_effect" in approval_only["can_decide"]
+        assert "authorization_bound_action" in {
+            item["claim"] for item in approval_only["cannot_decide"]
+        }
+        assert (
+            "carry authorization execution_time_decision_id into the tool call"
+            in approval_only["probeable_next"]
+        )
+
+        mismatched = actions["act-mismatched-authz"]
+        assert "authorization_bound_action" in {
+            item["claim"] for item in mismatched["cannot_decide"]
+        }
+        assert (
+            "carry authorization execution_time_decision_id into the tool call"
+            in mismatched["probeable_next"]
+        )
 
 
 def test_ashiba_scan_compile_authorization_invariant() -> None:
@@ -1561,6 +2508,30 @@ def test_ashiba_scan_compile_authorization_invariant() -> None:
     assert compiled.returncode == 0, compiled.stderr
     assert compiled.stdout.strip() != "SUPPORTED"
     assert compiled.stdout.strip() == "UNKNOWN"
+
+
+def test_importer_preserves_scanner_ready_authorization_binding() -> None:
+    root = Path("readiness_packets/authorization_ready_no_deployment_2026-05-18")
+
+    scan = run_ashiba_process("scan", str(root / "logs"), "--policy", str(root / "policy.json"), "--json")
+    assert scan.returncode == 0, scan.stderr
+    assert "authorization_bound_action" in json.loads(scan.stdout)["can_decide"]
+
+    imported = run_import_cloudtrail_process(
+        str(root / "logs" / "cloudtrail_lambda_invoke.json"),
+        "--policy",
+        str(root / "policy.json"),
+    )
+    assert imported.returncode == 0, imported.stderr
+    artifacts = json.loads(imported.stdout)
+    assert artifacts["authorization"]["render_time_grant_hash"] == "sha256:authorizationreadygrant"
+    assert artifacts["authorization"]["execution_time_decision_id"] == "authz-decision-approved-charge"
+    assert artifacts["authorization"]["grant_active_at_execution"] is True
+    assert artifacts["tool_call"]["invocation_context"]["decision_id"] == "authz-decision-approved-charge"
+
+    compiled = run_compile_process("-", "--claim-type", "authorization_bound_action", "--verdict", input_text=imported.stdout)
+    assert compiled.returncode == 0, compiled.stderr
+    assert compiled.stdout.strip() == "SUPPORTED"
 
 
 def test_ashiba_scan_does_not_infer_human_approval_from_actions_only() -> None:
@@ -1634,6 +2605,72 @@ def test_ashiba_scan_punch_list_includes_missing_approval_probes() -> None:
         assert "log the identity of the human approver (1 action blocked)" in result["punch_list"]
 
 
+def test_ashiba_scan_surfaces_conflicting_scalar_evidence() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        logs = root / "logs"
+        logs.mkdir()
+        policy = root / "policy.json"
+        policy.write_text(
+            json.dumps({
+                "grant_id": "grant-conflict",
+                "grant_valid_from": "2026-05-14T16:00:00Z",
+                "grant_valid_until": "2026-05-14T18:00:00Z",
+                "revoked_at": None,
+                "render_time_grant_hash": "sha256:conflict-grant",
+                "execution_time_decision_id": "authz-decision-123",
+                "grant_active_at_execution": True,
+            }),
+            encoding="utf-8",
+        )
+        (logs / "cloudtrail.json").write_text(
+            json.dumps({
+                "Records": [
+                    {
+                        "eventID": "act-conflicting-authz",
+                        "eventSource": "lambda.amazonaws.com",
+                        "eventName": "Invoke",
+                        "eventTime": "2026-05-14T17:01:30Z",
+                        "requestParameters": {"decision_id": "authz-decision-123"},
+                    }
+                ]
+            }),
+            encoding="utf-8",
+        )
+        (logs / "authorization_conflict.json").write_text(
+            json.dumps({
+                "authorization": {
+                    "execution_time_decision_id": "authz-decision-999",
+                }
+            }),
+            encoding="utf-8",
+        )
+
+        proc = run_ashiba_process("scan", str(logs), "--policy", str(policy), "--json")
+        assert proc.returncode == 0, proc.stderr
+        result = json.loads(proc.stdout)
+        assert result["evidence_conflicts"]
+        conflict = result["evidence_conflicts"][0]
+        assert conflict["path"] == "authorization.execution_time_decision_id"
+        assert conflict["existing"] == "authz-decision-123"
+        assert conflict["incoming"] == "authz-decision-999"
+        assert "authorization_bound_action" in {item["claim"] for item in result["cannot_decide"]}
+        auth_gap = [item for item in result["cannot_decide"] if item["claim"] == "authorization_bound_action"][0]
+        assert auth_gap["missing"] == []
+        assert auth_gap["conflicts"] == ["authorization.execution_time_decision_id"]
+        action_gap = [
+            item
+            for item in result["actions"][0]["cannot_decide"]
+            if item["claim"] == "authorization_bound_action"
+        ][0]
+        assert action_gap["conflicts"] == ["authorization.execution_time_decision_id"]
+
+        text = run_ashiba_process("scan", str(logs), "--policy", str(policy))
+        assert text.returncode == 0, text.stderr
+        assert "Evidence conflicts:" in text.stdout
+        assert "authorization.execution_time_decision_id" in text.stdout
+
+
 def test_ashiba_scan_detects_common_action_formats() -> None:
     cases = [
         ("examples/otel_span_sample.jsonl", "OpenTelemetry", "opentelemetry", "otel_call_01HXstripeCharge"),
@@ -1693,10 +2730,10 @@ def test_demo_30s_script() -> None:
     assert "== 2. After: scan with revocation state and action binding ==" in proc.stdout
     assert "== 3. Compile a bounded receipt card for the same action ==" in proc.stdout
     assert "== 4. Bad input fails closed ==" in proc.stdout
-    assert "blocked hero-authz-charge-001" in proc.stdout
+    assert "BLOCKED hero-authz-charge-001" in proc.stdout
     assert "missing authorization.revoked_at, authorization-to-action binding" in proc.stdout
-    assert "ready hero-authz-charge-001" in proc.stdout
-    assert "You can decide:\n- authorization_bound_action" in proc.stdout
+    assert "READY hero-authz-charge-001" in proc.stdout
+    assert "Claim families ready: authorization_bound_action, human_approval_before_external_side_effect" in proc.stdout
     assert "Report preview:" in proc.stdout
     assert "Ashiba Evidence Readiness Report" in proc.stdout
     assert "Receipt Card" in proc.stdout
@@ -1764,12 +2801,46 @@ def test_gallery_manifest_outputs() -> None:
         artifact_manifest = loaded.artifact_manifest
         input_hash = loaded.input_set_hash
         incident_manifest = loaded.incident_manifest
-        manifest_claim_types = sorted(receipt["claim_type"] for receipt in expected_receipts)
+        manifest_claim_types = sorted({receipt["claim_type"] for receipt in expected_receipts})
         detected_claim_types = detect_applicable_claim_types(artifacts)
         if expected_receipts and expected_receipts[0]["verdict"] == NOT_APPLICABLE:
             assert detected_claim_types == [], directory
         else:
             assert detected_claim_types == manifest_claim_types, directory
+
+        compiled_receipts = []
+        for claim_type in manifest_claim_types:
+            compiled_receipts.extend(
+                receipt.to_dict()
+                for receipt in compile_claims(
+                    artifacts,
+                    claim_type,
+                    artifact_manifest=artifact_manifest,
+                    input_set_hash=input_hash,
+                    incident_manifest=incident_manifest,
+                    execution_context=loaded.execution_context,
+                )
+            )
+
+        expected_signatures = sorted(
+            (
+                expected["claim_type"],
+                expected["verdict"],
+                expected["absence_count"],
+                expected["compiler_error_count"],
+            )
+            for expected in expected_receipts
+        )
+        actual_signatures = sorted(
+            (
+                receipt["claim_type"],
+                receipt["verdict"]["status"],
+                len(receipt.get("absence", [])),
+                len(receipt.get("compiler_errors", [])),
+            )
+            for receipt in compiled_receipts
+        )
+        assert actual_signatures == expected_signatures, (directory, actual_signatures, expected_signatures)
 
         for expected in expected_receipts:
             name_verdict = verdict_word_in_directory(directory)
@@ -1777,22 +2848,13 @@ def test_gallery_manifest_outputs() -> None:
                 assert expected.get("directory_verdict_rationale"), (
                     f"{directory} names {name_verdict} but manifest expects {expected['verdict']}"
                 )
+            assert expected.get("rationale"), directory
 
-            receipt = compile_claim(
-                artifacts,
-                expected["claim_type"],
-                artifact_manifest=artifact_manifest,
-                input_set_hash=input_hash,
-                incident_manifest=incident_manifest,
-            ).to_dict()
+        for receipt in compiled_receipts:
             validation_errors = validate_receipt(receipt)
-            assert validation_errors == [], (directory, expected["claim_type"], validation_errors)
-            assert receipt["verdict"]["status"] == expected["verdict"], (directory, receipt)
-            assert len(receipt.get("absence", [])) == expected["absence_count"], (directory, receipt)
-            assert len(receipt.get("compiler_errors", [])) == expected["compiler_error_count"], (directory, receipt)
+            assert validation_errors == [], (directory, receipt["claim_type"], validation_errors)
             assert receipt.get("artifact_manifest"), (directory, receipt)
             assert len(receipt.get("input_set_hash", "")) == 64, (directory, receipt)
-            assert expected.get("rationale"), directory
 
             total_receipts += 1
             verdict = receipt["verdict"]["status"]
@@ -1838,7 +2900,21 @@ def main() -> int:
     test_source_file_binding_verification()
     test_v5_incident_manifest_and_explain_output()
     test_v6_external_claim_pack_registry()
+    test_claim_contract_helpers_drive_readiness_semantics()
+    test_claim_contract_discovery_surfaces_minimum_runtime_facts()
+    test_side_effect_envelope_v1_compiles_and_scans()
+    test_action_scoped_side_effect_envelopes_compile_independently()
     test_v6_incident_manifest_path_boundaries()
+    test_v7_execution_context_absent_is_noop()
+    test_v7_execution_context_round_trip_and_unknown_schema()
+    test_v7_gpu_execution_context_disclosures()
+    test_v7_complete_gpu_execution_context_adds_no_negative_context_disclosures()
+    test_v7_execution_context_file_loaded_outside_artifacts()
+    test_gpu_collateral_gallery_fixtures()
+    test_gpu_boundary_uses_renderer_family_not_claim_id_prefix()
+    test_grant_binding_cross_boundary_pass_units()
+    test_gpu_collateral_pass_units()
+    test_inactive_grant_execution_flag_contradicts_authorization_claim()
     test_one_line_compile_wrapper()
     test_one_line_compile_directory_errors_do_not_traceback()
     test_gap_card_and_ci_outputs()
@@ -1862,9 +2938,12 @@ def main() -> int:
     test_ashiba_scan_readiness_gaps()
     test_ashiba_scan_readiness_json_packets()
     test_ashiba_scan_action_readiness_json()
+    test_ashiba_scan_requires_cross_boundary_authorization_decision_id()
     test_ashiba_scan_compile_authorization_invariant()
+    test_importer_preserves_scanner_ready_authorization_binding()
     test_ashiba_scan_does_not_infer_human_approval_from_actions_only()
     test_ashiba_scan_punch_list_includes_missing_approval_probes()
+    test_ashiba_scan_surfaces_conflicting_scalar_evidence()
     test_ashiba_scan_detects_common_action_formats()
     test_ashiba_scan_invalid_inputs_exit_nonzero()
     test_demo_30s_script()

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Receipt IR data structures for the minimum evidence compiler."""
+"""Receipt IR data structures for the minimum evidence compiler.
+
+Claims are priors. Probes are evidence. Receipts are bounded updates.
+The IR is the object we leave behind when a technical claim has met the
+evidence that can actually be inspected.
+"""
 
 from __future__ import annotations
 
@@ -40,12 +45,18 @@ class PassResult:
 
 @dataclass
 class ReceiptIR:
-    """Claim-bound Receipt IR for deterministic evidence compilation."""
+    """Claim-bound Receipt IR for deterministic evidence compilation.
+
+    The receipt deliberately avoids fake-precise probabilities. It records the
+    claim, the observed evidence, the missing evidence, and the boundary where
+    the update must stop.
+    """
 
     claim: dict[str, Any]
     expected_evidence: list[str]
     artifacts: dict[str, Any]
     claim_type: str = ""
+    renderer_family: str = ""
     receipt_id: str = field(default_factory=new_receipt_id)
     created_at: str = field(default_factory=utc_now)
     compiler_version: str = COMPILER_VERSION
@@ -58,6 +69,7 @@ class ReceiptIR:
     artifact_manifest: list[dict[str, Any]] = field(default_factory=list)
     input_set_hash: str = ""
     incident_manifest: dict[str, Any] = field(default_factory=dict)
+    execution_context: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_bundle(
@@ -82,6 +94,7 @@ class ReceiptIR:
             artifacts=artifacts,
             artifact_manifest=artifact_manifest or [],
             input_set_hash=input_set_hash,
+            execution_context=bundle.get("execution_context") if isinstance(bundle.get("execution_context"), dict) else {},
         )
 
     @classmethod
@@ -94,6 +107,8 @@ class ReceiptIR:
         artifact_manifest: list[dict[str, Any]] | None = None,
         input_set_hash: str = "",
         incident_manifest: dict[str, Any] | None = None,
+        execution_context: dict[str, Any] | None = None,
+        renderer_family: str = "",
     ) -> "ReceiptIR":
         """Create IR from a pre-merged artifacts dict and claim type config."""
         return cls(
@@ -101,9 +116,11 @@ class ReceiptIR:
             expected_evidence=[str(item) for item in expected_evidence],
             artifacts=artifacts,
             claim_type=claim_type,
+            renderer_family=renderer_family,
             artifact_manifest=artifact_manifest or [],
             input_set_hash=input_set_hash,
             incident_manifest=incident_manifest or {},
+            execution_context=execution_context or {},
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -125,6 +142,10 @@ class ReceiptIR:
         }
         if self.claim_type:
             out["claim_type"] = self.claim_type
+        if self.renderer_family:
+            out["renderer_family"] = self.renderer_family
         if self.incident_manifest:
             out["incident_manifest"] = self.incident_manifest
+        if self.execution_context:
+            out["execution_context"] = self.execution_context
         return out

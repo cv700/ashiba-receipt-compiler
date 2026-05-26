@@ -1,19 +1,45 @@
 #!/usr/bin/env python3
-"""Readiness scanner for side-effect authorization evidence."""
+"""Readiness scanner for side-effect authorization evidence.
+
+The scanner is the scout before the receipt: it reads the logs people already
+have, asks which claims are ready for a bounded update, and turns UNKNOWN into
+a concrete instrumentation punch list.
+"""
 
 from __future__ import annotations
 
 import argparse
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 import sys
 from typing import Any
 
+from claim_contracts import (
+    claim_conflicts,
+    claim_has_action_scope,
+    claim_missing,
+    conflict_excluded,
+)
 from claim_types import build_claim_registry
-from importer_common import first_present, nested_get, normalize_timestamp
-from passes import evidence_is_present, get_path, path_exists
+from importer_common import (
+    authorization_decision_id_from_fields as _decision_id_from_fields,
+    authorization_from_policy as _authorization_from_policy,
+    first_present,
+    nested_get,
+    normalize_timestamp,
+)
+from evidence_paths import get_path
+from side_effect_envelope import (
+    SIDE_EFFECT_ACTION_ID_PATH,
+    SIDE_EFFECT_DECISION_ID_PATH,
+    SIDE_EFFECT_EXECUTED_AT_PATH,
+    SIDE_EFFECTS_KEY,
+    legacy_artifacts_from_side_effect,
+    normalize_side_effect,
+    normalize_side_effect_artifacts,
+)
 
 
 ALL_SCAN_CLAIMS = ("deployment_matches_reviewed_commit", "authorization_bound_action",
@@ -21,22 +47,24 @@ ALL_SCAN_CLAIMS = ("deployment_matches_reviewed_commit", "authorization_bound_ac
 TEXT_SUFFIXES = {".json", ".jsonl", ".log", ".txt"}
 
 CLAIM_EVIDENCE_TRIGGERS: dict[str, list[str]] = {
-    "authorization_bound_action": ["authorization", "parsed_actions", "tool_call"],
+    "authorization_bound_action": ["authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call"],
     "deployment_matches_reviewed_commit": ["deployment", "review"],
     "human_approval_before_external_side_effect": ["approval"],
 }
 REVOCATION_PATH = "authorization.revoked_at"
 AUTHORIZATION_BINDING = "authorization-to-action binding"
+APPROVAL_BINDING = "approval-to-action binding"
 PROBE_BY_MISSING = {
     REVOCATION_PATH: "add revocation_state export",
-    AUTHORIZATION_BINDING: "log authorization decision_id or approval_id on the tool call",
+    AUTHORIZATION_BINDING: "carry authorization execution_time_decision_id into the tool call",
+    APPROVAL_BINDING: "log approval tool_call_id matching the side-effect action_id",
     "review.commit_sha": "log reviewed commit_sha from the review system",
     "review.decision": "log review decision with approved/rejected",
     "review.approved_at": "log review approved_at as UTC",
     "deployment.commit_sha": "log deployed commit_sha from the deployment job",
     "deployment.deployed_at": "log deployment time as UTC",
-    "tool_call.action_id": "log stable tool_call_id/action_id on side effects",
-    "parsed_actions.0.executed_at": "log tool execution time as UTC",
+    SIDE_EFFECT_ACTION_ID_PATH: "log stable tool_call_id/action_id on side effects",
+    SIDE_EFFECT_EXECUTED_AT_PATH: "log tool execution time as UTC",
     "approval.approved_at": "log human approval timestamp as UTC",
     "approval.decision": "log approval decision (approved/rejected)",
     "approval.actor": "log the identity of the human approver",
@@ -44,14 +72,15 @@ PROBE_BY_MISSING = {
 
 WHY_BY_MISSING = {
     REVOCATION_PATH: "Without explicit revocation state, absence of a revocation event can be confused with missing evidence.",
-    AUTHORIZATION_BINDING: "Without a binding, the evidence cannot show that this authorization decision governed this exact action.",
+    AUTHORIZATION_BINDING: "Without a matching decision ID on both sides of the boundary, the evidence cannot show that this authorization decision governed this exact action.",
+    APPROVAL_BINDING: "Without a matching action ID on the approval record, the evidence cannot show that this human approval governed this exact side effect.",
     "review.commit_sha": "Without the reviewed commit, deployment evidence cannot be compared to the approved artifact.",
     "review.decision": "Without the review decision, a review record does not show approval.",
     "review.approved_at": "Without the approval timestamp, the compiler cannot check review-before-deploy ordering.",
     "deployment.commit_sha": "Without the deployed commit, the compiler cannot compare deployment to review.",
     "deployment.deployed_at": "Without deployment time, the compiler cannot check chronology.",
-    "tool_call.action_id": "Without a stable action ID, logs from different systems cannot be joined to one side effect.",
-    "parsed_actions.0.executed_at": "Without execution time, the compiler cannot check authorization or approval windows.",
+    SIDE_EFFECT_ACTION_ID_PATH: "Without a stable action ID, logs from different systems cannot be joined to one side effect.",
+    SIDE_EFFECT_EXECUTED_AT_PATH: "Without execution time, the compiler cannot check authorization or approval windows.",
     "approval.approved_at": "Without approval time, the compiler cannot prove approval happened before the side effect.",
     "approval.decision": "Without the approval decision, the compiler cannot distinguish approval from rejection or review-only records.",
     "approval.actor": "Without approver identity, the compiler cannot show who approved the side effect.",
@@ -60,16 +89,24 @@ WHY_BY_MISSING = {
 SUGGESTED_FIELDS_BY_MISSING = {
     REVOCATION_PATH: {"authorization": {"revoked_at": None}},
     AUTHORIZATION_BINDING: {
-        "authorization": {"decision_id": "authz-decision-123"},
-        "tool_call": {"invocation_context": {"decision_id": "authz-decision-123"}},
+        "authorization": {
+            "render_time_grant_hash": "sha256:grant-hash-123",
+            "execution_time_decision_id": "authz-decision-123",
+            "grant_active_at_execution": True,
+        },
+        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "authz-decision-123"}}],
+    },
+    APPROVAL_BINDING: {
+        "approval": {"tool_call_id": "act-123"},
+        SIDE_EFFECTS_KEY: [{"action_id": "act-123"}],
     },
     "review.commit_sha": {"review": {"commit_sha": "abc123"}},
     "review.decision": {"review": {"decision": "approved"}},
     "review.approved_at": {"review": {"approved_at": "2026-05-14T16:59:00Z"}},
     "deployment.commit_sha": {"deployment": {"commit_sha": "abc123"}},
     "deployment.deployed_at": {"deployment": {"deployed_at": "2026-05-14T17:01:30Z"}},
-    "tool_call.action_id": {"tool_call": {"action_id": "act-123"}},
-    "parsed_actions.0.executed_at": {"parsed_actions": [{"executed_at": "2026-05-14T17:01:30Z"}]},
+    SIDE_EFFECT_ACTION_ID_PATH: {SIDE_EFFECTS_KEY: [{"action_id": "act-123"}]},
+    SIDE_EFFECT_EXECUTED_AT_PATH: {SIDE_EFFECTS_KEY: [{"executed_at": "2026-05-14T17:01:30Z"}]},
     "approval.approved_at": {"approval": {"approved_at": "2026-05-14T16:59:00Z"}},
     "approval.decision": {"approval": {"decision": "approved"}},
     "approval.actor": {"approval": {"actor": "user@example.com"}},
@@ -81,9 +118,29 @@ class ClaimReadiness:
     claim: str
     can_decide: bool
     missing: list[str]
+    conflicts: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
-        return {"claim": self.claim, "missing": self.missing}
+        out = {"claim": self.claim, "missing": self.missing}
+        if self.conflicts:
+            out["conflicts"] = self.conflicts
+        return out
+
+
+@dataclass
+class EvidenceConflict:
+    path: str
+    existing: Any
+    incoming: Any
+    source: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.path,
+            "existing": _conflict_value(self.existing),
+            "incoming": _conflict_value(self.incoming),
+            "source": self.source,
+        }
 
 
 @dataclass
@@ -146,6 +203,7 @@ class ScanResult:
     cannot_decide: list[ClaimReadiness]
     probeable_next: list[str]
     warnings: list[str]
+    conflicts: list[EvidenceConflict]
     actions: list[ActionReadiness]
     observations: list[FileObservation]
     punch_list: list[str]
@@ -175,6 +233,7 @@ class ScanResult:
             "probeable_next": self.probeable_next,
             "punch_list": self.punch_list,
             "warnings": self.warnings,
+            "evidence_conflicts": [conflict.as_dict() for conflict in self.conflicts],
             "actions": [action.as_dict() for action in self.actions],
         }
 
@@ -184,6 +243,7 @@ class ScanContext:
     artifacts: dict[str, Any]
     files_scanned: list[str]
     warnings: list[str]
+    conflicts: list[EvidenceConflict]
     actions: list[ActionCandidate]
     approvals: list[dict[str, Any]]
     observations: list[FileObservation]
@@ -261,7 +321,45 @@ def _payloads_from_file(path: Path) -> list[Any]:
     return [kv] if kv else []
 
 
-def _merge_value(existing: Any, incoming: Any) -> Any:
+def _conflict_value(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    try:
+        encoded = json.dumps(value, sort_keys=True)
+    except TypeError:
+        encoded = repr(value)
+    if len(encoded) > 240:
+        return encoded[:237] + "..."
+    return encoded
+
+
+def _record_conflict(
+    conflicts: list[EvidenceConflict] | None,
+    path: str,
+    existing: Any,
+    incoming: Any,
+    source: str,
+) -> None:
+    if conflicts is None or existing == incoming:
+        return
+    conflict = EvidenceConflict(path=path, existing=existing, incoming=incoming, source=source)
+    marker = conflict.as_dict()
+    if any(item.as_dict() == marker for item in conflicts):
+        return
+    conflicts.append(conflict)
+
+
+def _join_path(parent: str, child: str) -> str:
+    return f"{parent}.{child}" if parent else child
+
+
+def _merge_value(
+    existing: Any,
+    incoming: Any,
+    conflicts: list[EvidenceConflict] | None = None,
+    path: str = "",
+    source: str = "",
+) -> Any:
     if incoming in ({}, [], None):
         return existing
     if existing in ({}, [], None):
@@ -269,43 +367,28 @@ def _merge_value(existing: Any, incoming: Any) -> Any:
     if isinstance(existing, dict) and isinstance(incoming, dict):
         out = dict(existing)
         for key, value in incoming.items():
-            out[key] = _merge_value(out.get(key), value)
+            out[key] = _merge_value(out.get(key), value, conflicts, _join_path(path, str(key)), source)
         return out
     if isinstance(existing, list) and isinstance(incoming, list):
         return existing + incoming
+    _record_conflict(conflicts, path, existing, incoming, source)
     return existing
 
 
-def _merge_artifacts(target: dict[str, Any], source: dict[str, Any]) -> None:
-    for key in ("authorization", "parsed_actions", "tool_call", "deployment", "review", "approval"):
+def _merge_artifacts(
+    target: dict[str, Any],
+    source: dict[str, Any],
+    conflicts: list[EvidenceConflict] | None = None,
+    source_label: str = "",
+) -> None:
+    for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
         if key in source:
-            target[key] = _merge_value(target.get(key), source[key])
+            target[key] = _merge_value(target.get(key), source[key], conflicts, key, source_label)
 
 
 def _append_unique(items: list[str], value: str | None) -> None:
     if value and value not in items:
         items.append(value)
-
-
-def _authorization_from_policy(policy: dict[str, Any] | None) -> dict[str, Any]:
-    if not policy:
-        return {}
-    authorization = {}
-    for key in (
-        "grant_id",
-        "principal",
-        "delegated_to",
-        "scope",
-        "grant_valid_from",
-        "grant_valid_until",
-        "revoked_at",
-        "issuer",
-        "grant_context",
-        "decision_id",
-    ):
-        if key in policy:
-            authorization[key] = policy[key]
-    return {"authorization": authorization} if authorization else {}
 
 
 def _review_from_policy(policy: dict[str, Any] | None) -> dict[str, Any]:
@@ -418,6 +501,10 @@ def _cloudtrail_artifacts(payload: Any) -> dict[str, Any]:
     action_id = first_present(event.get("eventID"), event.get("requestID"), event.get("eventId"))
     executed_at = normalize_timestamp(event.get("eventTime"))
     tool_name = f"{event_source}:{event_name}" if event_source and event_name else None
+    request_parameters = event.get("requestParameters") if isinstance(event.get("requestParameters"), dict) else {}
+    response_elements = event.get("responseElements") if isinstance(event.get("responseElements"), dict) else {}
+    additional_event_data = event.get("additionalEventData") if isinstance(event.get("additionalEventData"), dict) else {}
+    decision_id = _decision_id_from_fields(event, request_parameters, response_elements, additional_event_data)
     out: dict[str, Any] = {}
     if action_id or executed_at or tool_name:
         action = {}
@@ -438,12 +525,14 @@ def _cloudtrail_artifacts(payload: Any) -> dict[str, Any]:
                 "actor": nested_get(event, "userIdentity", "arn"),
             }
         }
+        if decision_id is not None:
+            tool_call["invocation_context"]["decision_id"] = str(decision_id)
         if action_id:
             tool_call["action_id"] = action_id
         if tool_name:
             tool_call["tool_name"] = tool_name
         out["tool_call"] = tool_call
-    return out
+    return normalize_side_effect_artifacts(out)
 
 
 def _cloudtrail_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
@@ -531,6 +620,7 @@ def _otel_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
         attrs.get("event.time"),
         attrs.get("timestamp"),
     ))
+    decision_id = _decision_id_from_fields(attrs, payload)
     artifacts = {
         "parsed_actions": [
             {
@@ -548,6 +638,7 @@ def _otel_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
                 "trace_id": first_present(payload.get("traceId"), payload.get("trace_id")),
                 "span_id": first_present(payload.get("spanId"), payload.get("span_id")),
                 "approval_id": attrs.get("approval_id"),
+                "decision_id": str(decision_id) if decision_id is not None else None,
             },
         },
     }
@@ -575,6 +666,7 @@ def _generic_event_action_candidates(payload: Any, source: str) -> list[ActionCa
         payload.get("start_time"),
         payload.get("created_at"),
     ))
+    decision_id = _decision_id_from_fields(payload)
     artifacts = {
         "parsed_actions": [
             {
@@ -591,6 +683,7 @@ def _generic_event_action_candidates(payload: Any, source: str) -> list[ActionCa
             "invocation_context": {
                 "source": "event_log",
                 "approval_id": payload.get("approval_id"),
+                "decision_id": str(decision_id) if decision_id is not None else None,
             },
         },
     }
@@ -621,6 +714,10 @@ def _kubernetes_action_candidates(payload: Any, source: str) -> list[ActionCandi
             resource_parts.append(str(part))
     tool_name = f"kubernetes.{verb}.{'/'.join(resource_parts)}"
     action_id = first_present(payload.get("auditID"), payload.get("requestUID"))
+    decision_id = _decision_id_from_fields(
+        payload,
+        payload.get("annotations") if isinstance(payload.get("annotations"), dict) else {},
+    )
     executed_at = normalize_timestamp(first_present(
         payload.get("requestReceivedTimestamp"),
         payload.get("stageTimestamp"),
@@ -641,6 +738,7 @@ def _kubernetes_action_candidates(payload: Any, source: str) -> list[ActionCandi
             "invocation_context": {
                 "source": "kubernetes_audit",
                 "user": nested_get(payload, "user", "username"),
+                "decision_id": str(decision_id) if decision_id is not None else None,
             },
         },
     }
@@ -662,6 +760,7 @@ def _siem_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
         return []
     tool_name = f"siem.{action}.{resource}"
     executed_at = normalize_timestamp(first_present(payload.get("timestamp"), payload.get("@timestamp"), payload.get("time")))
+    decision_id = _decision_id_from_fields(payload)
     artifacts = {
         "parsed_actions": [
             {
@@ -677,6 +776,7 @@ def _siem_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
             "invocation_context": {
                 "source": "siem_jsonl",
                 "actor": first_present(payload.get("actor"), payload.get("user"), payload.get("principal")),
+                "decision_id": str(decision_id) if decision_id is not None else None,
             },
         },
     }
@@ -691,6 +791,26 @@ def _siem_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
 def _imported_action_candidates(payload: Any, source: str) -> list[ActionCandidate]:
     if not isinstance(payload, dict):
         return []
+    side_effects = payload.get(SIDE_EFFECTS_KEY)
+    if isinstance(side_effects, dict):
+        side_effects = [side_effects]
+    if isinstance(side_effects, list):
+        candidates = []
+        for idx, raw_side_effect in enumerate(side_effects):
+            if not isinstance(raw_side_effect, dict):
+                continue
+            side_effect = normalize_side_effect(raw_side_effect)
+            artifacts = {SIDE_EFFECTS_KEY: [side_effect], **legacy_artifacts_from_side_effect(side_effect)}
+            action_id = get_path(artifacts, SIDE_EFFECT_ACTION_ID_PATH)
+            candidates.append(ActionCandidate(
+                action_id=str(action_id) if action_id is not None else f"side_effect_{idx}",
+                source=source,
+                source_kind=str(side_effect.get("source_kind") or "side_effect_envelope"),
+                artifacts=artifacts,
+            ))
+        if candidates:
+            return candidates
+
     parsed_actions = payload.get("parsed_actions")
     if isinstance(parsed_actions, dict):
         parsed_actions = [parsed_actions]
@@ -737,6 +857,11 @@ def _payload_action_candidates(payload: Any, source: str) -> list[ActionCandidat
     deduped = []
     seen = set()
     for candidate in candidates:
+        candidate.artifacts = normalize_side_effect_artifacts(candidate.artifacts)
+        if candidate.action_id is None:
+            action_id = get_path(candidate.artifacts, SIDE_EFFECT_ACTION_ID_PATH)
+            if action_id is not None:
+                candidate.action_id = str(action_id)
         marker = (candidate.source, candidate.action_id, candidate.source_kind)
         if marker in seen:
             continue
@@ -791,21 +916,25 @@ def _approval_records_from_payload(payload: Any) -> list[dict[str, Any]]:
     return unique
 
 
-def _payload_artifacts(payload: Any) -> dict[str, Any]:
+def _payload_artifacts(
+    payload: Any,
+    conflicts: list[EvidenceConflict] | None = None,
+    source_label: str = "",
+) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     out: dict[str, Any] = {}
-    _merge_artifacts(out, _payload_authorization(payload))
-    for key in ("parsed_actions", "tool_call", "deployment", "review", "approval"):
+    _merge_artifacts(out, _payload_authorization(payload), conflicts, source_label)
+    for key in (SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
         if key in payload:
-            _merge_artifacts(out, {key: payload[key]})
-    _merge_artifacts(out, _cloudtrail_artifacts(payload))
-    _merge_artifacts(out, _payload_to_deployment(payload))
+            _merge_artifacts(out, {key: payload[key]}, conflicts, source_label)
+    _merge_artifacts(out, _cloudtrail_artifacts(payload), conflicts, source_label)
+    _merge_artifacts(out, _payload_to_deployment(payload), conflicts, source_label)
     review = _payload_review(payload)
     if review:
-        _merge_artifacts(out, {"review": review})
-    _merge_artifacts(out, _payload_to_approval(payload))
-    return out
+        _merge_artifacts(out, {"review": review}, conflicts, source_label)
+    _merge_artifacts(out, _payload_to_approval(payload), conflicts, source_label)
+    return normalize_side_effect_artifacts(out)
 
 
 def _payload_kinds(payload: Any) -> list[str]:
@@ -825,7 +954,7 @@ def _payload_kinds(payload: Any) -> list[str]:
             _append_unique(kinds, "agent event log")
         if any(key in payload for key in ("approval", "approvals")):
             _append_unique(kinds, "approval evidence")
-        if any(key in payload for key in ("authorization", "parsed_actions", "tool_call", "review")):
+        if any(key in payload for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "review")):
             _append_unique(kinds, "Ashiba/evidence artifact")
     if not kinds:
         _append_unique(kinds, "unrecognized JSON")
@@ -846,7 +975,7 @@ def _payload_record_count(payload: Any) -> int:
 def _payload_evidence_labels(payload: Any) -> list[str]:
     labels: list[str] = []
     artifacts = _payload_artifacts(payload)
-    for key in ("authorization", "parsed_actions", "tool_call", "deployment", "review", "approval"):
+    for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
         if key in artifacts:
             _append_unique(labels, key)
     if _approval_records_from_payload(payload):
@@ -876,6 +1005,7 @@ def _file_observation(path: Path, payloads: list[Any], actions: list[ActionCandi
 def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanContext:
     artifacts: dict[str, Any] = {}
     warnings: list[str] = []
+    conflicts: list[EvidenceConflict] = []
     files_scanned: list[str] = []
     actions: list[ActionCandidate] = []
     approvals: list[dict[str, Any]] = []
@@ -886,9 +1016,9 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
         policy = _load_json_file(policy_path, "policy")
         if not isinstance(policy, dict):
             raise ValueError("policy JSON root must be an object")
-        _merge_artifacts(artifacts, _authorization_from_policy(policy))
-        _merge_artifacts(artifacts, _review_from_policy(policy))
-        _merge_artifacts(artifacts, _approval_from_policy(policy))
+        _merge_artifacts(artifacts, _authorization_from_policy(policy), conflicts, str(policy_path))
+        _merge_artifacts(artifacts, _review_from_policy(policy), conflicts, str(policy_path))
+        _merge_artifacts(artifacts, _approval_from_policy(policy), conflicts, str(policy_path))
         approvals.extend(_approval_records_from_payload(policy))
         observations.append(FileObservation(
             path=str(policy_path),
@@ -917,7 +1047,12 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
         files_scanned.append(str(path))
         file_actions: list[ActionCandidate] = []
         for payload in payloads:
-            _merge_artifacts(artifacts, _payload_artifacts(payload))
+            _merge_artifacts(
+                artifacts,
+                _payload_artifacts(payload, conflicts, str(path)),
+                conflicts,
+                str(path),
+            )
             payload_actions = _payload_action_candidates(payload, str(path))
             file_actions.extend(payload_actions)
             actions.extend(payload_actions)
@@ -927,6 +1062,7 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
         artifacts=artifacts,
         files_scanned=files_scanned,
         warnings=warnings,
+        conflicts=conflicts,
         actions=actions,
         approvals=approvals,
         observations=observations,
@@ -936,42 +1072,6 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
 def collect_scan_artifacts(logs: Path, policy_path: Path | None = None) -> tuple[dict[str, Any], list[str], list[str]]:
     context = collect_scan_context(logs, policy_path)
     return context.artifacts, context.files_scanned, context.warnings
-
-
-def _missing_expected_paths(artifacts: dict[str, Any], expected_paths: list[str]) -> list[str]:
-    return [
-        path
-        for path in expected_paths
-        if not evidence_is_present(get_path(artifacts, path))
-    ]
-
-
-def _authorization_binding_present(artifacts: dict[str, Any]) -> bool:
-    action_id = get_path(artifacts, "tool_call.action_id")
-    authorization_id = first_present(
-        get_path(artifacts, "authorization.decision_id"),
-        get_path(artifacts, "approval.approval_id"),
-    )
-    bound_action_id = get_path(artifacts, "approval.tool_call_id")
-    tool_authorization_id = first_present(
-        get_path(artifacts, "tool_call.invocation_context.decision_id"),
-        get_path(artifacts, "tool_call.approval_id"),
-        get_path(artifacts, "tool_call.invocation_context.approval_id"),
-    )
-    if bound_action_id and action_id and str(bound_action_id) == str(action_id):
-        return True
-    if authorization_id and tool_authorization_id and str(authorization_id) == str(tool_authorization_id):
-        return True
-    return False
-
-
-def _authorization_missing(artifacts: dict[str, Any], expected_paths: list[str]) -> list[str]:
-    missing = _missing_expected_paths(artifacts, expected_paths)
-    if not path_exists(artifacts, REVOCATION_PATH) and REVOCATION_PATH not in missing:
-        missing.append(REVOCATION_PATH)
-    if not _authorization_binding_present(artifacts):
-        missing.append(AUTHORIZATION_BINDING)
-    return missing
 
 
 def _probeable_next(cannot_decide: list[ClaimReadiness]) -> list[str]:
@@ -985,6 +1085,8 @@ def _probeable_next(cannot_decide: list[ClaimReadiness]) -> list[str]:
 
 
 def _punch_list(cannot_decide: list[ClaimReadiness], actions: list[ActionReadiness]) -> list[str]:
+    # Every punch-list item is an UNKNOWN made useful: one missing field, one
+    # proposed probe, one fewer place for operational truth to hide next time.
     counts: dict[str, int] = {}
     for item in cannot_decide:
         for missing in item.missing:
@@ -1012,14 +1114,19 @@ def _punch_list(cannot_decide: list[ClaimReadiness], actions: list[ActionReadine
 
 def _action_base_artifacts(artifacts: dict[str, Any]) -> dict[str, Any]:
     base = deepcopy(artifacts)
-    for action_specific_key in ("parsed_actions", "tool_call", "approval"):
+    for action_specific_key in (SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "approval"):
         base.pop(action_specific_key, None)
     return base
 
 
 def _match_approval_for_action(action: ActionCandidate, approvals: list[dict[str, Any]]) -> dict[str, Any] | None:
-    action_id = get_path(action.artifacts, "tool_call.action_id")
+    action_id = first_present(
+        get_path(action.artifacts, SIDE_EFFECT_ACTION_ID_PATH),
+        get_path(action.artifacts, "tool_call.action_id"),
+    )
     action_approval_id = first_present(
+        get_path(action.artifacts, "side_effects.0.invocation.approval_id"),
+        get_path(action.artifacts, SIDE_EFFECT_DECISION_ID_PATH),
         get_path(action.artifacts, "tool_call.approval_id"),
         get_path(action.artifacts, "tool_call.invocation_context.approval_id"),
         get_path(action.artifacts, "tool_call.invocation_context.decision_id"),
@@ -1034,7 +1141,7 @@ def _match_approval_for_action(action: ActionCandidate, approvals: list[dict[str
     return None
 
 
-ACTION_LEVEL_CLAIMS = ("authorization_bound_action", "human_approval_before_external_side_effect")
+ACTION_SPECIFIC_CONFLICT_PREFIXES = (SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "approval")
 
 
 def _action_readiness(
@@ -1042,27 +1149,34 @@ def _action_readiness(
     registry: dict[str, Any],
     inferred_claims: list[str] | None = None,
 ) -> list[ActionReadiness]:
-    action_claims = [c for c in (inferred_claims or ALL_SCAN_CLAIMS) if c in ACTION_LEVEL_CLAIMS and c in registry]
+    action_claims = [
+        claim
+        for claim in (inferred_claims or ALL_SCAN_CLAIMS)
+        if claim in registry and claim_has_action_scope(registry[claim])
+    ]
     base = _action_base_artifacts(context.artifacts)
     rows = []
     for action in context.actions:
         artifacts = deepcopy(base)
-        _merge_artifacts(artifacts, action.artifacts)
+        action_conflicts = [
+            conflict
+            for conflict in context.conflicts
+            if not conflict_excluded(conflict, ACTION_SPECIFIC_CONFLICT_PREFIXES)
+        ]
+        _merge_artifacts(artifacts, normalize_side_effect_artifacts(action.artifacts), action_conflicts, action.source)
         approval = _match_approval_for_action(action, context.approvals)
         if approval is not None:
-            _merge_artifacts(artifacts, {"approval": approval})
+            _merge_artifacts(artifacts, {"approval": approval}, action_conflicts, action.source)
 
         readiness: list[ClaimReadiness] = []
         for claim in action_claims:
-            expected = list(registry[claim]["expected_evidence"])
-            if claim == "authorization_bound_action":
-                missing = _authorization_missing(artifacts, expected)
-            else:
-                missing = _missing_expected_paths(artifacts, expected)
+            missing = claim_missing(artifacts, registry[claim])
+            conflicts = claim_conflicts(registry[claim], action_conflicts)
             readiness.append(ClaimReadiness(
                 claim=claim,
-                can_decide=not missing,
+                can_decide=not missing and not conflicts,
                 missing=missing,
+                conflicts=conflicts,
             ))
         can_decide = [item.claim for item in readiness if item.can_decide]
         cannot_decide = [item for item in readiness if not item.can_decide]
@@ -1071,16 +1185,50 @@ def _action_readiness(
             source=action.source,
             source_kind=action.source_kind,
             tool=first_present(
+                get_path(action.artifacts, "side_effects.0.tool"),
                 get_path(action.artifacts, "parsed_actions.0.tool"),
                 get_path(action.artifacts, "tool_call.tool_name"),
             ),
-            executed_at=get_path(action.artifacts, "parsed_actions.0.executed_at"),
+            executed_at=first_present(
+                get_path(action.artifacts, SIDE_EFFECT_EXECUTED_AT_PATH),
+                get_path(action.artifacts, "parsed_actions.0.executed_at"),
+            ),
             decidable=not cannot_decide,
             can_decide=can_decide,
             cannot_decide=cannot_decide,
             probeable_next=_probeable_next(cannot_decide),
         ))
     return rows
+
+
+def _claim_readiness_from_action_rows(claim: str, action_rows: list[ActionReadiness]) -> ClaimReadiness | None:
+    rows = [
+        row
+        for row in action_rows
+        if claim in row.can_decide or any(item.claim == claim for item in row.cannot_decide)
+    ]
+    if not rows:
+        return None
+
+    missing: list[str] = []
+    conflicts: list[str] = []
+    for row in rows:
+        for item in row.cannot_decide:
+            if item.claim != claim:
+                continue
+            for path in item.missing:
+                if path not in missing:
+                    missing.append(path)
+            for path in item.conflicts:
+                if path not in conflicts:
+                    conflicts.append(path)
+
+    return ClaimReadiness(
+        claim=claim,
+        can_decide=all(claim in row.can_decide for row in rows),
+        missing=missing,
+        conflicts=sorted(conflicts),
+    )
 
 
 def _infer_claims(context: ScanContext) -> list[str]:
@@ -1102,18 +1250,25 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
     artifacts = context.artifacts
     registry = build_claim_registry()
     inferred = _infer_claims(context)
+    action_rows = _action_readiness(context, registry, inferred)
     readiness: list[ClaimReadiness] = []
     for claim in inferred:
-        expected = list(registry[claim]["expected_evidence"])
-        if claim == "authorization_bound_action":
-            missing = _authorization_missing(artifacts, expected)
-        else:
-            missing = _missing_expected_paths(artifacts, expected)
-        readiness.append(ClaimReadiness(claim=claim, can_decide=not missing, missing=missing))
+        if claim_has_action_scope(registry[claim]):
+            action_readiness = _claim_readiness_from_action_rows(claim, action_rows)
+            if action_readiness is not None:
+                readiness.append(action_readiness)
+                continue
+        missing = claim_missing(artifacts, registry[claim])
+        conflicts = claim_conflicts(registry[claim], context.conflicts)
+        readiness.append(ClaimReadiness(
+            claim=claim,
+            can_decide=not missing and not conflicts,
+            missing=missing,
+            conflicts=conflicts,
+        ))
 
     can_decide = [item.claim for item in readiness if item.can_decide]
     cannot_decide = [item for item in readiness if not item.can_decide]
-    action_rows = _action_readiness(context, registry, inferred)
     return ScanResult(
         input_status="ok" if context.files_scanned else "no_parseable_inputs",
         files_scanned=context.files_scanned,
@@ -1121,24 +1276,63 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
         cannot_decide=cannot_decide,
         probeable_next=_probeable_next(cannot_decide),
         warnings=context.warnings,
+        conflicts=context.conflicts,
         actions=action_rows,
         observations=context.observations,
         punch_list=_punch_list(cannot_decide, action_rows),
     )
 
 
+def _missing_counts(result: ScanResult) -> list[tuple[str, int, str | None]]:
+    counts: dict[str, int] = {}
+    for item in result.cannot_decide:
+        for missing in item.missing:
+            counts.setdefault(missing, 0)
+    for action in result.actions:
+        seen_for_action = set()
+        for item in action.cannot_decide:
+            for missing in item.missing:
+                if missing in seen_for_action:
+                    continue
+                seen_for_action.add(missing)
+                counts[missing] = counts.get(missing, 0) + 1
+    ranked = [
+        (missing, count, PROBE_BY_MISSING.get(missing))
+        for missing, count in counts.items()
+    ]
+    ranked.sort(key=lambda item: (-item[1], item[0]))
+    return ranked
+
+
 def format_scan_text(result: ScanResult) -> str:
     actions_decidable = sum(1 for action in result.actions if action.decidable)
+    actions_blocked = len(result.actions) - actions_decidable
+    missing_counts = _missing_counts(result)
     lines = [
         "Ashiba scan",
         "",
-        "Found:",
-        f"- {len(result.files_scanned)} file{'s' if len(result.files_scanned) != 1 else ''} scanned",
-        f"- {len(result.actions)} side-effect action{'s' if len(result.actions) != 1 else ''} found",
+        "Summary:",
+        f"- Files scanned: {len(result.files_scanned)}",
+        f"- Side-effect actions found: {len(result.actions)}",
+        f"- Receipt-ready actions: {actions_decidable}",
+        f"- Blocked actions: {actions_blocked}",
     ]
     if result.input_status != "ok":
         lines.append(f"- input status: {result.input_status}")
         lines.append("- problem: no usable log files were parsed")
+    lines.append(f"- Claim families ready: {', '.join(result.can_decide) if result.can_decide else 'none'}")
+    lines.append(
+        "- Claim families blocked: "
+        + (
+            ", ".join(item.claim for item in result.cannot_decide)
+            if result.cannot_decide
+            else "none"
+        )
+    )
+
+    lines.extend(["", "Detected evidence:"])
+    if not result.observations:
+        lines.append("- none")
     for observation in result.observations:
         if observation.kinds == ["policy"]:
             lines.append(f"- policy evidence: {', '.join(observation.evidence) if observation.evidence else 'present'}")
@@ -1149,41 +1343,48 @@ def format_scan_text(result: ScanResult) -> str:
 
     lines.extend([
         "",
-        "Action readiness:",
+        "Action groups:",
     ])
     if result.actions:
-        lines.append(f"- {actions_decidable} decidable, {len(result.actions) - actions_decidable} blocked")
+        lines.append(f"- {actions_decidable} receipt-ready, {actions_blocked} blocked")
         for action in result.actions:
             label = action.action_id or "(missing action_id)"
             tool = f" {action.tool}" if action.tool else ""
             if action.decidable:
-                lines.append(f"  - ready {label}{tool}")
+                lines.append(f"  - READY {label}{tool}")
             else:
                 missing = []
+                conflicts = []
                 for item in action.cannot_decide:
                     missing.extend(item.missing)
-                lines.append(f"  - blocked {label}{tool}: missing {', '.join(missing)}")
+                    conflicts.extend(item.conflicts)
+                problems = []
+                if missing:
+                    problems.append(f"missing {', '.join(missing)}")
+                if conflicts:
+                    problems.append(f"conflicting {', '.join(sorted(set(conflicts)))}")
+                lines.append(f"  - BLOCKED {label}{tool}: {'; '.join(problems)}")
     else:
         lines.append("- no side-effect actions recognized")
 
-    lines.extend(["", "You can decide:"])
-    if result.can_decide:
-        lines.extend(f"- {claim}" for claim in result.can_decide)
-    else:
-        lines.append("- (none)")
+    if result.conflicts:
+        lines.extend(["", "Evidence conflicts:"])
+        for conflict in result.conflicts:
+            source = f" from {conflict.source}" if conflict.source else ""
+            lines.append(
+                f"- {conflict.path}: {conflict.existing!r} vs {conflict.incoming!r}{source}"
+            )
 
-    lines.extend(["", "You cannot decide:"])
-    if result.cannot_decide:
-        for item in result.cannot_decide:
-            lines.append(f"- {item.claim}")
-            for missing in item.missing:
-                lines.append(f"  missing {missing}")
-    else:
-        lines.append("- (none)")
-
-    lines.extend(["", "Probe-able next:"])
-    if result.probeable_next:
-        lines.extend(f"- {probe}" for probe in result.probeable_next)
+    lines.extend(["", "Top missing evidence:"])
+    if missing_counts:
+        for missing, count, probe in missing_counts:
+            scope = (
+                f"{count} action{'s' if count != 1 else ''} blocked"
+                if count
+                else "global claim gap"
+            )
+            probe_text = f" -> {probe}" if probe else ""
+            lines.append(f"- {missing}: {scope}{probe_text}")
     else:
         lines.append("- (none)")
 
@@ -1192,6 +1393,15 @@ def format_scan_text(result: ScanResult) -> str:
         lines.extend(f"- {item}" for item in result.punch_list)
     else:
         lines.append("- no missing probes detected for current claim set")
+
+    lines.extend([
+        "",
+        "Boundary:",
+        "- This is a readiness scan, not a receipt verdict.",
+        "- Missing evidence means unknown, not contradicted.",
+    ])
+    if result.conflicts:
+        lines.append("- Conflicting evidence blocks readiness until the source logs are reconciled.")
 
     if result.warnings:
         lines.extend(["", "Warnings:"])
@@ -1249,6 +1459,7 @@ def build_scan_report(result: ScanResult) -> dict[str, Any]:
         "cannot_decide": [item.as_dict() for item in result.cannot_decide],
         "detected_inputs": [observation.as_dict() for observation in result.observations],
         "missing_evidence": _missing_groups(result),
+        "evidence_conflicts": [conflict.as_dict() for conflict in result.conflicts],
         "punch_list": result.punch_list,
         "warnings": result.warnings,
         "actions": [action.as_dict() for action in result.actions],
@@ -1271,10 +1482,10 @@ def format_scan_report_markdown(result: ScanResult) -> str:
         f"- Input status: `{summary['input_status']}`",
         f"- Files scanned: {summary['files_scanned']}",
         f"- Side-effect actions found: {summary['actions_found']}",
-        f"- Actions decidable: {summary['actions_decidable']}",
+        f"- Actions receipt-ready: {summary['actions_decidable']}",
         f"- Actions blocked: {summary['actions_blocked']}",
-        f"- Claims decidable: {summary['claims_decidable']}",
-        f"- Claims blocked: {summary['claims_blocked']}",
+        f"- Claim families ready: {summary['claims_decidable']}",
+        f"- Claim families blocked: {summary['claims_blocked']}",
         "",
         "## Detected Inputs",
         "",
@@ -1295,18 +1506,18 @@ def format_scan_report_markdown(result: ScanResult) -> str:
 
     lines.extend(["", "## Claim Readiness", ""])
     if result.can_decide:
-        lines.append("Can decide:")
+        lines.append("Receipt-ready claim families:")
         lines.extend(f"- `{claim}`" for claim in result.can_decide)
     else:
-        lines.append("Can decide: none")
+        lines.append("Receipt-ready claim families: none")
 
     if result.cannot_decide:
-        lines.extend(["", "Cannot decide:"])
+        lines.extend(["", "Blocked claim families:"])
         for item in result.cannot_decide:
             missing = ", ".join(f"`{path}`" for path in item.missing)
             lines.append(f"- `{item.claim}` missing {missing}")
     else:
-        lines.extend(["", "Cannot decide: none"])
+        lines.extend(["", "Blocked claim families: none"])
 
     lines.extend(["", "## Missing Evidence Punch List", ""])
     if report["missing_evidence"]:
@@ -1338,21 +1549,36 @@ def format_scan_report_markdown(result: ScanResult) -> str:
     else:
         lines.append("- No missing evidence detected for the inferred claim set.")
 
+    if report["evidence_conflicts"]:
+        lines.extend(["", "## Evidence Conflicts", ""])
+        lines.extend([
+            "| Path | Existing | Incoming | Source |",
+            "| --- | --- | --- | --- |",
+        ])
+        for conflict in report["evidence_conflicts"]:
+            lines.append(
+                f"| `{conflict['path']}` | `{conflict['existing']}` | "
+                f"`{conflict['incoming']}` | `{conflict['source'] or '-'}` |"
+            )
+
     lines.extend(["## Action Readiness", ""])
     if result.actions:
         lines.extend([
-            "| Action | Tool | Source kind | Status | Missing evidence |",
-            "| --- | --- | --- | --- | --- |",
+            "| Action | Tool | Source kind | Status | Missing evidence | Conflicts |",
+            "| --- | --- | --- | --- | --- | --- |",
         ])
         for action in result.actions:
             missing_paths = []
+            conflict_paths = []
             for item in action.cannot_decide:
                 missing_paths.extend(item.missing)
-            status = "decidable" if action.decidable else "blocked"
+                conflict_paths.extend(item.conflicts)
+            status = "receipt-ready" if action.decidable else "blocked"
             lines.append(
                 f"| `{action.action_id or '(missing action_id)'}` | "
                 f"{action.tool or '-'} | {action.source_kind} | {status} | "
-                f"{', '.join(f'`{path}`' for path in missing_paths) or '-'} |"
+                f"{', '.join(f'`{path}`' for path in missing_paths) or '-'} | "
+                f"{', '.join(f'`{path}`' for path in sorted(set(conflict_paths))) or '-'} |"
             )
     else:
         lines.append("- No side-effect actions recognized.")
@@ -1367,6 +1593,7 @@ def format_scan_report_markdown(result: ScanResult) -> str:
         "",
         "- This report is a readiness scan, not a receipt verdict.",
         "- Missing evidence means `unknown`, not `contradicted`.",
+        "- Conflicting evidence blocks readiness until the source logs are reconciled.",
         "- The report does not prove model intent, safety, custody, authenticity, or general system reliability.",
         "",
     ])

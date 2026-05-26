@@ -10,4 +10,4 @@ Expected shape:
 
 - `deployment_matches_reviewed_commit` can be decided.
 - `authorization_bound_action` cannot be decided because revocation state and
-  authorization-to-action binding are missing.
+  cross-boundary authorization decision binding are missing.
