@@ -1,0 +1,14 @@
+{
+  "grant_id": "grant-hero-authz-20260514",
+  "principal": "user:sarah@merchant.io",
+  "delegated_to": "agent:ops-runner",
+  "scope": [
+    "stripe:charges:create",
+    "aws:lambda:Invoke"
+  ],
+  "grant_valid_from": "2026-05-14T16:00:00Z",
+  "grant_valid_until": "2026-05-14T18:00:00Z",
+  "revoked_at": null,
+  "issuer": "approval-system",
+  "grant_context": "Hero demo after packet: explicit non-revocation and approval-to-action binding are exported."
+}
