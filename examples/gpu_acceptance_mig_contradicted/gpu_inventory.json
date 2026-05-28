@@ -1,0 +1,6 @@
+{
+  "declared_sku": "H100-SXM5-80GB",
+  "declared_count": 8,
+  "declared_topology_class": "HGX H100 NVL8",
+  "declared_region": "us-east"
+}
