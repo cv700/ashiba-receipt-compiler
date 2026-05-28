@@ -17,6 +17,7 @@ from constants import (
     PASS_OK,
     PASS_SATISFIED,
     PASS_SKIPPED,
+    PASS_UNKNOWN,
     SUPPORTED,
     UNKNOWN,
     VERDICT_STATUSES,
@@ -28,8 +29,10 @@ from passes import (
     get_pass_spec,
     grant_binding_present,
     gpu_node_id_match,
+    gpu_not_mig_sliced,
     gpu_serial_cross_reference,
     gpu_serial_set_match,
+    gpu_sku_count_match,
 )
 from receipt_compile import (
     build_claim_registry,
@@ -202,6 +205,17 @@ def run_ashiba_process(*args: str) -> subprocess.CompletedProcess[str]:
 def run_import_siem_process(*args: str, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [PYTHON, "import_siem_jsonl", *args],
+        cwd=ROOT,
+        env=ENV,
+        input=input_text,
+        text=True,
+        capture_output=True,
+    )
+
+
+def run_import_nvidia_smi_process(*args: str, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [PYTHON, "import_nvidia_smi", *args],
         cwd=ROOT,
         env=ENV,
         input=input_text,
@@ -1132,6 +1146,44 @@ def test_gpu_collateral_gallery_fixtures() -> None:
     assert "No challenge nonce" in explained.stdout
 
 
+def test_gpu_capacity_acceptance_gallery_fixtures() -> None:
+    cases = [
+        (
+            "gpu_acceptance_supported",
+            SUPPORTED,
+            0,
+            {"gpu_sku_count_match": PASS_SATISFIED, "gpu_not_mig_sliced": PASS_SATISFIED},
+        ),
+        (
+            "gpu_acceptance_mig_contradicted",
+            CONTRADICTED,
+            0,
+            {"gpu_sku_count_match": PASS_SATISFIED, "gpu_not_mig_sliced": PASS_CONTRADICTED},
+        ),
+        (
+            "gpu_acceptance_unknown",
+            UNKNOWN,
+            1,
+            {"gpu_sku_count_match": PASS_UNKNOWN, "gpu_not_mig_sliced": PASS_SATISFIED},
+        ),
+    ]
+
+    for directory, verdict, absence_count, expected_pass_statuses in cases:
+        receipt = run_json("--artifacts-dir", f"examples/{directory}", "--claim-type", "gpu_capacity_acceptance")
+        assert receipt["verdict"]["status"] == verdict, (directory, receipt)
+        assert len(receipt.get("absence", [])) == absence_count, (directory, receipt)
+        pass_results = {result["pass_id"]: result for result in receipt["pass_results"]}
+        for pass_id, expected_status in expected_pass_statuses.items():
+            assert pass_results[pass_id]["status"] == expected_status, (directory, pass_results[pass_id])
+        if directory == "gpu_acceptance_mig_contradicted":
+            mig_result = pass_results["gpu_not_mig_sliced"]
+            assert mig_result["verdict_effect"] == CONTRADICTED
+            assert "MIG enabled" in mig_result["detail"]
+        if directory == "gpu_acceptance_unknown":
+            missing = {record["expected_path"] for record in receipt["absence"]}
+            assert "gpu_inventory.declared_sku" in missing
+
+
 def test_gpu_boundary_uses_renderer_family_not_claim_id_prefix() -> None:
     custom_gpu_pack = {
         "schema_version": "receipt-claim-pack-v0.1",
@@ -1361,6 +1413,96 @@ def test_gpu_collateral_pass_units() -> None:
     assert dcgm_diag_result(_pass_ir({})).status == PASS_SKIPPED
     assert ecc_threshold_check(_pass_ir({})).status == PASS_SKIPPED
     assert gpu_serial_cross_reference(_pass_ir({})).status == PASS_SKIPPED
+
+
+def test_gpu_capacity_acceptance_pass_units() -> None:
+    supported = _pass_ir({
+        "gpu_inventory": {
+            "declared_sku": "H100-SXM5-80GB",
+            "declared_count": 8,
+        },
+        "gpu_probe_observation": {
+            "observed_names": ["NVIDIA H100 80GB HBM3"] * 8,
+            "observed_count": 8,
+            "observed_mig_modes": ["Disabled"] * 8,
+        },
+    })
+    assert gpu_sku_count_match(supported).status == PASS_SATISFIED
+    assert gpu_not_mig_sliced(supported).status == PASS_SATISFIED
+
+    wrong_sku = _pass_ir({
+        "gpu_inventory": {
+            "declared_sku": "H100-SXM5-80GB",
+            "declared_count": 8,
+        },
+        "gpu_probe_observation": {
+            "observed_names": ["NVIDIA H100 80GB HBM3"] * 7 + ["NVIDIA A100 80GB PCIe"],
+            "observed_count": 8,
+        },
+    })
+    assert gpu_sku_count_match(wrong_sku).status == PASS_CONTRADICTED
+
+    short_count = _pass_ir({
+        "gpu_inventory": {
+            "declared_sku": "H100-SXM5-80GB",
+            "declared_count": 8,
+        },
+        "gpu_probe_observation": {
+            "observed_names": ["NVIDIA H100 80GB HBM3"] * 7,
+            "observed_count": 7,
+        },
+    })
+    assert gpu_sku_count_match(short_count).status == PASS_CONTRADICTED
+
+    over_count = _pass_ir({
+        "gpu_inventory": {
+            "declared_sku": "H100-SXM5-80GB",
+            "declared_count": 8,
+        },
+        "gpu_probe_observation": {
+            "observed_names": ["NVIDIA H100 80GB HBM3"] * 9,
+            "observed_count": 9,
+        },
+    })
+    over_count_result = gpu_sku_count_match(over_count)
+    assert over_count_result.status == PASS_SATISFIED
+    assert "additional observed GPU" in over_count_result.detail
+
+    partial_names = _pass_ir({
+        "gpu_inventory": {
+            "declared_sku": "H100-SXM5-80GB",
+            "declared_count": 8,
+        },
+        "gpu_probe_observation": {
+            "observed_names": ["NVIDIA H100 80GB HBM3"],
+            "observed_count": 8,
+        },
+    })
+    assert gpu_sku_count_match(partial_names).status == PASS_UNKNOWN
+
+    misleading_name = _pass_ir({
+        "gpu_inventory": {
+            "declared_sku": "H100-SXM5-80GB",
+            "declared_count": 1,
+        },
+        "gpu_probe_observation": {
+            "observed_names": ["NVIDIA H1000 test fixture"],
+            "observed_count": 1,
+        },
+    })
+    assert gpu_sku_count_match(misleading_name).status == PASS_CONTRADICTED
+
+    mig_na = _pass_ir({"gpu_probe_observation": {"observed_mig_modes": ["N/A", "Disabled"], "observed_count": 2}})
+    assert gpu_not_mig_sliced(mig_na).status == PASS_SATISFIED
+
+    mig_enabled = _pass_ir({"gpu_probe_observation": {"observed_mig_modes": ["Disabled", "Enabled"], "observed_count": 2}})
+    assert gpu_not_mig_sliced(mig_enabled).status == PASS_CONTRADICTED
+
+    partial_mig = _pass_ir({"gpu_probe_observation": {"observed_mig_modes": ["Disabled"], "observed_count": 8}})
+    assert gpu_not_mig_sliced(partial_mig).status == PASS_UNKNOWN
+
+    assert gpu_not_mig_sliced(_pass_ir({"gpu_probe_observation": {"observed_mig_modes": []}})).status == PASS_UNKNOWN
+    assert gpu_sku_count_match(_pass_ir({})).status == PASS_UNKNOWN
 
 
 def test_one_line_compile_wrapper() -> None:
@@ -1912,6 +2054,90 @@ def test_anthropic_importer_missing_timestamp_fails_closed() -> None:
     verdict = run_compile_process("-", "-v", input_text=supplied_time.stdout)
     assert verdict.returncode == 0, verdict.stderr
     assert verdict.stdout.strip() == "UNKNOWN"
+
+
+def test_nvidia_smi_importer_bridge() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        reservation_path = tmp_path / "reservation.json"
+        reservation_path.write_text(
+            json.dumps({
+                "declared_sku": "H100-SXM5-80GB",
+                "declared_count": 8,
+                "declared_topology_class": "HGX H100 NVL8",
+                "declared_region": "us-east",
+            }),
+            encoding="utf-8",
+        )
+        csv_path = tmp_path / "nvidia_smi_query.csv"
+        rows = [
+            "index,uuid,name,mig.mode.current,timestamp",
+            *[
+                f"{index},GPU-{index:04d},NVIDIA H100 80GB HBM3,Disabled,2026/05/26 14:02:46.123"
+                for index in range(8)
+            ],
+        ]
+        csv_path.write_text("\n".join(rows), encoding="utf-8")
+
+        imported = run_import_nvidia_smi_process(str(csv_path), "--reservation", str(reservation_path))
+        assert imported.returncode == 0, imported.stderr
+        artifacts = json.loads(imported.stdout)
+        assert artifacts["gpu_inventory"]["declared_sku"] == "H100-SXM5-80GB"
+        assert artifacts["gpu_probe_observation"]["observed_count"] == 8
+        assert artifacts["gpu_probe_observation"]["observed_at"] == "2026-05-26T14:02:46Z"
+
+        piped = run_compile_process(
+            "-",
+            "--claim-type",
+            "gpu_capacity_acceptance",
+            "-v",
+            input_text=imported.stdout,
+        )
+        assert piped.returncode == 0, piped.stderr
+        assert piped.stdout.strip() == "SUPPORTED"
+
+        out_dir = tmp_path / "artifacts"
+        written = run_import_nvidia_smi_process(str(csv_path), "--reservation", str(reservation_path), "--out", str(out_dir))
+        assert written.returncode == 0, written.stderr
+        assert (out_dir / "gpu_inventory.json").is_file()
+        assert (out_dir / "gpu_probe_observation.json").is_file()
+        compiled = run_compile_process(str(out_dir), "--claim-type", "gpu_capacity_acceptance", "-v")
+        assert compiled.returncode == 0, compiled.stderr
+        assert compiled.stdout.strip() == "SUPPORTED"
+
+        bad_timestamp_path = tmp_path / "bad_timestamp.csv"
+        bad_timestamp_path.write_text(
+            "\n".join([
+                "index,uuid,name,mig.mode.current,timestamp",
+                "0,GPU-0000,NVIDIA H100 80GB HBM3,Disabled,yesterday",
+            ]),
+            encoding="utf-8",
+        )
+        bad_timestamp = run_import_nvidia_smi_process(str(bad_timestamp_path), "--reservation", str(reservation_path))
+        assert bad_timestamp.returncode == 1
+        assert bad_timestamp.stdout == ""
+        assert "could not normalize timestamp" in bad_timestamp.stderr
+
+
+def test_capture_acceptance_fails_closed_when_nvidia_smi_fails() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake_nvidia_smi = bin_dir / "nvidia-smi"
+        fake_nvidia_smi.write_text("#!/usr/bin/env bash\nexit 42\n", encoding="utf-8")
+        fake_nvidia_smi.chmod(0o755)
+
+        env = {**ENV, "PATH": f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"}
+        proc = subprocess.run(
+            ["/bin/bash", "capture_acceptance.sh", str(tmp_path / "packet")],
+            cwd=ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+        assert proc.returncode == 42
+        assert "wrote" not in proc.stdout
 
 
 def test_openai_importer_bridge() -> None:
@@ -3044,9 +3270,11 @@ def main() -> int:
     test_v7_complete_gpu_execution_context_adds_no_negative_context_disclosures()
     test_v7_execution_context_file_loaded_outside_artifacts()
     test_gpu_collateral_gallery_fixtures()
+    test_gpu_capacity_acceptance_gallery_fixtures()
     test_gpu_boundary_uses_renderer_family_not_claim_id_prefix()
     test_grant_binding_cross_boundary_pass_units()
     test_gpu_collateral_pass_units()
+    test_gpu_capacity_acceptance_pass_units()
     test_inactive_grant_execution_flag_contradicts_authorization_claim()
     test_one_line_compile_wrapper()
     test_one_line_compile_directory_errors_do_not_traceback()
@@ -3059,6 +3287,8 @@ def main() -> int:
     test_reference_authorization_boundary_probe_fails_closed_on_bad_revocation_time()
     test_anthropic_importer_bridge()
     test_anthropic_importer_missing_timestamp_fails_closed()
+    test_nvidia_smi_importer_bridge()
+    test_capture_acceptance_fails_closed_when_nvidia_smi_fails()
     test_openai_importer_bridge()
     test_openai_importer_missing_timestamp_fails_closed()
     test_eventlog_importer_bridge()

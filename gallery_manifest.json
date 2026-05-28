@@ -2,12 +2,12 @@
   "schema_version": "receipt-gallery-manifest-v1",
   "compiler_version": "evidence-compiler-v0.6",
   "summary": {
-    "expected_directories": 33,
-    "expected_receipts": 38,
+    "expected_directories": 36,
+    "expected_receipts": 41,
     "expected_verdict_counts": {
-      "supported": 16,
-      "contradicted": 11,
-      "unknown": 10,
+      "supported": 17,
+      "contradicted": 12,
+      "unknown": 11,
       "not_applicable": 1
     },
     "expected_compiler_errors": 0
@@ -154,6 +154,42 @@
           "absence_count": 0,
           "compiler_error_count": 0,
           "rationale": "the artifacts contain a receipt-controlled timestamp later than receipt creation time"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_acceptance_mig_contradicted",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_capacity_acceptance",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "buyer-observed H100 capacity reports MIG enabled even though the accepted capacity claim requires dedicated GPUs"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_acceptance_supported",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_capacity_acceptance",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "buyer-observed H100 names, count, timestamp, and disabled MIG modes support the declared acceptance snapshot"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_acceptance_unknown",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_capacity_acceptance",
+          "verdict": "unknown",
+          "absence_count": 1,
+          "compiler_error_count": 0,
+          "rationale": "observed GPU evidence is present, but the declared SKU is missing"
         }
       ]
     },

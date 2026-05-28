@@ -255,6 +255,34 @@ PASS_SPECS: dict[str, PassSpec] = {
         contradiction_paths=("dcgm_diag.gpu_serial", "xid_ecc_log.gpu_serial", "nvidia_smi.gpu_serial"),
         boundary_role=BOUNDARY_ROLE_SUPPORT_DETAIL,
     ),
+    "gpu_sku_count_match": PassSpec(
+        pass_id="gpu_sku_count_match",
+        family="gpu_acceptance",
+        scope="claim",
+        readiness="requires declared SKU/count and observed GPU names/count; wrong SKU family or short count contradicts acceptance",
+        required_paths=(
+            "gpu_inventory.declared_sku",
+            "gpu_inventory.declared_count",
+            "gpu_probe_observation.observed_names",
+            "gpu_probe_observation.observed_count",
+        ),
+        contradiction_paths=(
+            "gpu_inventory.declared_sku",
+            "gpu_inventory.declared_count",
+            "gpu_probe_observation.observed_names",
+            "gpu_probe_observation.observed_count",
+        ),
+        boundary_role=BOUNDARY_ROLE_SUPPORT_DETAIL,
+    ),
+    "gpu_not_mig_sliced": PassSpec(
+        pass_id="gpu_not_mig_sliced",
+        family="gpu_acceptance",
+        scope="claim",
+        readiness="requires observed MIG modes; enabled MIG mode contradicts dedicated-capacity acceptance",
+        required_paths=("gpu_probe_observation.observed_mig_modes", "gpu_probe_observation.observed_count"),
+        contradiction_paths=("gpu_probe_observation.observed_mig_modes",),
+        boundary_role=BOUNDARY_ROLE_SUPPORT_DETAIL,
+    ),
     # Prefix continuity
     "prefix_continuity": PassSpec(
         pass_id="prefix_continuity",

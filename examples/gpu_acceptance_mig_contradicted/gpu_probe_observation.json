@@ -1,0 +1,34 @@
+{
+  "observed_names": [
+    "NVIDIA H100 80GB HBM3",
+    "NVIDIA H100 80GB HBM3",
+    "NVIDIA H100 80GB HBM3",
+    "NVIDIA H100 80GB HBM3",
+    "NVIDIA H100 80GB HBM3",
+    "NVIDIA H100 80GB HBM3",
+    "NVIDIA H100 80GB HBM3",
+    "NVIDIA H100 80GB HBM3"
+  ],
+  "observed_count": 8,
+  "observed_mig_modes": [
+    "Enabled",
+    "Disabled",
+    "Disabled",
+    "Disabled",
+    "Disabled",
+    "Disabled",
+    "Disabled",
+    "Disabled"
+  ],
+  "observed_uuids": [
+    "GPU-mig-h100-0001",
+    "GPU-mig-h100-0002",
+    "GPU-mig-h100-0003",
+    "GPU-mig-h100-0004",
+    "GPU-mig-h100-0005",
+    "GPU-mig-h100-0006",
+    "GPU-mig-h100-0007",
+    "GPU-mig-h100-0008"
+  ],
+  "observed_at": "2026-05-26T14:02:46Z"
+}

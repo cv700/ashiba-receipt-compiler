@@ -13,6 +13,7 @@ the evidence can bear.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from typing import Any
 
 from constants import (
@@ -703,6 +704,30 @@ def _number(value: Any) -> float | None:
     return None
 
 
+def _integer(value: Any) -> int | None:
+    """Return an integer value without accepting booleans as numbers."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
+def _gpu_sku_family(value: Any) -> str | None:
+    """Return the supported GPU SKU family token from a declared SKU string."""
+    if not isinstance(value, str):
+        return None
+    tokens = {token for token in re.split(r"[^A-Z0-9]+", value.upper()) if token}
+    for family in ("H100", "A100", "B200"):
+        if family in tokens:
+            return family
+    return None
+
+
 def gpu_serial_set_match(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
     """Check observed GPU serials against the declared collateral schedule."""
     declared = _string_list(get_path(ir.artifacts, "gpu_inventory.declared_serials"))
@@ -899,6 +924,183 @@ def gpu_serial_cross_reference(ir: ReceiptIR, params: dict[str, Any] | None = No
         status=PASS_SATISFIED,
         detail=f"All evidence sources reference same GPU: {serial}.",
         metadata=present,
+    )
+
+
+def gpu_sku_count_match(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check declared GPU SKU/count against buyer-observed nvidia-smi names/count."""
+    declared_sku = get_path(ir.artifacts, "gpu_inventory.declared_sku")
+    declared_count = _integer(get_path(ir.artifacts, "gpu_inventory.declared_count"))
+    observed_names = _string_list(get_path(ir.artifacts, "gpu_probe_observation.observed_names"))
+    observed_count = _integer(get_path(ir.artifacts, "gpu_probe_observation.observed_count"))
+
+    missing = []
+    if not evidence_is_present(declared_sku):
+        missing.append("gpu_inventory.declared_sku")
+    if declared_count is None:
+        missing.append("gpu_inventory.declared_count")
+    if observed_names is None:
+        missing.append("gpu_probe_observation.observed_names")
+    if observed_count is None:
+        missing.append("gpu_probe_observation.observed_count")
+    if missing:
+        return PassResult(
+            pass_id="gpu_sku_count_match",
+            status=PASS_UNKNOWN,
+            detail="GPU SKU/count match could not be determined; missing or invalid field(s): " + ", ".join(missing),
+            verdict_effect=UNKNOWN,
+            metadata={"missing_expected_paths": missing},
+        )
+
+    assert observed_names is not None
+    blank_name_indexes = [idx for idx, name in enumerate(observed_names) if not name.strip()]
+    if blank_name_indexes:
+        return PassResult(
+            pass_id="gpu_sku_count_match",
+            status=PASS_UNKNOWN,
+            detail="GPU SKU/count match could not be determined; observed_names contains blank value(s)",
+            verdict_effect=UNKNOWN,
+            metadata={
+                "missing_expected_paths": ["gpu_probe_observation.observed_names"],
+                "blank_indexes": blank_name_indexes,
+            },
+        )
+
+    assert observed_count is not None
+    if len(observed_names) != observed_count:
+        return PassResult(
+            pass_id="gpu_sku_count_match",
+            status=PASS_UNKNOWN,
+            detail=(
+                "GPU SKU/count match could not be determined; observed_names contains "
+                f"{len(observed_names)} row(s) but observed_count is {observed_count}"
+            ),
+            verdict_effect=UNKNOWN,
+            metadata={
+                "missing_expected_paths": ["gpu_probe_observation.observed_names"],
+                "observed_names_count": len(observed_names),
+                "observed_count": observed_count,
+            },
+        )
+
+    family = _gpu_sku_family(declared_sku)
+    if family is None:
+        return PassResult(
+            pass_id="gpu_sku_count_match",
+            status=PASS_UNKNOWN,
+            detail=f"declared GPU SKU {declared_sku!r} does not contain a supported family token (H100, A100, B200)",
+            verdict_effect=UNKNOWN,
+            metadata={"field": "gpu_inventory.declared_sku"},
+        )
+
+    for idx, name in enumerate(observed_names):
+        if _gpu_sku_family(name) != family:
+            return PassResult(
+                pass_id="gpu_sku_count_match",
+                status=PASS_CONTRADICTED,
+                detail=f"GPU {idx} observed name {name!r} does not match declared family {family}",
+                verdict_effect=CONTRADICTED,
+                metadata={
+                    "declared_family": family,
+                    "observed_name": name,
+                    "observed_index": idx,
+                },
+            )
+
+    assert declared_count is not None
+    if observed_count < declared_count:
+        return PassResult(
+            pass_id="gpu_sku_count_match",
+            status=PASS_CONTRADICTED,
+            detail=f"observed GPU count {observed_count} is below declared count {declared_count}",
+            verdict_effect=CONTRADICTED,
+            metadata={"declared_count": declared_count, "observed_count": observed_count},
+        )
+
+    overage = observed_count - declared_count
+    detail = f"observed {observed_count} {family} GPU(s), meeting declared count {declared_count}"
+    if overage > 0:
+        detail += f" with {overage} additional observed GPU(s)"
+    return PassResult(
+        pass_id="gpu_sku_count_match",
+        status=PASS_SATISFIED,
+        detail=detail,
+        verdict_effect=SUPPORTED,
+        metadata={
+            "declared_family": family,
+            "declared_count": declared_count,
+            "observed_count": observed_count,
+        },
+    )
+
+
+def gpu_not_mig_sliced(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check that buyer-observed GPUs were not MIG-sliced for dedicated-capacity acceptance."""
+    modes = _string_list(get_path(ir.artifacts, "gpu_probe_observation.observed_mig_modes"))
+    observed_count = _integer(get_path(ir.artifacts, "gpu_probe_observation.observed_count"))
+    missing = []
+    if modes is None:
+        missing.append("gpu_probe_observation.observed_mig_modes")
+    if observed_count is None:
+        missing.append("gpu_probe_observation.observed_count")
+    if missing:
+        return PassResult(
+            pass_id="gpu_not_mig_sliced",
+            status=PASS_UNKNOWN,
+            detail="GPU MIG dedication could not be determined; missing or invalid field(s): " + ", ".join(missing),
+            verdict_effect=UNKNOWN,
+            metadata={"missing_expected_paths": missing},
+        )
+
+    assert modes is not None
+    assert observed_count is not None
+    if len(modes) != observed_count:
+        return PassResult(
+            pass_id="gpu_not_mig_sliced",
+            status=PASS_UNKNOWN,
+            detail=(
+                "GPU MIG dedication could not be determined; observed_mig_modes contains "
+                f"{len(modes)} row(s) but observed_count is {observed_count}"
+            ),
+            verdict_effect=UNKNOWN,
+            metadata={
+                "missing_expected_paths": ["gpu_probe_observation.observed_mig_modes"],
+                "observed_mig_modes_count": len(modes),
+                "observed_count": observed_count,
+            },
+        )
+
+    acceptable = {"DISABLED", "N/A", "NOT APPLICABLE"}
+    for idx, mode in enumerate(modes):
+        normalized = mode.strip().upper()
+        if normalized in acceptable:
+            continue
+        if normalized == "ENABLED":
+            return PassResult(
+                pass_id="gpu_not_mig_sliced",
+                status=PASS_CONTRADICTED,
+                detail=f"GPU {idx} reports MIG enabled: {mode}",
+                verdict_effect=CONTRADICTED,
+                metadata={"observed_index": idx, "observed_mig_mode": mode},
+            )
+        return PassResult(
+            pass_id="gpu_not_mig_sliced",
+            status=PASS_UNKNOWN,
+            detail=f"GPU {idx} reports unrecognized MIG mode: {mode!r}",
+            verdict_effect=UNKNOWN,
+            metadata={"observed_index": idx, "observed_mig_mode": mode},
+        )
+
+    na_count = sum(1 for mode in modes if mode.strip().upper() in {"N/A", "NOT APPLICABLE"})
+    detail = f"all {len(modes)} observed GPU MIG mode(s) are disabled"
+    if na_count:
+        detail += f"; treated {na_count} N/A mode(s) as non-MIG-capable"
+    return PassResult(
+        pass_id="gpu_not_mig_sliced",
+        status=PASS_SATISFIED,
+        detail=detail,
+        verdict_effect=SUPPORTED,
+        metadata={"observed_mig_modes": modes},
     )
 
 

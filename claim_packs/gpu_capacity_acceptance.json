@@ -1,0 +1,31 @@
+{
+  "schema_version": "receipt-claim-pack-v0.1",
+  "name": "gpu_capacity_acceptance",
+  "description": "Checks whether buyer-observed GPU capacity matched declared SKU, count, and dedication at session start.",
+  "renderer_family": "gpu_collateral",
+  "claim": {
+    "id": "claim.gpu_capacity_acceptance",
+    "text": "The accepted GPU capacity matched the declared SKU, count, and dedication at session start."
+  },
+  "expected_evidence": [
+    "gpu_inventory.declared_sku",
+    "gpu_inventory.declared_count",
+    "gpu_probe_observation.observed_names",
+    "gpu_probe_observation.observed_count",
+    "gpu_probe_observation.observed_mig_modes",
+    "gpu_probe_observation.observed_at"
+  ],
+  "applicability_evidence": [
+    "gpu_inventory.declared_count",
+    "gpu_probe_observation.observed_count"
+  ],
+  "support_requirements": [],
+  "passes": [
+    "utc_timestamp_format",
+    "expected_evidence_absence",
+    "gpu_sku_count_match",
+    "gpu_not_mig_sliced",
+    "no_future_evidence"
+  ],
+  "pass_params": {}
+}
