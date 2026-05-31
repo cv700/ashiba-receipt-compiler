@@ -151,7 +151,8 @@ Three claim packs exercise the GPU-backed lending and acceptance verification sh
   time. This catches point-in-time hardware-health failures.
 - `gpu_capacity_acceptance`: verifies that observed GPU names, count, timestamp,
   and MIG-mode field are consistent with a declared GPU capacity snapshot. This
-  is a compile/import foundation; `ashiba scan` integration is still pending.
+  supports the full local path from `import_nvidia_smi` artifacts through
+  `ashiba scan` readiness and `./compile` receipt output.
 
 These are synthetic, point-in-time, node-level demos. They do not assess cluster
 health, goodput, residual value, firmware authenticity, or ongoing performance.

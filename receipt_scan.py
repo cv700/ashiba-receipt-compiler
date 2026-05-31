@@ -23,6 +23,7 @@ from claim_contracts import (
     conflict_excluded,
 )
 from claim_types import build_claim_registry
+from evidence_paths import evidence_is_present, get_path
 from importer_common import (
     authorization_decision_id_from_fields as _decision_id_from_fields,
     authorization_from_policy as _authorization_from_policy,
@@ -30,7 +31,6 @@ from importer_common import (
     nested_get,
     normalize_timestamp,
 )
-from evidence_paths import get_path
 from side_effect_envelope import (
     SIDE_EFFECT_ACTION_ID_PATH,
     SIDE_EFFECT_DECISION_ID_PATH,
@@ -42,14 +42,47 @@ from side_effect_envelope import (
 )
 
 
-ALL_SCAN_CLAIMS = ("deployment_matches_reviewed_commit", "authorization_bound_action",
-                    "human_approval_before_external_side_effect")
+ALL_SCAN_CLAIMS = (
+    "deployment_matches_reviewed_commit",
+    "authorization_bound_action",
+    "human_approval_before_external_side_effect",
+    "gpu_capacity_acceptance",
+)
 TEXT_SUFFIXES = {".json", ".jsonl", ".log", ".txt"}
+SCAN_ARTIFACT_KEYS = (
+    SIDE_EFFECTS_KEY,
+    "authorization",
+    "parsed_actions",
+    "tool_call",
+    "deployment",
+    "review",
+    "approval",
+    "gpu_inventory",
+    "gpu_probe_observation",
+    "probe_manifest",
+    "dcgm_diag",
+    "xid_ecc_log",
+    "nvidia_smi",
+)
+FILE_SHAPED_ARTIFACT_KEYS = {
+    "gpu_inventory",
+    "gpu_probe_observation",
+    "probe_manifest",
+    "dcgm_diag",
+    "xid_ecc_log",
+    "nvidia_smi",
+}
 
 CLAIM_EVIDENCE_TRIGGERS: dict[str, list[str]] = {
     "authorization_bound_action": ["authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call"],
     "deployment_matches_reviewed_commit": ["deployment", "review"],
     "human_approval_before_external_side_effect": ["approval"],
+    "gpu_capacity_acceptance": [
+        "gpu_inventory.declared_sku",
+        "gpu_inventory.declared_count",
+        "gpu_probe_observation.observed_names",
+        "gpu_probe_observation.observed_count",
+    ],
 }
 REVOCATION_PATH = "authorization.revoked_at"
 AUTHORIZATION_BINDING = "authorization-to-action binding"
@@ -68,6 +101,12 @@ PROBE_BY_MISSING = {
     "approval.approved_at": "log human approval timestamp as UTC",
     "approval.decision": "log approval decision (approved/rejected)",
     "approval.actor": "log the identity of the human approver",
+    "gpu_inventory.declared_sku": "record declared GPU SKU from provider reservation/order evidence",
+    "gpu_inventory.declared_count": "record declared GPU count from provider reservation/order evidence",
+    "gpu_probe_observation.observed_names": "run nvidia-smi acceptance capture and import observed GPU names",
+    "gpu_probe_observation.observed_count": "run nvidia-smi acceptance capture and import observed GPU count",
+    "gpu_probe_observation.observed_mig_modes": "capture nvidia-smi MIG mode and nvidia-smi -L output",
+    "gpu_probe_observation.observed_at": "capture nvidia-smi timestamp for the acceptance snapshot",
 }
 
 WHY_BY_MISSING = {
@@ -84,6 +123,12 @@ WHY_BY_MISSING = {
     "approval.approved_at": "Without approval time, the compiler cannot prove approval happened before the side effect.",
     "approval.decision": "Without the approval decision, the compiler cannot distinguish approval from rejection or review-only records.",
     "approval.actor": "Without approver identity, the compiler cannot show who approved the side effect.",
+    "gpu_inventory.declared_sku": "Without the declared SKU, observed GPU names cannot be compared to what the buyer meant to accept.",
+    "gpu_inventory.declared_count": "Without the declared count, observed GPU count cannot be compared to the reservation or order.",
+    "gpu_probe_observation.observed_names": "Without observed GPU names, the compiler cannot compare delivered GPU family or variant to the declaration.",
+    "gpu_probe_observation.observed_count": "Without observed GPU count, the compiler cannot decide whether the declared quantity was visible.",
+    "gpu_probe_observation.observed_mig_modes": "Without MIG-mode evidence, the compiler cannot fail closed on ambiguous dedicated-capacity visibility.",
+    "gpu_probe_observation.observed_at": "Without an observation timestamp, the compiler cannot bind the GPU snapshot to a point in time.",
 }
 
 SUGGESTED_FIELDS_BY_MISSING = {
@@ -110,6 +155,16 @@ SUGGESTED_FIELDS_BY_MISSING = {
     "approval.approved_at": {"approval": {"approved_at": "2026-05-14T16:59:00Z"}},
     "approval.decision": {"approval": {"decision": "approved"}},
     "approval.actor": {"approval": {"actor": "user@example.com"}},
+    "gpu_inventory.declared_sku": {"gpu_inventory": {"declared_sku": "H100-SXM5-80GB"}},
+    "gpu_inventory.declared_count": {"gpu_inventory": {"declared_count": 8}},
+    "gpu_probe_observation.observed_names": {
+        "gpu_probe_observation": {"observed_names": ["NVIDIA H100 SXM5 80GB HBM3"]}
+    },
+    "gpu_probe_observation.observed_count": {"gpu_probe_observation": {"observed_count": 8}},
+    "gpu_probe_observation.observed_mig_modes": {
+        "gpu_probe_observation": {"observed_mig_modes": ["Disabled"]}
+    },
+    "gpu_probe_observation.observed_at": {"gpu_probe_observation": {"observed_at": "2026-05-26T14:02:46Z"}},
 }
 
 
@@ -381,7 +436,7 @@ def _merge_artifacts(
     conflicts: list[EvidenceConflict] | None = None,
     source_label: str = "",
 ) -> None:
-    for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
+    for key in SCAN_ARTIFACT_KEYS:
         if key in source:
             target[key] = _merge_value(target.get(key), source[key], conflicts, key, source_label)
 
@@ -916,6 +971,17 @@ def _approval_records_from_payload(payload: Any) -> list[dict[str, Any]]:
     return unique
 
 
+def _file_shaped_artifacts(payload: Any, source_label: str) -> dict[str, Any]:
+    if not isinstance(payload, dict) or not source_label:
+        return {}
+    stem = Path(source_label).stem
+    if stem not in FILE_SHAPED_ARTIFACT_KEYS:
+        return {}
+    if isinstance(payload.get(stem), dict):
+        return {}
+    return {stem: payload}
+
+
 def _payload_artifacts(
     payload: Any,
     conflicts: list[EvidenceConflict] | None = None,
@@ -924,8 +990,9 @@ def _payload_artifacts(
     if not isinstance(payload, dict):
         return {}
     out: dict[str, Any] = {}
+    _merge_artifacts(out, _file_shaped_artifacts(payload, source_label), conflicts, source_label)
     _merge_artifacts(out, _payload_authorization(payload), conflicts, source_label)
-    for key in (SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
+    for key in SCAN_ARTIFACT_KEYS:
         if key in payload:
             _merge_artifacts(out, {key: payload[key]}, conflicts, source_label)
     _merge_artifacts(out, _cloudtrail_artifacts(payload), conflicts, source_label)
@@ -937,7 +1004,7 @@ def _payload_artifacts(
     return normalize_side_effect_artifacts(out)
 
 
-def _payload_kinds(payload: Any) -> list[str]:
+def _payload_kinds(payload: Any, source_label: str = "") -> list[str]:
     kinds: list[str] = []
     if _cloudtrail_records(payload):
         _append_unique(kinds, "CloudTrail")
@@ -956,6 +1023,9 @@ def _payload_kinds(payload: Any) -> list[str]:
             _append_unique(kinds, "approval evidence")
         if any(key in payload for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "review")):
             _append_unique(kinds, "Ashiba/evidence artifact")
+    artifacts = _payload_artifacts(payload, source_label=source_label)
+    if any(key in artifacts for key in ("gpu_inventory", "gpu_probe_observation", "probe_manifest", "dcgm_diag", "xid_ecc_log", "nvidia_smi")):
+        _append_unique(kinds, "GPU artifact")
     if not kinds:
         _append_unique(kinds, "unrecognized JSON")
     return kinds
@@ -972,10 +1042,10 @@ def _payload_record_count(payload: Any) -> int:
     return 1
 
 
-def _payload_evidence_labels(payload: Any) -> list[str]:
+def _payload_evidence_labels(payload: Any, source_label: str = "") -> list[str]:
     labels: list[str] = []
-    artifacts = _payload_artifacts(payload)
-    for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
+    artifacts = _payload_artifacts(payload, source_label=source_label)
+    for key in SCAN_ARTIFACT_KEYS:
         if key in artifacts:
             _append_unique(labels, key)
     if _approval_records_from_payload(payload):
@@ -989,9 +1059,9 @@ def _file_observation(path: Path, payloads: list[Any], actions: list[ActionCandi
     records = 0
     for payload in payloads:
         records += _payload_record_count(payload)
-        for kind in _payload_kinds(payload):
+        for kind in _payload_kinds(payload, str(path)):
             _append_unique(kinds, kind)
-        for label in _payload_evidence_labels(payload):
+        for label in _payload_evidence_labels(payload, str(path)):
             _append_unique(evidence, label)
     return FileObservation(
         path=str(path),
@@ -1240,7 +1310,7 @@ def _infer_claims(context: ScanContext) -> list[str]:
     claims = []
     for claim in ALL_SCAN_CLAIMS:
         triggers = CLAIM_EVIDENCE_TRIGGERS.get(claim, [])
-        if any(t in present_keys for t in triggers):
+        if any(t in present_keys or evidence_is_present(get_path(context.artifacts, t)) for t in triggers):
             claims.append(claim)
     return claims
 

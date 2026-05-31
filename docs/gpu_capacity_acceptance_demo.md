@@ -9,6 +9,12 @@ reliability, certify the operator, or prove MIG instance allocation.
 
 ## Commands
 
+Scan readiness:
+
+```bash
+./ashiba scan examples/gpu_acceptance_supported --json
+```
+
 Supported:
 
 ```bash
@@ -24,6 +30,7 @@ MIG ambiguous:
 Unknown:
 
 ```bash
+./ashiba scan examples/gpu_acceptance_unknown
 ./compile examples/gpu_acceptance_unknown --claim-type gpu_capacity_acceptance --card
 ```
 

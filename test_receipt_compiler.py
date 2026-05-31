@@ -3119,6 +3119,59 @@ def test_ashiba_scan_detects_common_action_formats() -> None:
         assert result["actions"][0]["action_id"] == action_id
 
 
+def test_ashiba_scan_recognizes_gpu_capacity_artifacts() -> None:
+    proc = run_ashiba_process("scan", "examples/gpu_acceptance_supported", "--json")
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout)
+    assert "gpu_capacity_acceptance" in result["can_decide"]
+    assert result["cannot_decide"] == []
+    assert result["summary"]["actions_found"] == 0
+    assert result["summary"]["input_kinds"]["GPU artifact"] == 2
+    assert result["probeable_next"] == []
+    evidence = {
+        label
+        for observation in result["detected_inputs"]
+        for label in observation["evidence"]
+    }
+    assert {"gpu_inventory", "gpu_probe_observation"} <= evidence
+
+    text = run_ashiba_process("scan", "examples/gpu_acceptance_supported")
+    assert text.returncode == 0, text.stderr
+    assert "- Claim families ready: gpu_capacity_acceptance" in text.stdout
+    assert "- no side-effect actions recognized" in text.stdout
+
+
+def test_ashiba_scan_gpu_capacity_partial_packet_probe() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "gpu_inventory.json").write_text(
+            json.dumps({
+                "declared_sku": "A10",
+                "declared_count": 1,
+                "declared_region": "Virginia, USA",
+            }),
+            encoding="utf-8",
+        )
+
+        proc = run_ashiba_process("scan", str(root), "--json")
+        assert proc.returncode == 0, proc.stderr
+        result = json.loads(proc.stdout)
+        blocked = [item for item in result["cannot_decide"] if item["claim"] == "gpu_capacity_acceptance"]
+        assert len(blocked) == 1, result
+        assert blocked[0]["missing"] == [
+            "gpu_probe_observation.observed_names",
+            "gpu_probe_observation.observed_count",
+            "gpu_probe_observation.observed_mig_modes",
+            "gpu_probe_observation.observed_at",
+        ]
+        assert "run nvidia-smi acceptance capture and import observed GPU names" in result["probeable_next"]
+        assert "run nvidia-smi acceptance capture and import observed GPU count" in result["probeable_next"]
+        assert "capture nvidia-smi MIG mode and nvidia-smi -L output" in result["probeable_next"]
+        assert "capture nvidia-smi timestamp for the acceptance snapshot" in result["probeable_next"]
+        assert any("nvidia-smi acceptance capture" in item for item in result["punch_list"])
+        assert result["summary"]["input_kinds"]["GPU artifact"] == 1
+
+
 def test_ashiba_scan_invalid_inputs_exit_nonzero() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -3402,6 +3455,8 @@ def main() -> int:
     test_ashiba_scan_punch_list_includes_missing_approval_probes()
     test_ashiba_scan_surfaces_conflicting_scalar_evidence()
     test_ashiba_scan_detects_common_action_formats()
+    test_ashiba_scan_recognizes_gpu_capacity_artifacts()
+    test_ashiba_scan_gpu_capacity_partial_packet_probe()
     test_ashiba_scan_invalid_inputs_exit_nonzero()
     test_demo_30s_script()
     test_demo_reference_probe_script()
