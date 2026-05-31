@@ -1157,9 +1157,9 @@ def gpu_not_mig_sliced(ir: ReceiptIR, params: dict[str, Any] | None = None) -> P
         )
 
     na_count = sum(1 for mode in modes if canonical_mode(mode) in {"N/A", "NOT APPLICABLE"})
-    detail = f"all {len(modes)} observed GPU MIG mode(s) are disabled"
+    detail = f"no observed GPU reported MIG enabled across {len(modes)} MIG mode field(s)"
     if na_count:
-        detail += f"; treated {na_count} N/A mode(s) as non-MIG-capable"
+        detail += f"; {na_count} mode field(s) reported N/A"
     return PassResult(
         pass_id="gpu_not_mig_sliced",
         status=PASS_SATISFIED,

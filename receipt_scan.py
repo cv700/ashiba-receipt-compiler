@@ -42,12 +42,6 @@ from side_effect_envelope import (
 )
 
 
-ALL_SCAN_CLAIMS = (
-    "deployment_matches_reviewed_commit",
-    "authorization_bound_action",
-    "human_approval_before_external_side_effect",
-    "gpu_capacity_acceptance",
-)
 TEXT_SUFFIXES = {".json", ".jsonl", ".log", ".txt"}
 SCAN_ARTIFACT_KEYS = (
     SIDE_EFFECTS_KEY,
@@ -73,17 +67,6 @@ FILE_SHAPED_ARTIFACT_KEYS = {
     "nvidia_smi",
 }
 
-CLAIM_EVIDENCE_TRIGGERS: dict[str, list[str]] = {
-    "authorization_bound_action": ["authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call"],
-    "deployment_matches_reviewed_commit": ["deployment", "review"],
-    "human_approval_before_external_side_effect": ["approval"],
-    "gpu_capacity_acceptance": [
-        "gpu_inventory.declared_sku",
-        "gpu_inventory.declared_count",
-        "gpu_probe_observation.observed_names",
-        "gpu_probe_observation.observed_count",
-    ],
-}
 REVOCATION_PATH = "authorization.revoked_at"
 AUTHORIZATION_BINDING = "authorization-to-action binding"
 APPROVAL_BINDING = "approval-to-action binding"
@@ -1221,7 +1204,7 @@ def _action_readiness(
 ) -> list[ActionReadiness]:
     action_claims = [
         claim
-        for claim in (inferred_claims or ALL_SCAN_CLAIMS)
+        for claim in (inferred_claims or [])
         if claim in registry and claim_has_action_scope(registry[claim])
     ]
     base = _action_base_artifacts(context.artifacts)
@@ -1301,16 +1284,22 @@ def _claim_readiness_from_action_rows(claim: str, action_rows: list[ActionReadin
     )
 
 
-def _infer_claims(context: ScanContext) -> list[str]:
+def _infer_claims(context: ScanContext, registry: dict[str, Any]) -> list[str]:
     present_keys = set(context.artifacts.keys())
     if context.approvals:
         present_keys.add("approval")
     for action in context.actions:
         present_keys.update(action.artifacts.keys())
     claims = []
-    for claim in ALL_SCAN_CLAIMS:
-        triggers = CLAIM_EVIDENCE_TRIGGERS.get(claim, [])
-        if any(t in present_keys or evidence_is_present(get_path(context.artifacts, t)) for t in triggers):
+    for claim, config in registry.items():
+        triggers = config.get("applicability_evidence") or []
+        if any(
+            path in present_keys
+            or evidence_is_present(get_path(context.artifacts, path))
+            or any(evidence_is_present(get_path(action.artifacts, path)) for action in context.actions)
+            for path in triggers
+            if isinstance(path, str)
+        ):
             claims.append(claim)
     return claims
 
@@ -1319,7 +1308,7 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
     context = collect_scan_context(logs, policy_path)
     artifacts = context.artifacts
     registry = build_claim_registry()
-    inferred = _infer_claims(context)
+    inferred = _infer_claims(context, registry)
     action_rows = _action_readiness(context, registry, inferred)
     readiness: list[ClaimReadiness] = []
     for claim in inferred:

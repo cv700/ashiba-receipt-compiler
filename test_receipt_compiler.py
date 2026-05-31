@@ -3140,6 +3140,12 @@ def test_ashiba_scan_recognizes_gpu_capacity_artifacts() -> None:
     assert "- Claim families ready: gpu_capacity_acceptance" in text.stdout
     assert "- no side-effect actions recognized" in text.stdout
 
+    health = run_ashiba_process("scan", "examples/gpu_node_health_supported", "--json")
+    assert health.returncode == 0, health.stderr
+    health_result = json.loads(health.stdout)
+    assert "gpu_node_health_diagnostic" in health_result["can_decide"]
+    assert health_result["summary"]["input_kinds"]["GPU artifact"] == 4
+
 
 def test_ashiba_scan_gpu_capacity_partial_packet_probe() -> None:
     with tempfile.TemporaryDirectory() as tmp:
