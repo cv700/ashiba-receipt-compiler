@@ -717,14 +717,33 @@ def _integer(value: Any) -> int | None:
     return None
 
 
+def _gpu_sku_tokens(value: Any) -> set[str]:
+    if not isinstance(value, str):
+        return set()
+    normalized = value.upper().replace("PCI-E", "PCIE")
+    return {token for token in re.split(r"[^A-Z0-9]+", normalized) if token}
+
+
 def _gpu_sku_family(value: Any) -> str | None:
     """Return the supported GPU SKU family token from a declared SKU string."""
-    if not isinstance(value, str):
-        return None
-    tokens = {token for token in re.split(r"[^A-Z0-9]+", value.upper()) if token}
-    for family in ("H100", "A100", "B200"):
+    tokens = _gpu_sku_tokens(value)
+    for family in ("H100", "A100", "A10", "B200"):
         if family in tokens:
             return family
+    return None
+
+
+def _gpu_sku_variant(value: Any) -> str | None:
+    """Return a coarse GPU packaging/topology variant when the SKU string says it."""
+    tokens = _gpu_sku_tokens(value)
+    if not tokens:
+        return None
+    if "NVL" in tokens or "NVL72" in tokens:
+        return "NVL"
+    if "PCIE" in tokens:
+        return "PCIE"
+    if any(token == "SXM" or token.startswith("SXM") for token in tokens):
+        return "SXM"
     return None
 
 
@@ -988,13 +1007,15 @@ def gpu_sku_count_match(ir: ReceiptIR, params: dict[str, Any] | None = None) -> 
         return PassResult(
             pass_id="gpu_sku_count_match",
             status=PASS_UNKNOWN,
-            detail=f"declared GPU SKU {declared_sku!r} does not contain a supported family token (H100, A100, B200)",
+            detail=f"declared GPU SKU {declared_sku!r} does not contain a supported family token (H100, A100, A10, B200)",
             verdict_effect=UNKNOWN,
             metadata={"field": "gpu_inventory.declared_sku"},
         )
 
+    declared_variant = _gpu_sku_variant(declared_sku)
     for idx, name in enumerate(observed_names):
-        if _gpu_sku_family(name) != family:
+        observed_family = _gpu_sku_family(name)
+        if observed_family != family:
             return PassResult(
                 pass_id="gpu_sku_count_match",
                 status=PASS_CONTRADICTED,
@@ -1002,6 +1023,40 @@ def gpu_sku_count_match(ir: ReceiptIR, params: dict[str, Any] | None = None) -> 
                 verdict_effect=CONTRADICTED,
                 metadata={
                     "declared_family": family,
+                    "observed_name": name,
+                    "observed_index": idx,
+                },
+            )
+        observed_variant = _gpu_sku_variant(name)
+        if declared_variant and observed_variant is None:
+            return PassResult(
+                pass_id="gpu_sku_count_match",
+                status=PASS_UNKNOWN,
+                detail=(
+                    f"GPU {idx} observed name {name!r} matches declared family {family} "
+                    f"but does not expose declared variant {declared_variant}"
+                ),
+                verdict_effect=UNKNOWN,
+                metadata={
+                    "declared_family": family,
+                    "declared_variant": declared_variant,
+                    "observed_name": name,
+                    "observed_index": idx,
+                },
+            )
+        if declared_variant and observed_variant != declared_variant:
+            return PassResult(
+                pass_id="gpu_sku_count_match",
+                status=PASS_CONTRADICTED,
+                detail=(
+                    f"GPU {idx} observed name {name!r} exposes variant {observed_variant}, "
+                    f"not declared variant {declared_variant}"
+                ),
+                verdict_effect=CONTRADICTED,
+                metadata={
+                    "declared_family": family,
+                    "declared_variant": declared_variant,
+                    "observed_variant": observed_variant,
                     "observed_name": name,
                     "observed_index": idx,
                 },
@@ -1028,6 +1083,7 @@ def gpu_sku_count_match(ir: ReceiptIR, params: dict[str, Any] | None = None) -> 
         verdict_effect=SUPPORTED,
         metadata={
             "declared_family": family,
+            "declared_variant": declared_variant,
             "declared_count": declared_count,
             "observed_count": observed_count,
         },
@@ -1070,17 +1126,26 @@ def gpu_not_mig_sliced(ir: ReceiptIR, params: dict[str, Any] | None = None) -> P
             },
         )
 
+    def canonical_mode(value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized.startswith("[") and normalized.endswith("]"):
+            normalized = normalized[1:-1].strip()
+        return normalized
+
     acceptable = {"DISABLED", "N/A", "NOT APPLICABLE"}
     for idx, mode in enumerate(modes):
-        normalized = mode.strip().upper()
+        normalized = canonical_mode(mode)
         if normalized in acceptable:
             continue
         if normalized == "ENABLED":
             return PassResult(
                 pass_id="gpu_not_mig_sliced",
-                status=PASS_CONTRADICTED,
-                detail=f"GPU {idx} reports MIG enabled: {mode}",
-                verdict_effect=CONTRADICTED,
+                status=PASS_UNKNOWN,
+                detail=(
+                    f"GPU {idx} reports MIG enabled: {mode}; instance-level GI/CI evidence "
+                    "is required to decide whether capacity was actually sliced"
+                ),
+                verdict_effect=UNKNOWN,
                 metadata={"observed_index": idx, "observed_mig_mode": mode},
             )
         return PassResult(
@@ -1091,7 +1156,7 @@ def gpu_not_mig_sliced(ir: ReceiptIR, params: dict[str, Any] | None = None) -> P
             metadata={"observed_index": idx, "observed_mig_mode": mode},
         )
 
-    na_count = sum(1 for mode in modes if mode.strip().upper() in {"N/A", "NOT APPLICABLE"})
+    na_count = sum(1 for mode in modes if canonical_mode(mode) in {"N/A", "NOT APPLICABLE"})
     detail = f"all {len(modes)} observed GPU MIG mode(s) are disabled"
     if na_count:
         detail += f"; treated {na_count} N/A mode(s) as non-MIG-capable"

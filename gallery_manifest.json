@@ -6,8 +6,8 @@
     "expected_receipts": 41,
     "expected_verdict_counts": {
       "supported": 17,
-      "contradicted": 12,
-      "unknown": 11,
+      "contradicted": 11,
+      "unknown": 12,
       "not_applicable": 1
     },
     "expected_compiler_errors": 0
@@ -158,14 +158,14 @@
       ]
     },
     {
-      "directory": "gpu_acceptance_mig_contradicted",
+      "directory": "gpu_acceptance_mig_unknown",
       "expected_receipts": [
         {
           "claim_type": "gpu_capacity_acceptance",
-          "verdict": "contradicted",
+          "verdict": "unknown",
           "absence_count": 0,
           "compiler_error_count": 0,
-          "rationale": "buyer-observed H100 capacity reports MIG enabled even though the accepted capacity claim requires dedicated GPUs"
+          "rationale": "buyer-observed H100 capacity reports MIG enabled, which is ambiguous without GI/CI instance evidence"
         }
       ]
     },

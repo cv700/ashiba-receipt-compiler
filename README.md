@@ -141,7 +141,7 @@ Claim definitions live in `claim_packs/`. The current preview includes:
 
 ### GPU Collateral Claims (v0)
 
-Two claim packs exercise the GPU-backed lending verification shape:
+Three claim packs exercise the GPU-backed lending and acceptance verification shape:
 
 - `gpu_serial_collateral_match`: verifies that GPU serial numbers observed
   during probe execution match the serials declared in the collateral schedule.
@@ -149,6 +149,9 @@ Two claim packs exercise the GPU-backed lending verification shape:
 - `gpu_node_health_diagnostic`: verifies that a GPU node passed DCGM Level 2
   health diagnostics with ECC error counts below stated thresholds at probe
   time. This catches point-in-time hardware-health failures.
+- `gpu_capacity_acceptance`: verifies that observed GPU names, count, timestamp,
+  and MIG-mode field are consistent with a declared GPU capacity snapshot. This
+  is a compile/import foundation; `ashiba scan` integration is still pending.
 
 These are synthetic, point-in-time, node-level demos. They do not assess cluster
 health, goodput, residual value, firmware authenticity, or ongoing performance.
@@ -231,8 +234,8 @@ find . -type d -name __pycache__ -prune -exec rm -rf {} +
 Expected gallery summary:
 
 ```text
-38 receipts from 33 incident directories
-supported: 16 | contradicted: 11 | unknown: 10 | not_applicable: 1
+41 receipts from 36 incident directories
+supported: 17 | contradicted: 11 | unknown: 12 | not_applicable: 1
 compiler_errors: 0 | validation_errors: 0
 ```
 

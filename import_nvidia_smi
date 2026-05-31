@@ -16,14 +16,17 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from importer_common import first_present, load_json, read_text, write_artifacts
+from importer_common import load_json, read_text, write_artifacts
 
 
 def _normalize_header(value: str) -> str:
     return value.strip().lower()
 
 
-def _normalize_timestamp(raw: Any) -> str | None:
+TIMESTAMP_TOLERANCE_SECONDS = 30
+
+
+def _parse_timestamp(raw: Any) -> datetime | None:
     if raw is None:
         return None
     text = str(raw).strip()
@@ -31,7 +34,7 @@ def _normalize_timestamp(raw: Any) -> str | None:
         return None
     for fmt in ("%Y/%m/%d %H:%M:%S.%f", "%Y/%m/%d %H:%M:%S"):
         try:
-            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
         except ValueError:
             pass
     candidate = text[:-1] + "+00:00" if text.endswith("Z") else text
@@ -41,7 +44,11 @@ def _normalize_timestamp(raw: Any) -> str | None:
         raise ValueError(f"could not normalize timestamp {text!r} to YYYY-MM-DDTHH:MM:SSZ")
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_timestamp(value: datetime) -> str:
+    return value.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _load_rows(path_arg: str) -> list[dict[str, str]]:
@@ -66,13 +73,38 @@ def _required_reservation_value(reservation: dict[str, Any], key: str) -> Any:
     return value
 
 
-def _artifacts(rows: list[dict[str, str]], reservation: dict[str, Any]) -> dict[str, Any]:
-    names = [row.get("name", "") for row in rows]
-    mig_modes = [row.get("mig.mode.current", "") for row in rows]
-    uuids = [row.get("uuid", "") for row in rows if row.get("uuid")]
-    observed_at = _normalize_timestamp(first_present(*(row.get("timestamp") for row in rows)))
-    if not observed_at:
+def _required_row_values(rows: list[dict[str, str]], key: str) -> list[str]:
+    values = []
+    for index, row in enumerate(rows):
+        value = row.get(key)
+        if value in (None, ""):
+            raise ValueError(f"nvidia-smi CSV row {index} missing required {key}")
+        values.append(value)
+    return values
+
+
+def _timestamp_snapshot(rows: list[dict[str, str]]) -> tuple[str, float]:
+    raw_values = _required_row_values(rows, "timestamp")
+    timestamps = [_parse_timestamp(value) for value in raw_values]
+    if any(value is None for value in timestamps):
         raise ValueError("nvidia-smi CSV missing timestamp evidence")
+    parsed = [value for value in timestamps if value is not None]
+    earliest = min(parsed)
+    latest = max(parsed)
+    spread = (latest - earliest).total_seconds()
+    if spread > TIMESTAMP_TOLERANCE_SECONDS:
+        raise ValueError(
+            "nvidia-smi CSV row timestamps are not one acceptance snapshot: "
+            f"spread {spread:.0f}s exceeds {TIMESTAMP_TOLERANCE_SECONDS}s"
+        )
+    return _format_timestamp(earliest), spread
+
+
+def _artifacts(rows: list[dict[str, str]], reservation: dict[str, Any]) -> dict[str, Any]:
+    names = _required_row_values(rows, "name")
+    mig_modes = _required_row_values(rows, "mig.mode.current")
+    uuids = [row.get("uuid", "") for row in rows if row.get("uuid")]
+    observed_at, row_spread_seconds = _timestamp_snapshot(rows)
 
     return {
         "gpu_inventory": {
@@ -87,6 +119,7 @@ def _artifacts(rows: list[dict[str, str]], reservation: dict[str, Any]) -> dict[
             "observed_mig_modes": mig_modes,
             "observed_uuids": uuids,
             "observed_at": observed_at,
+            "observation_row_spread_seconds": row_spread_seconds,
         },
     }
 

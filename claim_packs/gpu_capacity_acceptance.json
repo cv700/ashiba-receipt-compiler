@@ -1,11 +1,11 @@
 {
   "schema_version": "receipt-claim-pack-v0.1",
   "name": "gpu_capacity_acceptance",
-  "description": "Checks whether buyer-observed GPU capacity matched declared SKU, count, and dedication at session start.",
+  "description": "Checks whether buyer-observed GPU names, count, timestamp, and MIG-mode field were consistent with a declared GPU capacity snapshot.",
   "renderer_family": "gpu_collateral",
   "claim": {
     "id": "claim.gpu_capacity_acceptance",
-    "text": "The accepted GPU capacity matched the declared SKU, count, and dedication at session start."
+    "text": "The observed GPU names, count, timestamp, and MIG-mode field were consistent with the declared GPU capacity snapshot."
   },
   "expected_evidence": [
     "gpu_inventory.declared_sku",
