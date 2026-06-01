@@ -435,6 +435,24 @@ def test_ashiba_scan_gpu_capacity_partial_packet_probe() -> None:
         assert any("nvidia-smi acceptance capture" in item for item in result["punch_list"])
         assert result["summary"]["input_kinds"]["GPU artifact"] == 1
 
+        sku_only = root / "sku_only"
+        sku_only.mkdir()
+        (sku_only / "gpu_inventory.json").write_text(
+            json.dumps({"declared_sku": "A10"}),
+            encoding="utf-8",
+        )
+        sku_only_scan = run_ashiba_process("scan", str(sku_only), "--json")
+        assert sku_only_scan.returncode == 0, sku_only_scan.stderr
+        sku_only_result = json.loads(sku_only_scan.stdout)
+        blocked = [item for item in sku_only_result["cannot_decide"] if item["claim"] == "gpu_capacity_acceptance"]
+        assert len(blocked) == 1, sku_only_result
+        assert "gpu_inventory.declared_count" in blocked[0]["missing"]
+        assert "record declared GPU count from provider reservation/order evidence" in sku_only_result["probeable_next"]
+
+        compiled = run_compile_process(str(sku_only), "--claim-type", "gpu_capacity_acceptance", "--verdict")
+        assert compiled.returncode == 0, compiled.stderr
+        assert compiled.stdout.strip() == "UNKNOWN"
+
 
 def run_gpu_acceptance_tests() -> None:
     test_gpu_capacity_acceptance_gallery_fixtures()

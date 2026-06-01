@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from boundary import generate_boundary
-from claim_contracts import claim_has_action_scope
+from claim_contracts import applicability_paths, claim_has_action_scope, claim_instantiated
 from claim_types import CLAIM_TYPES, build_claim_registry, get_claim_type, list_claim_types
 from constants import CLAIM_APPLICABILITY_PASS_ID, COMPILER_VERSION, PASS_NOT_APPLICABLE, UNKNOWN
 from passes import get_pass
@@ -250,17 +250,6 @@ def load_artifacts_dir(artifacts_dir: Path) -> dict[str, Any]:
 # Compilation
 # ---------------------------------------------------------------------------
 
-def _claim_surface_instantiated(artifacts: dict[str, Any], config: dict[str, Any]) -> bool:
-    """Return whether the artifact class instantiates the configured claim type."""
-    from evidence_paths import evidence_is_present, get_path
-
-    paths = config.get("applicability_evidence") or config.get("expected_evidence", [])
-    for path in paths:
-        if evidence_is_present(get_path(artifacts, path)):
-            return True
-    return False
-
-
 def _finalize_receipt(ir: ReceiptIR) -> ReceiptIR:
     if ir.execution_context and not any(
         result.get("pass_id") == "execution_context_disclosure" for result in ir.pass_results
@@ -371,7 +360,7 @@ def _compile_claim_normalized(
         renderer_family=renderer_family,
     )
 
-    if not _claim_surface_instantiated(artifacts, config):
+    if not claim_instantiated(artifacts, config):
         ir.pass_results.append({
             "pass_id": CLAIM_APPLICABILITY_PASS_ID,
             "status": PASS_NOT_APPLICABLE,
@@ -380,7 +369,7 @@ def _compile_claim_normalized(
                 "missing expected paths for an otherwise applicable claim are handled separately as unknown"
             ),
             "metadata": {
-                "applicability_evidence": [str(path) for path in config.get("applicability_evidence", [])],
+                "applicability_evidence": applicability_paths(config),
             },
         })
         return _finalize_receipt(ir)
@@ -465,20 +454,15 @@ def detect_applicable_claim_types(
 ) -> list[str]:
     """Heuristic: which claim types have enough artifacts to be worth running?
 
-    A claim type is applicable if at least one of its expected evidence paths
+    A claim type is applicable if at least one configured applicability path
     resolves to a non-empty value.
     """
-    from evidence_paths import evidence_is_present, get_path
-
     artifacts = normalize_side_effect_artifacts(artifacts)
     registry = claim_types or CLAIM_TYPES
     applicable = []
     for name, config in registry.items():
-        for path in config.get("applicability_evidence") or config["expected_evidence"]:
-            value = get_path(artifacts, path)
-            if evidence_is_present(value):
-                applicable.append(name)
-                break
+        if claim_instantiated(artifacts, config):
+            applicable.append(name)
     return sorted(applicable)
 
 

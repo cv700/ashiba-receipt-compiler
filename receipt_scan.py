@@ -17,13 +17,16 @@ import sys
 from typing import Any
 
 from claim_contracts import (
+    applicability_paths,
     claim_conflicts,
     claim_has_action_scope,
+    claim_instantiated,
     claim_missing,
     conflict_excluded,
+    registry_evidence_guidance,
 )
 from claim_types import build_claim_registry
-from evidence_paths import evidence_is_present, get_path
+from evidence_paths import get_path
 from importer_common import (
     authorization_decision_id_from_fields as _decision_id_from_fields,
     authorization_from_policy as _authorization_from_policy,
@@ -67,88 +70,7 @@ FILE_SHAPED_ARTIFACT_KEYS = {
     "nvidia_smi",
 }
 
-REVOCATION_PATH = "authorization.revoked_at"
-AUTHORIZATION_BINDING = "authorization-to-action binding"
-APPROVAL_BINDING = "approval-to-action binding"
-PROBE_BY_MISSING = {
-    REVOCATION_PATH: "add revocation_state export",
-    AUTHORIZATION_BINDING: "carry authorization execution_time_decision_id into the tool call",
-    APPROVAL_BINDING: "log approval tool_call_id matching the side-effect action_id",
-    "review.commit_sha": "log reviewed commit_sha from the review system",
-    "review.decision": "log review decision with approved/rejected",
-    "review.approved_at": "log review approved_at as UTC",
-    "deployment.commit_sha": "log deployed commit_sha from the deployment job",
-    "deployment.deployed_at": "log deployment time as UTC",
-    SIDE_EFFECT_ACTION_ID_PATH: "log stable tool_call_id/action_id on side effects",
-    SIDE_EFFECT_EXECUTED_AT_PATH: "log tool execution time as UTC",
-    "approval.approved_at": "log human approval timestamp as UTC",
-    "approval.decision": "log approval decision (approved/rejected)",
-    "approval.actor": "log the identity of the human approver",
-    "gpu_inventory.declared_sku": "record declared GPU SKU from provider reservation/order evidence",
-    "gpu_inventory.declared_count": "record declared GPU count from provider reservation/order evidence",
-    "gpu_probe_observation.observed_names": "run nvidia-smi acceptance capture and import observed GPU names",
-    "gpu_probe_observation.observed_count": "run nvidia-smi acceptance capture and import observed GPU count",
-    "gpu_probe_observation.observed_mig_modes": "capture nvidia-smi MIG mode and nvidia-smi -L output",
-    "gpu_probe_observation.observed_at": "capture nvidia-smi timestamp for the acceptance snapshot",
-}
-
-WHY_BY_MISSING = {
-    REVOCATION_PATH: "Without explicit revocation state, absence of a revocation event can be confused with missing evidence.",
-    AUTHORIZATION_BINDING: "Without a matching decision ID on both sides of the boundary, the evidence cannot show that this authorization decision governed this exact action.",
-    APPROVAL_BINDING: "Without a matching action ID on the approval record, the evidence cannot show that this human approval governed this exact side effect.",
-    "review.commit_sha": "Without the reviewed commit, deployment evidence cannot be compared to the approved artifact.",
-    "review.decision": "Without the review decision, a review record does not show approval.",
-    "review.approved_at": "Without the approval timestamp, the compiler cannot check review-before-deploy ordering.",
-    "deployment.commit_sha": "Without the deployed commit, the compiler cannot compare deployment to review.",
-    "deployment.deployed_at": "Without deployment time, the compiler cannot check chronology.",
-    SIDE_EFFECT_ACTION_ID_PATH: "Without a stable action ID, logs from different systems cannot be joined to one side effect.",
-    SIDE_EFFECT_EXECUTED_AT_PATH: "Without execution time, the compiler cannot check authorization or approval windows.",
-    "approval.approved_at": "Without approval time, the compiler cannot prove approval happened before the side effect.",
-    "approval.decision": "Without the approval decision, the compiler cannot distinguish approval from rejection or review-only records.",
-    "approval.actor": "Without approver identity, the compiler cannot show who approved the side effect.",
-    "gpu_inventory.declared_sku": "Without the declared SKU, observed GPU names cannot be compared to what the buyer meant to accept.",
-    "gpu_inventory.declared_count": "Without the declared count, observed GPU count cannot be compared to the reservation or order.",
-    "gpu_probe_observation.observed_names": "Without observed GPU names, the compiler cannot compare delivered GPU family or variant to the declaration.",
-    "gpu_probe_observation.observed_count": "Without observed GPU count, the compiler cannot decide whether the declared quantity was visible.",
-    "gpu_probe_observation.observed_mig_modes": "Without MIG-mode evidence, the compiler cannot fail closed on ambiguous dedicated-capacity visibility.",
-    "gpu_probe_observation.observed_at": "Without an observation timestamp, the compiler cannot bind the GPU snapshot to a point in time.",
-}
-
-SUGGESTED_FIELDS_BY_MISSING = {
-    REVOCATION_PATH: {"authorization": {"revoked_at": None}},
-    AUTHORIZATION_BINDING: {
-        "authorization": {
-            "render_time_grant_hash": "sha256:grant-hash-123",
-            "execution_time_decision_id": "authz-decision-123",
-            "grant_active_at_execution": True,
-        },
-        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "authz-decision-123"}}],
-    },
-    APPROVAL_BINDING: {
-        "approval": {"tool_call_id": "act-123"},
-        SIDE_EFFECTS_KEY: [{"action_id": "act-123"}],
-    },
-    "review.commit_sha": {"review": {"commit_sha": "abc123"}},
-    "review.decision": {"review": {"decision": "approved"}},
-    "review.approved_at": {"review": {"approved_at": "2026-05-14T16:59:00Z"}},
-    "deployment.commit_sha": {"deployment": {"commit_sha": "abc123"}},
-    "deployment.deployed_at": {"deployment": {"deployed_at": "2026-05-14T17:01:30Z"}},
-    SIDE_EFFECT_ACTION_ID_PATH: {SIDE_EFFECTS_KEY: [{"action_id": "act-123"}]},
-    SIDE_EFFECT_EXECUTED_AT_PATH: {SIDE_EFFECTS_KEY: [{"executed_at": "2026-05-14T17:01:30Z"}]},
-    "approval.approved_at": {"approval": {"approved_at": "2026-05-14T16:59:00Z"}},
-    "approval.decision": {"approval": {"decision": "approved"}},
-    "approval.actor": {"approval": {"actor": "user@example.com"}},
-    "gpu_inventory.declared_sku": {"gpu_inventory": {"declared_sku": "H100-SXM5-80GB"}},
-    "gpu_inventory.declared_count": {"gpu_inventory": {"declared_count": 8}},
-    "gpu_probe_observation.observed_names": {
-        "gpu_probe_observation": {"observed_names": ["NVIDIA H100 SXM5 80GB HBM3"]}
-    },
-    "gpu_probe_observation.observed_count": {"gpu_probe_observation": {"observed_count": 8}},
-    "gpu_probe_observation.observed_mig_modes": {
-        "gpu_probe_observation": {"observed_mig_modes": ["Disabled"]}
-    },
-    "gpu_probe_observation.observed_at": {"gpu_probe_observation": {"observed_at": "2026-05-26T14:02:46Z"}},
-}
+DEFAULT_MISSING_WHY = "This missing evidence prevents at least one claim from being decidable."
 
 
 @dataclass
@@ -245,6 +167,7 @@ class ScanResult:
     actions: list[ActionReadiness]
     observations: list[FileObservation]
     punch_list: list[str]
+    evidence_guidance: dict[str, dict[str, Any]]
 
     def as_dict(self) -> dict[str, Any]:
         actions_decidable = sum(1 for action in self.actions if action.decidable)
@@ -1127,34 +1050,46 @@ def collect_scan_artifacts(logs: Path, policy_path: Path | None = None) -> tuple
     return context.artifacts, context.files_scanned, context.warnings
 
 
-def _probeable_next(cannot_decide: list[ClaimReadiness]) -> list[str]:
+def _probe_for_missing(guidance: dict[str, dict[str, Any]], missing: str) -> str | None:
+    value = guidance.get(missing, {}).get("probe")
+    return value if isinstance(value, str) and value else None
+
+
+def _probeable_next(cannot_decide: list[ClaimReadiness], guidance: dict[str, dict[str, Any]]) -> list[str]:
     probeable_next = []
     for item in cannot_decide:
         for missing in item.missing:
-            probe = PROBE_BY_MISSING.get(missing)
+            probe = _probe_for_missing(guidance, missing)
             if probe and probe not in probeable_next:
                 probeable_next.append(probe)
     return probeable_next
 
 
-def _punch_list(cannot_decide: list[ClaimReadiness], actions: list[ActionReadiness]) -> list[str]:
+def _punch_list(
+    cannot_decide: list[ClaimReadiness],
+    actions: list[ActionReadiness],
+    guidance: dict[str, dict[str, Any]],
+) -> list[str]:
     # Every punch-list item is an UNKNOWN made useful: one missing field, one
     # proposed probe, one fewer place for operational truth to hide next time.
     counts: dict[str, int] = {}
     for item in cannot_decide:
         for missing in item.missing:
-            probe = PROBE_BY_MISSING.get(missing)
+            probe = _probe_for_missing(guidance, missing)
             if probe:
                 counts.setdefault(probe, 0)
     for action in actions:
         for item in action.cannot_decide:
             for missing in item.missing:
-                probe = PROBE_BY_MISSING.get(missing)
+                probe = _probe_for_missing(guidance, missing)
                 if probe:
                     counts[probe] = counts.get(probe, 0) + 1
 
     out = []
-    for probe in PROBE_BY_MISSING.values():
+    for entry in guidance.values():
+        probe = entry.get("probe")
+        if not isinstance(probe, str) or not probe:
+            continue
         if probe not in counts:
             continue
         blocked = counts[probe]
@@ -1200,6 +1135,7 @@ ACTION_SPECIFIC_CONFLICT_PREFIXES = (SIDE_EFFECTS_KEY, "parsed_actions", "tool_c
 def _action_readiness(
     context: ScanContext,
     registry: dict[str, Any],
+    guidance: dict[str, dict[str, Any]],
     inferred_claims: list[str] | None = None,
 ) -> list[ActionReadiness]:
     action_claims = [
@@ -1249,7 +1185,7 @@ def _action_readiness(
             decidable=not cannot_decide,
             can_decide=can_decide,
             cannot_decide=cannot_decide,
-            probeable_next=_probeable_next(cannot_decide),
+            probeable_next=_probeable_next(cannot_decide, guidance),
         ))
     return rows
 
@@ -1285,21 +1221,15 @@ def _claim_readiness_from_action_rows(claim: str, action_rows: list[ActionReadin
 
 
 def _infer_claims(context: ScanContext, registry: dict[str, Any]) -> list[str]:
-    present_keys = set(context.artifacts.keys())
-    if context.approvals:
-        present_keys.add("approval")
-    for action in context.actions:
-        present_keys.update(action.artifacts.keys())
     claims = []
     for claim, config in registry.items():
-        triggers = config.get("applicability_evidence") or []
-        if any(
-            path in present_keys
-            or evidence_is_present(get_path(context.artifacts, path))
-            or any(evidence_is_present(get_path(action.artifacts, path)) for action in context.actions)
-            for path in triggers
-            if isinstance(path, str)
-        ):
+        if claim_instantiated(context.artifacts, config):
+            claims.append(claim)
+            continue
+        if context.approvals and "approval" in applicability_paths(config):
+            claims.append(claim)
+            continue
+        if any(claim_instantiated(action.artifacts, config) for action in context.actions):
             claims.append(claim)
     return claims
 
@@ -1308,8 +1238,9 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
     context = collect_scan_context(logs, policy_path)
     artifacts = context.artifacts
     registry = build_claim_registry()
+    guidance = registry_evidence_guidance(registry)
     inferred = _infer_claims(context, registry)
-    action_rows = _action_readiness(context, registry, inferred)
+    action_rows = _action_readiness(context, registry, guidance, inferred)
     readiness: list[ClaimReadiness] = []
     for claim in inferred:
         if claim_has_action_scope(registry[claim]):
@@ -1333,12 +1264,13 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
         files_scanned=context.files_scanned,
         can_decide=can_decide,
         cannot_decide=cannot_decide,
-        probeable_next=_probeable_next(cannot_decide),
+        probeable_next=_probeable_next(cannot_decide, guidance),
         warnings=context.warnings,
         conflicts=context.conflicts,
         actions=action_rows,
         observations=context.observations,
-        punch_list=_punch_list(cannot_decide, action_rows),
+        punch_list=_punch_list(cannot_decide, action_rows, guidance),
+        evidence_guidance=guidance,
     )
 
 
@@ -1356,7 +1288,7 @@ def _missing_counts(result: ScanResult) -> list[tuple[str, int, str | None]]:
                 seen_for_action.add(missing)
                 counts[missing] = counts.get(missing, 0) + 1
     ranked = [
-        (missing, count, PROBE_BY_MISSING.get(missing))
+        (missing, count, _probe_for_missing(result.evidence_guidance, missing))
         for missing, count in counts.items()
     ]
     ranked.sort(key=lambda item: (-item[1], item[0]))
@@ -1472,11 +1404,12 @@ def _missing_groups(result: ScanResult) -> list[dict[str, Any]]:
     groups: dict[str, dict[str, Any]] = {}
 
     def ensure(path: str) -> dict[str, Any]:
+        guidance = result.evidence_guidance.get(path, {})
         group = groups.setdefault(path, {
             "missing": path,
-            "probe": PROBE_BY_MISSING.get(path),
-            "why": WHY_BY_MISSING.get(path, "This missing evidence prevents at least one claim from being decidable."),
-            "suggested_log_shape": SUGGESTED_FIELDS_BY_MISSING.get(path),
+            "probe": guidance.get("probe"),
+            "why": guidance.get("why", DEFAULT_MISSING_WHY),
+            "suggested_log_shape": guidance.get("suggested_log_shape"),
             "claims": [],
             "affected_actions": [],
             "action_count": 0,

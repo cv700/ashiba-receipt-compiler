@@ -25,6 +25,9 @@ Each `*.json` file declares:
   requirement can use `path` with `presence: "path_exists"` when explicit null is
   meaningful, `all_of` for grouped required fields, and `same_value` for a
   cross-boundary equality check.
+- `evidence_guidance`: optional scanner guidance keyed by an `expected_evidence`
+  path or `support_requirements.id`, with `probe`, `why`, and
+  `suggested_log_shape` fields.
 - `passes`: ordered deterministic pass IDs from `passes.py`.
 - `pass_params`: optional per-pass parameters.
 

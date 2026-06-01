@@ -31,6 +31,71 @@
       ]
     }
   ],
+  "evidence_guidance": {
+    "approval-to-action binding": {
+      "probe": "log approval tool_call_id matching the side-effect action_id",
+      "why": "Without a matching action ID on the approval record, the evidence cannot show that this human approval governed this exact side effect.",
+      "suggested_log_shape": {
+        "approval": {
+          "tool_call_id": "act-123"
+        },
+        "side_effects": [
+          {
+            "action_id": "act-123"
+          }
+        ]
+      }
+    },
+    "approval.approved_at": {
+      "probe": "log human approval timestamp as UTC",
+      "why": "Without approval time, the compiler cannot prove approval happened before the side effect.",
+      "suggested_log_shape": {
+        "approval": {
+          "approved_at": "2026-05-14T16:59:00Z"
+        }
+      }
+    },
+    "approval.decision": {
+      "probe": "log approval decision (approved/rejected)",
+      "why": "Without the approval decision, the compiler cannot distinguish approval from rejection or review-only records.",
+      "suggested_log_shape": {
+        "approval": {
+          "decision": "approved"
+        }
+      }
+    },
+    "approval.actor": {
+      "probe": "log the identity of the human approver",
+      "why": "Without approver identity, the compiler cannot show who approved the side effect.",
+      "suggested_log_shape": {
+        "approval": {
+          "actor": "user@example.com"
+        }
+      }
+    },
+    "side_effects.0.action_id": {
+      "probe": "log stable tool_call_id/action_id on side effects",
+      "why": "Without a stable action ID, logs from different systems cannot be joined to one side effect.",
+      "suggested_log_shape": {
+        "side_effects": [
+          {
+            "action_id": "act-123"
+          }
+        ]
+      }
+    },
+    "side_effects.0.executed_at": {
+      "probe": "log tool execution time as UTC",
+      "why": "Without execution time, the compiler cannot check authorization or approval windows.",
+      "suggested_log_shape": {
+        "side_effects": [
+          {
+            "executed_at": "2026-05-14T17:01:30Z"
+          }
+        ]
+      }
+    }
+  },
   "passes": [
     "utc_timestamp_format",
     "expected_evidence_absence",
