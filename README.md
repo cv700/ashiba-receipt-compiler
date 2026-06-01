@@ -242,7 +242,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile \
   import_kubernetes_audit import_siem_jsonl import_anthropic import_openai \
   import_eventlog import_langsmith importer_common.py demo_real_world_importers.py \
   demo.py constants.py receipt_ir.py verdict.py boundary.py renderer_families.py demo_gallery.py \
-  demo_llm_comparison.py receipt_explain.py scripts/discover_claim_contract.py test_receipt_compiler.py \
+  demo_llm_comparison.py receipt_explain.py scripts/discover_claim_contract.py test_*.py \
   environments/trace_receipt_minimizer_v0/*.py
 find . -type d -name __pycache__ -prune -exec rm -rf {} +
 ```
