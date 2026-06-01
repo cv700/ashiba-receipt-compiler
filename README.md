@@ -128,7 +128,13 @@ PYTHONDONTWRITEBYTECODE=1 python3 test_receipt_compiler.py
 
 ## Claim Families
 
-Claim definitions live in `claim_packs/`. The current preview includes:
+A claim pack is the versioned JSON verifier contract for a claim family. The
+claim type is the stable name used on the CLI, such as
+`gpu_capacity_acceptance`; the claim pack is the concrete JSON file under
+`claim_packs/` that defines its evidence contract, deterministic pass pipeline,
+and receipt boundary renderer.
+
+The current preview includes:
 
 - `authorization_bound_action`: was a tool/action executed under an active,
   bound authorization grant?

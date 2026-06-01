@@ -17,6 +17,12 @@ existing logs
   -> bounded receipt
 ```
 
+In this flow, a claim pack is the versioned verifier contract, not the evidence
+itself. It defines the claim text, expected evidence paths, applicability paths,
+support requirements, deterministic passes, pass parameters, and renderer
+family. The receipt is the result of applying that contract to one normalized
+artifact bundle.
+
 ## Fields
 
 | Field | Meaning |

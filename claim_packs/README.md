@@ -1,6 +1,13 @@
 # Claim Packs
 
-Claim packs are declarative JSON configs for receipt claim types.
+A claim pack is ARC's versioned verifier contract for one class of bounded
+receipt claims. It is a declarative JSON config that defines the claim
+statement, evidence contract, applicability conditions, deterministic pass
+pipeline, pass parameters, and boundary renderer family for a claim type.
+
+A claim pack is not an evidence bundle, receipt, prompt, customer use case, or
+loose invariant. Evidence is supplied separately; the claim pack defines how ARC
+evaluates that evidence.
 
 Each `*.json` file declares:
 
