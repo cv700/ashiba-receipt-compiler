@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from datetime import datetime
 import json
 from pathlib import Path
 import sys
@@ -32,6 +33,7 @@ BINDING_BASES = ("rack_label", "pdu_outlet_map", "facility_circuit_map", "operat
 MEASUREMENT_TYPES = ("per_outlet", "rack_aggregate", "facility_meter")
 LOAD_ATTRIBUTIONS = ("single_bound_node", "full_rack_declared_inventory", "pdu_outlet_map")
 REQUIRED_COLUMNS = ("timestamp", "rack_power_kw")
+UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 
 def _normalize_header(value: str) -> str:
@@ -79,6 +81,12 @@ def _build_samples(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
         ts = normalize_timestamp(raw_ts)
         if not ts:
             raise ValueError(f"PDU CSV row {idx}: timestamp {raw_ts!r} could not be normalized to UTC")
+        try:
+            datetime.strptime(ts, UTC_FMT)
+        except ValueError:
+            raise ValueError(
+                f"PDU CSV row {idx}: timestamp {raw_ts!r} could not be normalized to canonical UTC"
+            )
         power = _parse_power_kw(row.get("rack_power_kw", ""), idx)
         samples.append({"observed_at": ts, "rack_power_kw": power})
     return samples

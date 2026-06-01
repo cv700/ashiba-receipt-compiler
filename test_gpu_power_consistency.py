@@ -63,6 +63,23 @@ def _supported_artifacts() -> dict:
     }
 
 
+def _valid_power_csv() -> str:
+    return (
+        "timestamp,rack_id,rack_power_kw\n"
+        "2026-06-01T00:01:00Z,rack-redacted-001,7.92\n"
+        "2026-06-01T00:02:00Z,rack-redacted-001,7.80\n"
+    )
+
+
+def _write_power_import_inputs(tmp_dir: Path, artifacts: dict | None = None) -> tuple[Path, Path]:
+    artifacts = artifacts or _supported_artifacts()
+    declaration_path = tmp_dir / "declaration.json"
+    binding_path = tmp_dir / "binding.json"
+    declaration_path.write_text(json.dumps(artifacts["declaration"]), encoding="utf-8")
+    binding_path.write_text(json.dumps(artifacts["node_rack_binding"]), encoding="utf-8")
+    return declaration_path, binding_path
+
+
 def test_gpu_power_consistency_gallery_fixtures() -> None:
     cases = [
         ("gpu_power_consistency_supported", SUPPORTED, 0, PASS_SATISFIED),
@@ -164,18 +181,11 @@ def test_gpu_power_consistency_provenance_fail_closed() -> None:
 
 def test_import_pdu_csv_emits_power_artifacts_with_custody_metadata() -> None:
     artifacts = _supported_artifacts()
-    csv_text = (
-        "timestamp,rack_id,rack_power_kw\n"
-        "2026-06-01T00:01:00Z,rack-redacted-001,7.92\n"
-        "2026-06-01T00:02:00Z,rack-redacted-001,7.80\n"
-    )
+    csv_text = _valid_power_csv()
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
-        declaration_path = tmp_dir / "declaration.json"
-        binding_path = tmp_dir / "binding.json"
-        declaration_path.write_text(json.dumps(artifacts["declaration"]), encoding="utf-8")
-        binding_path.write_text(json.dumps(artifacts["node_rack_binding"]), encoding="utf-8")
+        declaration_path, binding_path = _write_power_import_inputs(tmp_dir, artifacts)
 
         imported = run_import_pdu_csv_process(
             "-",
@@ -386,6 +396,184 @@ def test_power_supported_when_independent_power_and_gpu_utilization_align() -> N
     assert facility_result.status == PASS_SATISFIED, facility_result
 
 
+def test_power_unknown_when_facility_meter_too_coarse() -> None:
+    """Facility-level meters are too coarse for a bound node/rack consistency claim."""
+    arts = _supported_artifacts()
+    arts["power_window"]["provenance"]["measurement_type"] = "facility_meter"
+    result = gpu_power_utilization_consistency(_pass_ir(arts))
+    assert result.status == PASS_UNKNOWN, result
+    assert result.verdict_effect == UNKNOWN, result
+    assert "facility-meter evidence is too coarse" in result.detail
+
+
+def test_power_rack_label_supported_with_boundary_disclosure() -> None:
+    """Rack-label binding can support the narrow claim but must be disclosed."""
+    arts = _supported_artifacts()
+    arts["node_rack_binding"]["binding_basis"] = "rack_label"
+    arts["power_window"]["provenance"]["binding_basis"] = "rack_label"
+
+    result = gpu_power_utilization_consistency(_pass_ir(arts))
+    assert result.status == PASS_SATISFIED, result
+
+    receipt = run_compile_process(
+        "-",
+        "--pretty",
+        "--claim-type",
+        "gpu_power_utilization_consistency",
+        input_text=json.dumps(arts),
+    )
+    assert receipt.returncode == 0, receipt.stderr
+    receipt_json = json.loads(receipt.stdout)
+    assert receipt_json["verdict"]["status"] == SUPPORTED
+    boundary_text = " ".join(receipt_json["boundary"]["does_not_support"])
+    assert "rack label only" in boundary_text.lower()
+
+
+def test_power_custody_boundary_disclosure_variants() -> None:
+    """SUPPORTED receipts disclose weaker independent custody tiers without warning on lender custody."""
+    facility = _supported_artifacts()
+    facility["power_window"]["provenance"]["custody_tier"] = "facility_exported"
+    facility_receipt = run_compile_process(
+        "-",
+        "--pretty",
+        "--claim-type",
+        "gpu_power_utilization_consistency",
+        input_text=json.dumps(facility),
+    )
+    assert facility_receipt.returncode == 0, facility_receipt.stderr
+    facility_json = json.loads(facility_receipt.stdout)
+    assert facility_json["verdict"]["status"] == SUPPORTED
+    facility_boundary = " ".join(facility_json["boundary"]["does_not_support"])
+    assert "facility-exported" in facility_boundary
+
+    lender = _supported_artifacts()
+    lender["power_window"]["provenance"]["custody_tier"] = "lender_controlled"
+    lender_receipt = run_compile_process(
+        "-",
+        "--pretty",
+        "--claim-type",
+        "gpu_power_utilization_consistency",
+        input_text=json.dumps(lender),
+    )
+    assert lender_receipt.returncode == 0, lender_receipt.stderr
+    lender_json = json.loads(lender_receipt.stdout)
+    assert lender_json["verdict"]["status"] == SUPPORTED
+    lender_boundary = " ".join(lender_json["boundary"]["does_not_support"])
+    assert "facility-exported" not in lender_boundary
+    assert "third-party sensor" not in lender_boundary.lower()
+
+
+def test_import_pdu_csv_rejects_malformed_csv() -> None:
+    """Importer rejects malformed power CSVs before they can enter the receipt path."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        declaration_path, binding_path = _write_power_import_inputs(tmp_dir)
+        cases = [
+            (
+                "timestamp,rack_id\n2026-06-01T00:01:00Z,rack-redacted-001\n",
+                "missing required column: rack_power_kw",
+            ),
+            (
+                "timestamp,rack_id,rack_power_kw\n2026-06-01T00:01:00Z,rack-redacted-001,-1\n",
+                "is negative",
+            ),
+            (
+                (
+                    "timestamp,rack_id,rack_power_kw\n"
+                    "2026-06-01T00:01:00Z,rack-redacted-001,7.92\n"
+                    "2026-06-01T00:02:00Z,rack-redacted-002,7.80\n"
+                ),
+                "multiple rack_id",
+            ),
+            (
+                "timestamp,rack_id,rack_power_kw\nnot-a-time,rack-redacted-001,7.92\n",
+                "could not be normalized to canonical UTC",
+            ),
+        ]
+        for csv_text, expected_error in cases:
+            proc = run_import_pdu_csv_process(
+                "-",
+                "--declaration",
+                str(declaration_path),
+                "--binding",
+                str(binding_path),
+                input_text=csv_text,
+            )
+            assert proc.returncode == 1, proc.stdout
+            assert expected_error in proc.stderr, proc.stderr
+
+
+def test_import_pdu_csv_out_mode_writes_artifacts() -> None:
+    """--out mode writes compile-ready artifact files."""
+    artifacts = _supported_artifacts()
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        declaration_path, binding_path = _write_power_import_inputs(tmp_dir, artifacts)
+        csv_path = tmp_dir / "power.csv"
+        csv_path.write_text(_valid_power_csv(), encoding="utf-8")
+        out_dir = tmp_dir / "artifacts"
+
+        imported = run_import_pdu_csv_process(
+            str(csv_path),
+            "--declaration",
+            str(declaration_path),
+            "--binding",
+            str(binding_path),
+            "--custody-tier",
+            "third_party_sensor",
+            "--measurement-type",
+            "rack_aggregate",
+            "--load-attribution",
+            "full_rack_declared_inventory",
+            "--out",
+            str(out_dir),
+        )
+        assert imported.returncode == 0, imported.stderr
+        assert (out_dir / "declaration.json").is_file()
+        assert (out_dir / "power_window.json").is_file()
+        assert (out_dir / "node_rack_binding.json").is_file()
+
+        (out_dir / "gpu_utilization_window.json").write_text(
+            json.dumps({"gpu_utilization_window": artifacts["gpu_utilization_window"]}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        receipt = run_receipt_json(
+            "--artifacts-dir",
+            str(out_dir),
+            "--claim-type",
+            "gpu_power_utilization_consistency",
+        )
+        assert receipt["verdict"]["status"] == SUPPORTED, receipt
+
+
+def test_ashiba_scan_reports_missing_power_binding_basis() -> None:
+    """Scanner should name missing binding_basis as a concrete GPU power gap."""
+    artifacts = _supported_artifacts()
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        for key in ("declaration", "gpu_utilization_window", "power_window"):
+            (tmp_dir / f"{key}.json").write_text(
+                json.dumps({key: artifacts[key]}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        binding = dict(artifacts["node_rack_binding"])
+        binding.pop("binding_basis")
+        (tmp_dir / "node_rack_binding.json").write_text(
+            json.dumps({"node_rack_binding": binding}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        scan = run_ashiba_process("scan", str(tmp_dir), "--json")
+        assert scan.returncode == 0, scan.stderr
+        result = json.loads(scan.stdout)
+        blocked = [
+            item for item in result["cannot_decide"]
+            if item["claim"] == "gpu_power_utilization_consistency"
+        ]
+        assert len(blocked) == 1, result
+        assert "node_rack_binding.binding_basis" in blocked[0]["missing"]
+
+
 def run_gpu_power_consistency_tests() -> None:
     test_gpu_power_consistency_gallery_fixtures()
     test_gpu_power_consistency_pass_units()
@@ -400,6 +588,12 @@ def run_gpu_power_consistency_tests() -> None:
     test_power_not_supported_by_operator_csv_alone_for_independent_tier()
     test_power_boundary_discloses_custody_tier()
     test_power_supported_when_independent_power_and_gpu_utilization_align()
+    test_power_unknown_when_facility_meter_too_coarse()
+    test_power_rack_label_supported_with_boundary_disclosure()
+    test_power_custody_boundary_disclosure_variants()
+    test_import_pdu_csv_rejects_malformed_csv()
+    test_import_pdu_csv_out_mode_writes_artifacts()
+    test_ashiba_scan_reports_missing_power_binding_basis()
 
 
 if __name__ == "__main__":
