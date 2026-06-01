@@ -2,10 +2,10 @@
   "schema_version": "receipt-gallery-manifest-v1",
   "compiler_version": "evidence-compiler-v0.6",
   "summary": {
-    "expected_directories": 36,
-    "expected_receipts": 41,
+    "expected_directories": 37,
+    "expected_receipts": 42,
     "expected_verdict_counts": {
-      "supported": 17,
+      "supported": 18,
       "contradicted": 11,
       "unknown": 12,
       "not_applicable": 1
@@ -154,6 +154,18 @@
           "absence_count": 0,
           "compiler_error_count": 0,
           "rationale": "the artifacts contain a receipt-controlled timestamp later than receipt creation time"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_acceptance_lambda_a10_supported",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_capacity_acceptance",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "a real Lambda A10 packet supports a family-level A10 capacity declaration; the raw dashboard PCIe variant remains outside the v0 observable nvidia-smi name"
         }
       ]
     },

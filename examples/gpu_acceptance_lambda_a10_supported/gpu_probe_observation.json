@@ -1,0 +1,11 @@
+{
+  "observed_names": [
+    "NVIDIA A10"
+  ],
+  "observed_count": 1,
+  "observed_mig_modes": [
+    "[N/A]"
+  ],
+  "observed_at": "2026-05-31T22:23:21Z",
+  "observation_row_spread_seconds": 0.0
+}
