@@ -259,7 +259,7 @@ PASS_SPECS: dict[str, PassSpec] = {
         pass_id="gpu_sku_count_match",
         family="gpu_acceptance",
         scope="claim",
-        readiness="requires declared SKU/count and observed GPU names/count; wrong SKU family or short count contradicts acceptance",
+        readiness="requires declared SKU/count and observed GPU names/count; wrong SKU family or count mismatch contradicts acceptance",
         required_paths=(
             "gpu_inventory.declared_sku",
             "gpu_inventory.declared_count",

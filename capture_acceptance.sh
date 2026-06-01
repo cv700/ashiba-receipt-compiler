@@ -7,9 +7,18 @@ mkdir -p "$logs_dir"
 
 date -u +"%Y-%m-%dT%H:%M:%SZ" > "$logs_dir/observed_at.txt"
 
-nvidia-smi --query-gpu=index,uuid,serial,name,memory.total,mig.mode.current,persistence_mode,ecc.mode.current,pcie.link.gen.current,pcie.link.gen.max,pcie.link.width.current,pcie.link.width.max,vbios_version,driver_version,timestamp --format=csv > "$logs_dir/nvidia_smi_query.csv"
+fields="index,uuid,serial,name"
+fields="$fields,memory.total,mig.mode.current"
+fields="$fields,persistence_mode,ecc.mode.current"
+fields="$fields,pcie.link.gen.current,pcie.link.gen.max"
+fields="$fields,pcie.link.width.current,pcie.link.width.max"
+fields="$fields,vbios_version,driver_version,timestamp"
+
+nvidia-smi --query-gpu="$fields" --format=csv > "$logs_dir/nvidia_smi_query.csv"
 nvidia-smi -q -x > "$logs_dir/nvidia_smi_full.xml"
-nvidia-smi topo -m > "$logs_dir/topo.txt"
+nvidia-smi -L > "$logs_dir/nvidia_smi_list.txt"
+nvidia-smi topo -m > "$logs_dir/topo.txt" 2>&1 || true
+uname -a > "$logs_dir/host_info.txt"
 
 : > "$logs_dir/mig_instances.txt"
 nvidia-smi mig -lgi >> "$logs_dir/mig_instances.txt" 2>/dev/null || true

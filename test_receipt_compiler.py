@@ -1513,8 +1513,8 @@ def test_gpu_capacity_acceptance_pass_units() -> None:
         },
     })
     over_count_result = gpu_sku_count_match(over_count)
-    assert over_count_result.status == PASS_SATISFIED
-    assert "additional observed GPU" in over_count_result.detail
+    assert over_count_result.status == PASS_CONTRADICTED
+    assert "does not equal declared count" in over_count_result.detail
 
     partial_names = _pass_ir({
         "gpu_inventory": {
@@ -2208,6 +2208,49 @@ def test_nvidia_smi_importer_bridge() -> None:
             assert missing_column.returncode == 1
             assert missing_column.stdout == ""
             assert f"missing required {column}" in missing_column.stderr
+
+
+def test_capture_acceptance_writes_tier_a_packet() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake_nvidia_smi = bin_dir / "nvidia-smi"
+        fake_nvidia_smi.write_text(
+            """#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+  --query-gpu=*) echo "index, uuid, serial, name, memory.total [MiB], mig.mode.current, timestamp"
+                 echo "0, GPU-fake, 123, NVIDIA A10, 23028 MiB, [N/A], 2026/05/31 22:23:21.446" ;;
+  "-q -x") echo "<nvidia_smi_log></nvidia_smi_log>" ;;
+  "-L") echo "GPU 0: NVIDIA A10 (UUID: GPU-fake)" ;;
+  "topo -m") echo "topology unavailable in fake test"; exit 7 ;;
+  "mig -lgi") echo "No GPU instances found" ;;
+  "mig -lci") echo "No compute instances found" ;;
+  *) echo "unexpected nvidia-smi args: $*" >&2; exit 2 ;;
+esac
+""",
+            encoding="utf-8",
+        )
+        fake_nvidia_smi.chmod(0o755)
+
+        env = {**ENV, "PATH": f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"}
+        packet = tmp_path / "packet"
+        proc = subprocess.run(
+            ["/bin/bash", "capture_acceptance.sh", str(packet)],
+            cwd=ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+        assert proc.returncode == 0, proc.stderr
+        logs = packet / "logs"
+        assert (logs / "nvidia_smi_query.csv").is_file()
+        assert (logs / "nvidia_smi_full.xml").is_file()
+        assert (logs / "nvidia_smi_list.txt").read_text(encoding="utf-8").startswith("GPU 0:")
+        assert "topology unavailable" in (logs / "topo.txt").read_text(encoding="utf-8")
+        assert (logs / "host_info.txt").read_text(encoding="utf-8").strip()
+        assert "No GPU instances" in (logs / "mig_instances.txt").read_text(encoding="utf-8")
 
 
 def test_capture_acceptance_fails_closed_when_nvidia_smi_fails() -> None:
@@ -3438,6 +3481,7 @@ def main() -> int:
     test_anthropic_importer_bridge()
     test_anthropic_importer_missing_timestamp_fails_closed()
     test_nvidia_smi_importer_bridge()
+    test_capture_acceptance_writes_tier_a_packet()
     test_capture_acceptance_fails_closed_when_nvidia_smi_fails()
     test_openai_importer_bridge()
     test_openai_importer_missing_timestamp_fails_closed()
