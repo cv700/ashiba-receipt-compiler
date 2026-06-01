@@ -349,6 +349,20 @@ def test_power_not_supported_by_operator_csv_alone_for_independent_tier() -> Non
     assert "operator assertion" in result2.detail
 
 
+def test_power_boundary_discloses_custody_tier() -> None:
+    """SUPPORTED receipts must disclose power evidence custody and measurement tier."""
+    receipt = run_receipt_json(
+        "--artifacts-dir",
+        "examples/gpu_power_consistency_supported",
+        "--claim-type",
+        "gpu_power_utilization_consistency",
+    )
+    assert receipt["verdict"]["status"] == SUPPORTED
+    boundary_text = " ".join(receipt["boundary"]["does_not_support"])
+    assert "third-party sensor" in boundary_text.lower() or "third_party_sensor" in boundary_text
+    assert "rack-aggregate" in boundary_text.lower() or "rack readings" in boundary_text.lower()
+
+
 def test_power_supported_when_independent_power_and_gpu_utilization_align() -> None:
     """Third-party-sensor power + GPU utilization inside declared bands = SUPPORTED."""
     arts = _supported_artifacts()
@@ -384,6 +398,7 @@ def run_gpu_power_consistency_tests() -> None:
     test_power_unknown_when_aggregate_rack_load_unattributed()
     test_power_contradicted_when_high_utilization_low_power()
     test_power_not_supported_by_operator_csv_alone_for_independent_tier()
+    test_power_boundary_discloses_custody_tier()
     test_power_supported_when_independent_power_and_gpu_utilization_align()
 
 

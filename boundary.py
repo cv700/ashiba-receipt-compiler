@@ -32,6 +32,59 @@ GPU_UNSUPPORTED_INFERENCES = [
     "That the collateral is worth any specific dollar amount.",
 ]
 
+POWER_CUSTODY_DISCLOSURES = {
+    "facility_exported": (
+        "Power evidence was facility-exported. The facility controlled the export path; "
+        "the lender/IE did not independently collect this data."
+    ),
+    "third_party_sensor": (
+        "Power evidence was collected by a third-party sensor. The sensor feed was not "
+        "under lender/IE control."
+    ),
+    "lender_controlled": None,
+}
+POWER_MEASUREMENT_DISCLOSURES = {
+    "rack_aggregate": (
+        "Power measurement is rack-aggregate, not per-outlet. Rack readings include "
+        "non-GPU loads (CPUs, NICs, fans, storage, PSUs, switches, neighboring servers)."
+    ),
+    "per_outlet": None,
+}
+POWER_BINDING_DISCLOSURES = {
+    "rack_label": "Node-to-rack binding is based on rack label only.",
+    "pdu_outlet_map": None,
+    "facility_circuit_map": None,
+}
+
+
+def _power_custody_disclosures(pass_results: list[dict[str, Any]]) -> list[str]:
+    """Generate boundary disclosures about power evidence custody and measurement."""
+    disclosures: list[str] = []
+    for result in pass_results:
+        if result.get("pass_id") != "gpu_power_utilization_consistency":
+            continue
+        if result.get("status") != PASS_SATISFIED:
+            continue
+        metadata = result.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        custody = metadata.get("power_custody_tier")
+        if isinstance(custody, str) and custody in POWER_CUSTODY_DISCLOSURES:
+            text = POWER_CUSTODY_DISCLOSURES[custody]
+            if text:
+                disclosures.append(text)
+        measurement = metadata.get("power_measurement_type")
+        if isinstance(measurement, str) and measurement in POWER_MEASUREMENT_DISCLOSURES:
+            text = POWER_MEASUREMENT_DISCLOSURES[measurement]
+            if text:
+                disclosures.append(text)
+        binding = metadata.get("node_rack_binding_basis")
+        if isinstance(binding, str) and binding in POWER_BINDING_DISCLOSURES:
+            text = POWER_BINDING_DISCLOSURES[binding]
+            if text:
+                disclosures.append(text)
+    return disclosures
+
 
 def _result_spec(result: dict[str, Any]) -> PassSpec | None:
     pass_id = result.get("pass_id")
@@ -84,6 +137,7 @@ def generate_boundary(
         )
     if absence:
         does_not_support.append("This receipt does not fill missing expected evidence by inference.")
+    does_not_support.extend(_power_custody_disclosures(pass_results))
     for result in pass_results:
         spec = _result_spec(result)
         if spec is None or spec.boundary_role != BOUNDARY_ROLE_DISCLOSURE:
