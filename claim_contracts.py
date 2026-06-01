@@ -66,6 +66,69 @@ def support_requirement_paths(requirements: list[dict[str, Any]]) -> list[str]:
     return paths
 
 
+def support_requirement_ids(requirements: list[dict[str, Any]]) -> list[str]:
+    return [
+        str(requirement["id"])
+        for requirement in requirements
+        if isinstance(requirement.get("id"), str) and requirement["id"]
+    ]
+
+
+def validate_evidence_guidance(
+    source_label: str,
+    raw: Any,
+    known_missing_keys: list[str],
+) -> dict[str, dict[str, Any]]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"{source_label} evidence_guidance must be an object")
+
+    known = set(known_missing_keys)
+    out: dict[str, dict[str, Any]] = {}
+    allowed_keys = {"probe", "why", "suggested_log_shape"}
+    for missing_key, entry in raw.items():
+        label = f"{source_label} evidence_guidance.{missing_key}"
+        if not isinstance(missing_key, str) or not missing_key:
+            raise ValueError(f"{source_label} evidence_guidance keys must be non-empty strings")
+        if missing_key not in known:
+            raise ValueError(f"{label} does not match expected evidence or support requirement id")
+        if not isinstance(entry, dict):
+            raise ValueError(f"{label} must be an object")
+        unknown_keys = sorted(set(entry) - allowed_keys)
+        if unknown_keys:
+            raise ValueError(f"{label} has unknown key(s): {', '.join(unknown_keys)}")
+
+        normalized: dict[str, Any] = {}
+        for text_key in ("probe", "why"):
+            value = entry.get(text_key)
+            if value is None:
+                continue
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"{label}.{text_key} must be a non-empty string")
+            normalized[text_key] = value
+        if "suggested_log_shape" in entry:
+            normalized["suggested_log_shape"] = entry["suggested_log_shape"]
+        out[missing_key] = normalized
+    return out
+
+
+def registry_evidence_guidance(registry: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    guidance: dict[str, dict[str, Any]] = {}
+    for config in registry.values():
+        raw = config.get("evidence_guidance", {})
+        if not isinstance(raw, dict):
+            continue
+        for missing, entry in raw.items():
+            if not isinstance(missing, str) or not isinstance(entry, dict):
+                continue
+            current = guidance.setdefault(missing, {})
+            for key in ("probe", "why", "suggested_log_shape"):
+                if key in entry and key not in current:
+                    current[key] = entry[key]
+    return guidance
+
+
 def validate_pass_required_paths(
     source_label: str,
     passes: list[str],
@@ -146,14 +209,51 @@ def claim_missing(artifacts: dict[str, Any], config: dict[str, Any]) -> list[str
     return missing
 
 
+def applicability_paths(config: dict[str, Any]) -> list[str]:
+    """Return the configured paths that instantiate a claim for an artifact set."""
+    raw_paths = config.get("applicability_evidence") or config.get("expected_evidence", [])
+    out = []
+    for path in raw_paths:
+        if isinstance(path, str) and path and path not in out:
+            out.append(path)
+    return out
+
+
+def claim_instantiated(artifacts: dict[str, Any], config: dict[str, Any]) -> bool:
+    """Return whether artifacts contain evidence that makes a claim applicable."""
+    return any(evidence_is_present(get_path(artifacts, path)) for path in applicability_paths(config))
+
+
 def claim_evidence_paths(config: dict[str, Any]) -> list[str]:
     paths = [str(path) for path in config.get("expected_evidence", [])]
+    paths.extend(str(path) for path in config.get("applicability_evidence", []) if isinstance(path, str))
     paths.extend(support_requirement_paths(list(config.get("support_requirements", []))))
+    for pass_id in config.get("passes", []):
+        if not isinstance(pass_id, str):
+            continue
+        paths.extend(get_pass_spec(pass_id).required_paths)
     out = []
     for path in paths:
         if path and path not in out:
             out.append(path)
     return out
+
+
+def artifact_root(path: str) -> str:
+    """Return the top-level artifact key for a dotted evidence path."""
+    root = path.split(".", 1)[0].strip()
+    return root if root and "*" not in root else ""
+
+
+def claim_artifact_roots(registry: dict[str, dict[str, Any]]) -> tuple[str, ...]:
+    """Return artifact roots referenced by claim-pack contracts and pass specs."""
+    roots = []
+    for config in registry.values():
+        for path in claim_evidence_paths(config):
+            root = artifact_root(path)
+            if root and root not in roots:
+                roots.append(root)
+    return tuple(sorted(roots))
 
 
 def path_overlaps(left: str, right: str) -> bool:

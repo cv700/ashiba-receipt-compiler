@@ -18,8 +18,8 @@
     "probe_manifest.committed_at"
   ],
   "applicability_evidence": [
-    "gpu_inventory",
-    "gpu_probe_observation"
+    "gpu_inventory.declared_serials",
+    "gpu_probe_observation.observed_serials"
   ],
   "passes": [
     "utc_timestamp_format",

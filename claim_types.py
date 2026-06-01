@@ -4,6 +4,8 @@
 Each claim type defines:
   - claim: the claim text and ID
   - expected_evidence: dotted paths that must resolve in the artifact bundle
+  - applicability_evidence: dotted paths that instantiate the claim
+  - evidence_guidance: scanner guidance for missing evidence
   - passes: list of pass IDs to run (in order) for this claim type
   - pass_params: per-pass parameters keyed by pass_id
 
@@ -18,7 +20,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from claim_contracts import validate_pass_required_paths, validate_support_requirements
+from claim_contracts import (
+    support_requirement_ids,
+    validate_evidence_guidance,
+    validate_pass_required_paths,
+    validate_support_requirements,
+)
 from pass_specs import PASS_SPECS
 from renderer_families import validate_renderer_family
 from side_effect_envelope import (
@@ -190,6 +197,11 @@ def _validate_claim_pack(name: str, config: dict[str, Any], source: Path) -> dic
             raise ValueError(f"claim pack {source} pass_params.{pass_id} must be an object")
     source_label = f"claim pack {source}"
     support_requirements = validate_support_requirements(source_label, config.get("support_requirements"))
+    evidence_guidance = validate_evidence_guidance(
+        source_label,
+        config.get("evidence_guidance"),
+        expected_evidence + support_requirement_ids(support_requirements),
+    )
     renderer_family = validate_renderer_family(config.get("renderer_family"), f"claim pack {source}")
 
     unknown_passes = sorted(set(passes) - set(PASS_SPECS))
@@ -202,6 +214,7 @@ def _validate_claim_pack(name: str, config: dict[str, Any], source: Path) -> dic
         "expected_evidence": expected_evidence,
         "applicability_evidence": applicability,
         "support_requirements": support_requirements,
+        "evidence_guidance": evidence_guidance,
         "passes": passes,
         "pass_params": pass_params,
         "renderer_family": renderer_family,

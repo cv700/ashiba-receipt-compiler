@@ -107,6 +107,12 @@ Compile a receipt card:
 ./compile examples/cyber_renderer_authz_supported --card
 ```
 
+Scan with external additive claim packs:
+
+```bash
+./ashiba scan ./logs --claim-packs-dir ./extra_claim_packs --json
+```
+
 Print only the verdict:
 
 ```bash
@@ -128,7 +134,13 @@ PYTHONDONTWRITEBYTECODE=1 python3 test_receipt_compiler.py
 
 ## Claim Families
 
-Claim definitions live in `claim_packs/`. The current preview includes:
+A claim pack is the versioned JSON verifier contract for a claim family. The
+claim type is the stable name used on the CLI, such as
+`gpu_capacity_acceptance`; the claim pack is the concrete JSON file under
+`claim_packs/` that defines its evidence contract, deterministic pass pipeline,
+and receipt boundary renderer.
+
+The current preview includes:
 
 - `authorization_bound_action`: was a tool/action executed under an active,
   bound authorization grant?
@@ -141,7 +153,7 @@ Claim definitions live in `claim_packs/`. The current preview includes:
 
 ### GPU Collateral Claims (v0)
 
-Two claim packs exercise the GPU-backed lending verification shape:
+Three claim packs exercise the GPU-backed lending and acceptance verification shape:
 
 - `gpu_serial_collateral_match`: verifies that GPU serial numbers observed
   during probe execution match the serials declared in the collateral schedule.
@@ -149,6 +161,10 @@ Two claim packs exercise the GPU-backed lending verification shape:
 - `gpu_node_health_diagnostic`: verifies that a GPU node passed DCGM Level 2
   health diagnostics with ECC error counts below stated thresholds at probe
   time. This catches point-in-time hardware-health failures.
+- `gpu_capacity_acceptance`: verifies that observed GPU names, count, timestamp,
+  and MIG-mode field are consistent with a declared GPU capacity snapshot. This
+  supports the full local path from `import_nvidia_smi` artifacts through
+  `ashiba scan` readiness and `./compile` receipt output.
 
 These are synthetic, point-in-time, node-level demos. They do not assess cluster
 health, goodput, residual value, firmware authenticity, or ongoing performance.
@@ -191,6 +207,7 @@ missing pre-committed probe manifest.
 ashiba                         Readiness scanner CLI
 compile                        One-line receipt compiler CLI
 receipt_scan.py                Scanner implementation
+scan_artifacts.py              Scanner artifact dispatch helpers
 receipt_compile.py             Lower-level compiler entrypoint
 receipt_ir.py                  Receipt data model
 passes.py                      Deterministic compiler passes
@@ -212,6 +229,7 @@ Before sharing changes, run:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 test_receipt_compiler.py
+PYTHONDONTWRITEBYTECODE=1 python3 test_gpu_acceptance.py
 PYTHONDONTWRITEBYTECODE=1 python3 demo_gallery.py --json
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/discover_claim_contract.py --json
 PYTHONDONTWRITEBYTECODE=1 python3 demo_real_world_importers.py
@@ -219,11 +237,12 @@ PYTHONDONTWRITEBYTECODE=1 python3 environments/trace_receipt_minimizer_v0/test_s
 PYTHONDONTWRITEBYTECODE=1 ./demo_30s.sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile \
   ashiba receipt_scan.py compile receipt_validate.py receipt_compile.py \
-  passes.py claim_types.py claim_contracts.py side_effect_envelope.py import_cloudtrail import_github_actions import_otel \
+  passes.py gpu_passes.py claim_types.py claim_contracts.py scan_artifacts.py \
+  side_effect_envelope.py import_cloudtrail import_github_actions import_otel \
   import_kubernetes_audit import_siem_jsonl import_anthropic import_openai \
   import_eventlog import_langsmith importer_common.py demo_real_world_importers.py \
   demo.py constants.py receipt_ir.py verdict.py boundary.py renderer_families.py demo_gallery.py \
-  demo_llm_comparison.py receipt_explain.py scripts/discover_claim_contract.py test_receipt_compiler.py \
+  demo_llm_comparison.py receipt_explain.py scripts/discover_claim_contract.py test_*.py \
   environments/trace_receipt_minimizer_v0/*.py
 find . -type d -name __pycache__ -prune -exec rm -rf {} +
 ```
@@ -231,8 +250,8 @@ find . -type d -name __pycache__ -prune -exec rm -rf {} +
 Expected gallery summary:
 
 ```text
-38 receipts from 33 incident directories
-supported: 16 | contradicted: 11 | unknown: 10 | not_applicable: 1
+41 receipts from 36 incident directories
+supported: 17 | contradicted: 11 | unknown: 12 | not_applicable: 1
 compiler_errors: 0 | validation_errors: 0
 ```
 

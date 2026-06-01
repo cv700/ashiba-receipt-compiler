@@ -19,6 +19,53 @@
     "deployment",
     "review"
   ],
+  "evidence_guidance": {
+    "review.commit_sha": {
+      "probe": "log reviewed commit_sha from the review system",
+      "why": "Without the reviewed commit, deployment evidence cannot be compared to the approved artifact.",
+      "suggested_log_shape": {
+        "review": {
+          "commit_sha": "abc123"
+        }
+      }
+    },
+    "review.decision": {
+      "probe": "log review decision with approved/rejected",
+      "why": "Without the review decision, a review record does not show approval.",
+      "suggested_log_shape": {
+        "review": {
+          "decision": "approved"
+        }
+      }
+    },
+    "review.approved_at": {
+      "probe": "log review approved_at as UTC",
+      "why": "Without the approval timestamp, the compiler cannot check review-before-deploy ordering.",
+      "suggested_log_shape": {
+        "review": {
+          "approved_at": "2026-05-14T16:59:00Z"
+        }
+      }
+    },
+    "deployment.commit_sha": {
+      "probe": "log deployed commit_sha from the deployment job",
+      "why": "Without the deployed commit, the compiler cannot compare deployment to review.",
+      "suggested_log_shape": {
+        "deployment": {
+          "commit_sha": "abc123"
+        }
+      }
+    },
+    "deployment.deployed_at": {
+      "probe": "log deployment time as UTC",
+      "why": "Without deployment time, the compiler cannot check chronology.",
+      "suggested_log_shape": {
+        "deployment": {
+          "deployed_at": "2026-05-14T17:01:30Z"
+        }
+      }
+    }
+  },
   "passes": [
     "utc_timestamp_format",
     "expected_evidence_absence",

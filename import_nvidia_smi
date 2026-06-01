@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""Import nvidia-smi CSV plus reservation JSON into GPU acceptance artifacts.
+
+Usage:
+    ./import_nvidia_smi nvidia_smi_query.csv --reservation reservation.json --out artifacts/
+    ./import_nvidia_smi nvidia_smi_query.csv --reservation reservation.json | ./compile - --claim-type gpu_capacity_acceptance
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+import sys
+from typing import Any
+
+from importer_common import load_json, read_text, write_artifacts
+
+
+def _normalize_header(value: str) -> str:
+    return value.strip().lower()
+
+
+TIMESTAMP_TOLERANCE_SECONDS = 30
+
+
+def _parse_timestamp(raw: Any) -> datetime | None:
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    for fmt in ("%Y/%m/%d %H:%M:%S.%f", "%Y/%m/%d %H:%M:%S"):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    candidate = text[:-1] + "+00:00" if text.endswith("Z") else text
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        raise ValueError(f"could not normalize timestamp {text!r} to YYYY-MM-DDTHH:MM:SSZ")
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_timestamp(value: datetime) -> str:
+    return value.astimezone(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _load_rows(path_arg: str) -> list[dict[str, str]]:
+    raw = read_text(path_arg, "nvidia-smi CSV")
+    reader = csv.DictReader(raw.splitlines())
+    if not reader.fieldnames:
+        raise ValueError("nvidia-smi CSV must contain a header row")
+    rows = []
+    for row in reader:
+        normalized = {_normalize_header(key): (value or "").strip() for key, value in row.items() if key is not None}
+        if any(value for value in normalized.values()):
+            rows.append(normalized)
+    if not rows:
+        raise ValueError("nvidia-smi CSV did not contain any GPU rows")
+    return rows
+
+
+def _required_reservation_value(reservation: dict[str, Any], key: str) -> Any:
+    value = reservation.get(key)
+    if value in (None, "", [], {}):
+        raise ValueError(f"reservation missing required {key}")
+    return value
+
+
+def _required_row_values(rows: list[dict[str, str]], key: str) -> list[str]:
+    values = []
+    for index, row in enumerate(rows):
+        value = row.get(key)
+        if value in (None, ""):
+            raise ValueError(f"nvidia-smi CSV row {index} missing required {key}")
+        values.append(value)
+    return values
+
+
+def _timestamp_snapshot(rows: list[dict[str, str]]) -> tuple[str, float]:
+    raw_values = _required_row_values(rows, "timestamp")
+    timestamps = [_parse_timestamp(value) for value in raw_values]
+    if any(value is None for value in timestamps):
+        raise ValueError("nvidia-smi CSV missing timestamp evidence")
+    parsed = [value for value in timestamps if value is not None]
+    earliest = min(parsed)
+    latest = max(parsed)
+    spread = (latest - earliest).total_seconds()
+    if spread > TIMESTAMP_TOLERANCE_SECONDS:
+        raise ValueError(
+            "nvidia-smi CSV row timestamps are not one acceptance snapshot: "
+            f"spread {spread:.0f}s exceeds {TIMESTAMP_TOLERANCE_SECONDS}s"
+        )
+    return _format_timestamp(earliest), spread
+
+
+def _artifacts(rows: list[dict[str, str]], reservation: dict[str, Any]) -> dict[str, Any]:
+    names = _required_row_values(rows, "name")
+    mig_modes = _required_row_values(rows, "mig.mode.current")
+    observed_at, row_spread_seconds = _timestamp_snapshot(rows)
+
+    return {
+        "gpu_inventory": {
+            "declared_sku": _required_reservation_value(reservation, "declared_sku"),
+            "declared_count": _required_reservation_value(reservation, "declared_count"),
+            "declared_topology_class": reservation.get("declared_topology_class", ""),
+            "declared_region": reservation.get("declared_region", ""),
+        },
+        "gpu_probe_observation": {
+            "observed_names": names,
+            "observed_count": len(rows),
+            "observed_mig_modes": mig_modes,
+            "observed_at": observed_at,
+            "observation_row_spread_seconds": row_spread_seconds,
+        },
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("nvidia_smi_query_csv", help="nvidia-smi --query-gpu CSV file, or - for stdin")
+    parser.add_argument("--reservation", "-r", required=True, help="Reservation JSON with declared GPU capacity")
+    parser.add_argument("--out", "-o", type=Path, help="Write artifact files to this directory")
+    args = parser.parse_args()
+
+    try:
+        reservation = load_json(args.reservation, "reservation")
+        if not isinstance(reservation, dict):
+            raise ValueError("reservation JSON root must be an object")
+        merged = _artifacts(_load_rows(args.nvidia_smi_query_csv), reservation)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    if args.out:
+        write_artifacts(args.out, merged)
+        print(f"gpu acceptance artifacts -> {args.out}/", file=sys.stderr)
+    else:
+        print(json.dumps(merged, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

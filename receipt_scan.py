@@ -17,12 +17,15 @@ import sys
 from typing import Any
 
 from claim_contracts import (
+    applicability_paths,
     claim_conflicts,
     claim_has_action_scope,
+    claim_instantiated,
     claim_missing,
     conflict_excluded,
+    registry_evidence_guidance,
 )
-from claim_types import build_claim_registry
+from evidence_paths import get_path
 from importer_common import (
     authorization_decision_id_from_fields as _decision_id_from_fields,
     authorization_from_policy as _authorization_from_policy,
@@ -30,7 +33,6 @@ from importer_common import (
     nested_get,
     normalize_timestamp,
 )
-from evidence_paths import get_path
 from side_effect_envelope import (
     SIDE_EFFECT_ACTION_ID_PATH,
     SIDE_EFFECT_DECISION_ID_PATH,
@@ -40,77 +42,16 @@ from side_effect_envelope import (
     normalize_side_effect,
     normalize_side_effect_artifacts,
 )
+from scan_artifacts import (
+    TEXT_SUFFIXES,
+    claim_artifact_keys,
+    gpu_artifact_keys,
+    nvidia_smi_csv_artifact,
+    scan_artifact_keys,
+    scan_claim_registry,
+)
 
-
-ALL_SCAN_CLAIMS = ("deployment_matches_reviewed_commit", "authorization_bound_action",
-                    "human_approval_before_external_side_effect")
-TEXT_SUFFIXES = {".json", ".jsonl", ".log", ".txt"}
-
-CLAIM_EVIDENCE_TRIGGERS: dict[str, list[str]] = {
-    "authorization_bound_action": ["authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call"],
-    "deployment_matches_reviewed_commit": ["deployment", "review"],
-    "human_approval_before_external_side_effect": ["approval"],
-}
-REVOCATION_PATH = "authorization.revoked_at"
-AUTHORIZATION_BINDING = "authorization-to-action binding"
-APPROVAL_BINDING = "approval-to-action binding"
-PROBE_BY_MISSING = {
-    REVOCATION_PATH: "add revocation_state export",
-    AUTHORIZATION_BINDING: "carry authorization execution_time_decision_id into the tool call",
-    APPROVAL_BINDING: "log approval tool_call_id matching the side-effect action_id",
-    "review.commit_sha": "log reviewed commit_sha from the review system",
-    "review.decision": "log review decision with approved/rejected",
-    "review.approved_at": "log review approved_at as UTC",
-    "deployment.commit_sha": "log deployed commit_sha from the deployment job",
-    "deployment.deployed_at": "log deployment time as UTC",
-    SIDE_EFFECT_ACTION_ID_PATH: "log stable tool_call_id/action_id on side effects",
-    SIDE_EFFECT_EXECUTED_AT_PATH: "log tool execution time as UTC",
-    "approval.approved_at": "log human approval timestamp as UTC",
-    "approval.decision": "log approval decision (approved/rejected)",
-    "approval.actor": "log the identity of the human approver",
-}
-
-WHY_BY_MISSING = {
-    REVOCATION_PATH: "Without explicit revocation state, absence of a revocation event can be confused with missing evidence.",
-    AUTHORIZATION_BINDING: "Without a matching decision ID on both sides of the boundary, the evidence cannot show that this authorization decision governed this exact action.",
-    APPROVAL_BINDING: "Without a matching action ID on the approval record, the evidence cannot show that this human approval governed this exact side effect.",
-    "review.commit_sha": "Without the reviewed commit, deployment evidence cannot be compared to the approved artifact.",
-    "review.decision": "Without the review decision, a review record does not show approval.",
-    "review.approved_at": "Without the approval timestamp, the compiler cannot check review-before-deploy ordering.",
-    "deployment.commit_sha": "Without the deployed commit, the compiler cannot compare deployment to review.",
-    "deployment.deployed_at": "Without deployment time, the compiler cannot check chronology.",
-    SIDE_EFFECT_ACTION_ID_PATH: "Without a stable action ID, logs from different systems cannot be joined to one side effect.",
-    SIDE_EFFECT_EXECUTED_AT_PATH: "Without execution time, the compiler cannot check authorization or approval windows.",
-    "approval.approved_at": "Without approval time, the compiler cannot prove approval happened before the side effect.",
-    "approval.decision": "Without the approval decision, the compiler cannot distinguish approval from rejection or review-only records.",
-    "approval.actor": "Without approver identity, the compiler cannot show who approved the side effect.",
-}
-
-SUGGESTED_FIELDS_BY_MISSING = {
-    REVOCATION_PATH: {"authorization": {"revoked_at": None}},
-    AUTHORIZATION_BINDING: {
-        "authorization": {
-            "render_time_grant_hash": "sha256:grant-hash-123",
-            "execution_time_decision_id": "authz-decision-123",
-            "grant_active_at_execution": True,
-        },
-        SIDE_EFFECTS_KEY: [{"invocation": {"decision_id": "authz-decision-123"}}],
-    },
-    APPROVAL_BINDING: {
-        "approval": {"tool_call_id": "act-123"},
-        SIDE_EFFECTS_KEY: [{"action_id": "act-123"}],
-    },
-    "review.commit_sha": {"review": {"commit_sha": "abc123"}},
-    "review.decision": {"review": {"decision": "approved"}},
-    "review.approved_at": {"review": {"approved_at": "2026-05-14T16:59:00Z"}},
-    "deployment.commit_sha": {"deployment": {"commit_sha": "abc123"}},
-    "deployment.deployed_at": {"deployment": {"deployed_at": "2026-05-14T17:01:30Z"}},
-    SIDE_EFFECT_ACTION_ID_PATH: {SIDE_EFFECTS_KEY: [{"action_id": "act-123"}]},
-    SIDE_EFFECT_EXECUTED_AT_PATH: {SIDE_EFFECTS_KEY: [{"executed_at": "2026-05-14T17:01:30Z"}]},
-    "approval.approved_at": {"approval": {"approved_at": "2026-05-14T16:59:00Z"}},
-    "approval.decision": {"approval": {"decision": "approved"}},
-    "approval.actor": {"approval": {"actor": "user@example.com"}},
-}
+DEFAULT_MISSING_WHY = "This missing evidence prevents at least one claim from being decidable."
 
 
 @dataclass
@@ -207,6 +148,7 @@ class ScanResult:
     actions: list[ActionReadiness]
     observations: list[FileObservation]
     punch_list: list[str]
+    evidence_guidance: dict[str, dict[str, Any]]
 
     def as_dict(self) -> dict[str, Any]:
         actions_decidable = sum(1 for action in self.actions if action.decidable)
@@ -317,6 +259,11 @@ def _payloads_from_file(path: Path) -> list[Any]:
     if jsonl_records:
         return jsonl_records
 
+    if path.suffix.lower() == ".csv":
+        csv_payload = nvidia_smi_csv_artifact(raw, str(path))
+        if csv_payload:
+            return [csv_payload]
+
     kv = _parse_key_value_log(raw)
     return [kv] if kv else []
 
@@ -380,8 +327,9 @@ def _merge_artifacts(
     source: dict[str, Any],
     conflicts: list[EvidenceConflict] | None = None,
     source_label: str = "",
+    claim_packs_dir: Path | None = None,
 ) -> None:
-    for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
+    for key in scan_artifact_keys(claim_packs_dir):
         if key in source:
             target[key] = _merge_value(target.get(key), source[key], conflicts, key, source_label)
 
@@ -430,6 +378,19 @@ def _payload_authorization(payload: Any) -> dict[str, Any]:
     if isinstance(payload, dict) and isinstance(payload.get("authorization"), dict):
         return {"authorization": payload["authorization"]}
     return {}
+
+
+def _gpu_inventory_from_reservation(payload: Any, source_label: str) -> dict[str, Any]:
+    if Path(source_label).stem != "reservation":
+        return {}
+    if not isinstance(payload, dict) or "gpu_inventory" in payload:
+        return {}
+    inventory = {}
+    for key in ("declared_sku", "declared_count", "declared_topology_class", "declared_region"):
+        value = payload.get(key)
+        if value not in (None, "", [], {}):
+            inventory[key] = value
+    return {"gpu_inventory": inventory} if inventory else {}
 
 
 def _payload_review(payload: dict[str, Any]) -> dict[str, Any]:
@@ -916,28 +877,62 @@ def _approval_records_from_payload(payload: Any) -> list[dict[str, Any]]:
     return unique
 
 
+def _file_shaped_artifacts(
+    payload: Any,
+    source_label: str,
+    claim_packs_dir: Path | None = None,
+) -> dict[str, Any]:
+    if not isinstance(payload, dict) or not source_label:
+        return {}
+    stem = Path(source_label).stem
+    if stem not in claim_artifact_keys(claim_packs_dir):
+        return {}
+    if isinstance(payload.get(stem), dict):
+        return {}
+    return {stem: payload}
+
+
 def _payload_artifacts(
     payload: Any,
     conflicts: list[EvidenceConflict] | None = None,
     source_label: str = "",
+    claim_packs_dir: Path | None = None,
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     out: dict[str, Any] = {}
-    _merge_artifacts(out, _payload_authorization(payload), conflicts, source_label)
-    for key in (SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
+    _merge_artifacts(
+        out,
+        _file_shaped_artifacts(payload, source_label, claim_packs_dir),
+        conflicts,
+        source_label,
+        claim_packs_dir,
+    )
+    _merge_artifacts(out, _payload_authorization(payload), conflicts, source_label, claim_packs_dir)
+    for key in scan_artifact_keys(claim_packs_dir):
         if key in payload:
-            _merge_artifacts(out, {key: payload[key]}, conflicts, source_label)
-    _merge_artifacts(out, _cloudtrail_artifacts(payload), conflicts, source_label)
-    _merge_artifacts(out, _payload_to_deployment(payload), conflicts, source_label)
+            _merge_artifacts(out, {key: payload[key]}, conflicts, source_label, claim_packs_dir)
+    _merge_artifacts(
+        out,
+        _gpu_inventory_from_reservation(payload, source_label),
+        conflicts,
+        source_label,
+        claim_packs_dir,
+    )
+    _merge_artifacts(out, _cloudtrail_artifacts(payload), conflicts, source_label, claim_packs_dir)
+    _merge_artifacts(out, _payload_to_deployment(payload), conflicts, source_label, claim_packs_dir)
     review = _payload_review(payload)
     if review:
-        _merge_artifacts(out, {"review": review}, conflicts, source_label)
-    _merge_artifacts(out, _payload_to_approval(payload), conflicts, source_label)
+        _merge_artifacts(out, {"review": review}, conflicts, source_label, claim_packs_dir)
+    _merge_artifacts(out, _payload_to_approval(payload), conflicts, source_label, claim_packs_dir)
     return normalize_side_effect_artifacts(out)
 
 
-def _payload_kinds(payload: Any) -> list[str]:
+def _payload_kinds(
+    payload: Any,
+    source_label: str = "",
+    claim_packs_dir: Path | None = None,
+) -> list[str]:
     kinds: list[str] = []
     if _cloudtrail_records(payload):
         _append_unique(kinds, "CloudTrail")
@@ -954,8 +949,12 @@ def _payload_kinds(payload: Any) -> list[str]:
             _append_unique(kinds, "agent event log")
         if any(key in payload for key in ("approval", "approvals")):
             _append_unique(kinds, "approval evidence")
-        if any(key in payload for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "review")):
-            _append_unique(kinds, "Ashiba/evidence artifact")
+    artifacts = _payload_artifacts(payload, source_label=source_label, claim_packs_dir=claim_packs_dir)
+    gpu_keys = set(gpu_artifact_keys(claim_packs_dir))
+    if any(key in artifacts and key not in gpu_keys for key in scan_artifact_keys(claim_packs_dir)):
+        _append_unique(kinds, "Ashiba/evidence artifact")
+    if any(key in artifacts for key in gpu_keys):
+        _append_unique(kinds, "GPU artifact")
     if not kinds:
         _append_unique(kinds, "unrecognized JSON")
     return kinds
@@ -972,10 +971,14 @@ def _payload_record_count(payload: Any) -> int:
     return 1
 
 
-def _payload_evidence_labels(payload: Any) -> list[str]:
+def _payload_evidence_labels(
+    payload: Any,
+    source_label: str = "",
+    claim_packs_dir: Path | None = None,
+) -> list[str]:
     labels: list[str] = []
-    artifacts = _payload_artifacts(payload)
-    for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "deployment", "review", "approval"):
+    artifacts = _payload_artifacts(payload, source_label=source_label, claim_packs_dir=claim_packs_dir)
+    for key in scan_artifact_keys(claim_packs_dir):
         if key in artifacts:
             _append_unique(labels, key)
     if _approval_records_from_payload(payload):
@@ -983,15 +986,20 @@ def _payload_evidence_labels(payload: Any) -> list[str]:
     return labels
 
 
-def _file_observation(path: Path, payloads: list[Any], actions: list[ActionCandidate]) -> FileObservation:
+def _file_observation(
+    path: Path,
+    payloads: list[Any],
+    actions: list[ActionCandidate],
+    claim_packs_dir: Path | None = None,
+) -> FileObservation:
     kinds: list[str] = []
     evidence: list[str] = []
     records = 0
     for payload in payloads:
         records += _payload_record_count(payload)
-        for kind in _payload_kinds(payload):
+        for kind in _payload_kinds(payload, str(path), claim_packs_dir):
             _append_unique(kinds, kind)
-        for label in _payload_evidence_labels(payload):
+        for label in _payload_evidence_labels(payload, str(path), claim_packs_dir):
             _append_unique(evidence, label)
     return FileObservation(
         path=str(path),
@@ -1002,7 +1010,11 @@ def _file_observation(path: Path, payloads: list[Any], actions: list[ActionCandi
     )
 
 
-def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanContext:
+def collect_scan_context(
+    logs: Path,
+    policy_path: Path | None = None,
+    claim_packs_dir: Path | None = None,
+) -> ScanContext:
     artifacts: dict[str, Any] = {}
     warnings: list[str] = []
     conflicts: list[EvidenceConflict] = []
@@ -1016,9 +1028,9 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
         policy = _load_json_file(policy_path, "policy")
         if not isinstance(policy, dict):
             raise ValueError("policy JSON root must be an object")
-        _merge_artifacts(artifacts, _authorization_from_policy(policy), conflicts, str(policy_path))
-        _merge_artifacts(artifacts, _review_from_policy(policy), conflicts, str(policy_path))
-        _merge_artifacts(artifacts, _approval_from_policy(policy), conflicts, str(policy_path))
+        _merge_artifacts(artifacts, _authorization_from_policy(policy), conflicts, str(policy_path), claim_packs_dir)
+        _merge_artifacts(artifacts, _review_from_policy(policy), conflicts, str(policy_path), claim_packs_dir)
+        _merge_artifacts(artifacts, _approval_from_policy(policy), conflicts, str(policy_path), claim_packs_dir)
         approvals.extend(_approval_records_from_payload(policy))
         observations.append(FileObservation(
             path=str(policy_path),
@@ -1049,15 +1061,16 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
         for payload in payloads:
             _merge_artifacts(
                 artifacts,
-                _payload_artifacts(payload, conflicts, str(path)),
+                _payload_artifacts(payload, conflicts, str(path), claim_packs_dir),
                 conflicts,
                 str(path),
+                claim_packs_dir,
             )
             payload_actions = _payload_action_candidates(payload, str(path))
             file_actions.extend(payload_actions)
             actions.extend(payload_actions)
             approvals.extend(_approval_records_from_payload(payload))
-        observations.append(_file_observation(path, payloads, file_actions))
+        observations.append(_file_observation(path, payloads, file_actions, claim_packs_dir))
     return ScanContext(
         artifacts=artifacts,
         files_scanned=files_scanned,
@@ -1069,39 +1082,55 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
     )
 
 
-def collect_scan_artifacts(logs: Path, policy_path: Path | None = None) -> tuple[dict[str, Any], list[str], list[str]]:
-    context = collect_scan_context(logs, policy_path)
+def collect_scan_artifacts(
+    logs: Path,
+    policy_path: Path | None = None,
+    claim_packs_dir: Path | None = None,
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    context = collect_scan_context(logs, policy_path, claim_packs_dir)
     return context.artifacts, context.files_scanned, context.warnings
 
 
-def _probeable_next(cannot_decide: list[ClaimReadiness]) -> list[str]:
+def _probe_for_missing(guidance: dict[str, dict[str, Any]], missing: str) -> str | None:
+    value = guidance.get(missing, {}).get("probe")
+    return value if isinstance(value, str) and value else None
+
+
+def _probeable_next(cannot_decide: list[ClaimReadiness], guidance: dict[str, dict[str, Any]]) -> list[str]:
     probeable_next = []
     for item in cannot_decide:
         for missing in item.missing:
-            probe = PROBE_BY_MISSING.get(missing)
+            probe = _probe_for_missing(guidance, missing)
             if probe and probe not in probeable_next:
                 probeable_next.append(probe)
     return probeable_next
 
 
-def _punch_list(cannot_decide: list[ClaimReadiness], actions: list[ActionReadiness]) -> list[str]:
+def _punch_list(
+    cannot_decide: list[ClaimReadiness],
+    actions: list[ActionReadiness],
+    guidance: dict[str, dict[str, Any]],
+) -> list[str]:
     # Every punch-list item is an UNKNOWN made useful: one missing field, one
     # proposed probe, one fewer place for operational truth to hide next time.
     counts: dict[str, int] = {}
     for item in cannot_decide:
         for missing in item.missing:
-            probe = PROBE_BY_MISSING.get(missing)
+            probe = _probe_for_missing(guidance, missing)
             if probe:
                 counts.setdefault(probe, 0)
     for action in actions:
         for item in action.cannot_decide:
             for missing in item.missing:
-                probe = PROBE_BY_MISSING.get(missing)
+                probe = _probe_for_missing(guidance, missing)
                 if probe:
                     counts[probe] = counts.get(probe, 0) + 1
 
     out = []
-    for probe in PROBE_BY_MISSING.values():
+    for entry in guidance.values():
+        probe = entry.get("probe")
+        if not isinstance(probe, str) or not probe:
+            continue
         if probe not in counts:
             continue
         blocked = counts[probe]
@@ -1147,11 +1176,13 @@ ACTION_SPECIFIC_CONFLICT_PREFIXES = (SIDE_EFFECTS_KEY, "parsed_actions", "tool_c
 def _action_readiness(
     context: ScanContext,
     registry: dict[str, Any],
+    guidance: dict[str, dict[str, Any]],
     inferred_claims: list[str] | None = None,
+    claim_packs_dir: Path | None = None,
 ) -> list[ActionReadiness]:
     action_claims = [
         claim
-        for claim in (inferred_claims or ALL_SCAN_CLAIMS)
+        for claim in (inferred_claims or [])
         if claim in registry and claim_has_action_scope(registry[claim])
     ]
     base = _action_base_artifacts(context.artifacts)
@@ -1163,10 +1194,16 @@ def _action_readiness(
             for conflict in context.conflicts
             if not conflict_excluded(conflict, ACTION_SPECIFIC_CONFLICT_PREFIXES)
         ]
-        _merge_artifacts(artifacts, normalize_side_effect_artifacts(action.artifacts), action_conflicts, action.source)
+        _merge_artifacts(
+            artifacts,
+            normalize_side_effect_artifacts(action.artifacts),
+            action_conflicts,
+            action.source,
+            claim_packs_dir,
+        )
         approval = _match_approval_for_action(action, context.approvals)
         if approval is not None:
-            _merge_artifacts(artifacts, {"approval": approval}, action_conflicts, action.source)
+            _merge_artifacts(artifacts, {"approval": approval}, action_conflicts, action.source, claim_packs_dir)
 
         readiness: list[ClaimReadiness] = []
         for claim in action_claims:
@@ -1196,7 +1233,7 @@ def _action_readiness(
             decidable=not cannot_decide,
             can_decide=can_decide,
             cannot_decide=cannot_decide,
-            probeable_next=_probeable_next(cannot_decide),
+            probeable_next=_probeable_next(cannot_decide, guidance),
         ))
     return rows
 
@@ -1231,26 +1268,31 @@ def _claim_readiness_from_action_rows(claim: str, action_rows: list[ActionReadin
     )
 
 
-def _infer_claims(context: ScanContext) -> list[str]:
-    present_keys = set(context.artifacts.keys())
-    if context.approvals:
-        present_keys.add("approval")
-    for action in context.actions:
-        present_keys.update(action.artifacts.keys())
+def _infer_claims(context: ScanContext, registry: dict[str, Any]) -> list[str]:
     claims = []
-    for claim in ALL_SCAN_CLAIMS:
-        triggers = CLAIM_EVIDENCE_TRIGGERS.get(claim, [])
-        if any(t in present_keys for t in triggers):
+    for claim, config in registry.items():
+        if claim_instantiated(context.artifacts, config):
+            claims.append(claim)
+            continue
+        if context.approvals and "approval" in applicability_paths(config):
+            claims.append(claim)
+            continue
+        if any(claim_instantiated(action.artifacts, config) for action in context.actions):
             claims.append(claim)
     return claims
 
 
-def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
-    context = collect_scan_context(logs, policy_path)
+def scan_readiness(
+    logs: Path,
+    policy_path: Path | None = None,
+    claim_packs_dir: Path | None = None,
+) -> ScanResult:
+    registry = scan_claim_registry(claim_packs_dir)
+    context = collect_scan_context(logs, policy_path, claim_packs_dir)
     artifacts = context.artifacts
-    registry = build_claim_registry()
-    inferred = _infer_claims(context)
-    action_rows = _action_readiness(context, registry, inferred)
+    guidance = registry_evidence_guidance(registry)
+    inferred = _infer_claims(context, registry)
+    action_rows = _action_readiness(context, registry, guidance, inferred, claim_packs_dir)
     readiness: list[ClaimReadiness] = []
     for claim in inferred:
         if claim_has_action_scope(registry[claim]):
@@ -1274,12 +1316,13 @@ def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
         files_scanned=context.files_scanned,
         can_decide=can_decide,
         cannot_decide=cannot_decide,
-        probeable_next=_probeable_next(cannot_decide),
+        probeable_next=_probeable_next(cannot_decide, guidance),
         warnings=context.warnings,
         conflicts=context.conflicts,
         actions=action_rows,
         observations=context.observations,
-        punch_list=_punch_list(cannot_decide, action_rows),
+        punch_list=_punch_list(cannot_decide, action_rows, guidance),
+        evidence_guidance=guidance,
     )
 
 
@@ -1297,7 +1340,7 @@ def _missing_counts(result: ScanResult) -> list[tuple[str, int, str | None]]:
                 seen_for_action.add(missing)
                 counts[missing] = counts.get(missing, 0) + 1
     ranked = [
-        (missing, count, PROBE_BY_MISSING.get(missing))
+        (missing, count, _probe_for_missing(result.evidence_guidance, missing))
         for missing, count in counts.items()
     ]
     ranked.sort(key=lambda item: (-item[1], item[0]))
@@ -1413,11 +1456,12 @@ def _missing_groups(result: ScanResult) -> list[dict[str, Any]]:
     groups: dict[str, dict[str, Any]] = {}
 
     def ensure(path: str) -> dict[str, Any]:
+        guidance = result.evidence_guidance.get(path, {})
         group = groups.setdefault(path, {
             "missing": path,
-            "probe": PROBE_BY_MISSING.get(path),
-            "why": WHY_BY_MISSING.get(path, "This missing evidence prevents at least one claim from being decidable."),
-            "suggested_log_shape": SUGGESTED_FIELDS_BY_MISSING.get(path),
+            "probe": guidance.get("probe"),
+            "why": guidance.get("why", DEFAULT_MISSING_WHY),
+            "suggested_log_shape": guidance.get("suggested_log_shape"),
             "claims": [],
             "affected_actions": [],
             "action_count": 0,
@@ -1616,10 +1660,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Emit machine-readable readiness output")
     parser.add_argument("--report", action="store_true", help="Write ashiba_report.md and ashiba_report.json")
     parser.add_argument("--out", type=Path, default=Path("."), help="Output directory for --report")
+    parser.add_argument("--claim-packs-dir", type=Path, help="Optional directory of additive JSON claim packs")
     args = parser.parse_args(argv)
 
     try:
-        result = scan_readiness(args.logs, args.policy)
+        result = scan_readiness(args.logs, args.policy, args.claim_packs_dir)
     except (OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

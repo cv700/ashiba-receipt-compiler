@@ -1,0 +1,91 @@
+{
+  "schema_version": "receipt-claim-pack-v0.1",
+  "name": "gpu_capacity_acceptance",
+  "description": "Checks whether buyer-observed GPU names, count, timestamp, and MIG-mode field were consistent with a declared GPU capacity snapshot.",
+  "renderer_family": "gpu_collateral",
+  "claim": {
+    "id": "claim.gpu_capacity_acceptance",
+    "text": "The observed GPU names, count, timestamp, and MIG-mode field were consistent with the declared GPU capacity snapshot."
+  },
+  "expected_evidence": [
+    "gpu_inventory.declared_sku",
+    "gpu_inventory.declared_count",
+    "gpu_probe_observation.observed_names",
+    "gpu_probe_observation.observed_count",
+    "gpu_probe_observation.observed_mig_modes",
+    "gpu_probe_observation.observed_at"
+  ],
+  "applicability_evidence": [
+    "gpu_inventory.declared_sku",
+    "gpu_probe_observation.observed_names"
+  ],
+  "support_requirements": [],
+  "evidence_guidance": {
+    "gpu_inventory.declared_sku": {
+      "probe": "record declared GPU SKU from provider reservation/order evidence",
+      "why": "Without the declared SKU, observed GPU names cannot be compared to what the buyer meant to accept.",
+      "suggested_log_shape": {
+        "gpu_inventory": {
+          "declared_sku": "H100-SXM5-80GB"
+        }
+      }
+    },
+    "gpu_inventory.declared_count": {
+      "probe": "record declared GPU count from provider reservation/order evidence",
+      "why": "Without the declared count, observed GPU count cannot be compared to the reservation or order.",
+      "suggested_log_shape": {
+        "gpu_inventory": {
+          "declared_count": 8
+        }
+      }
+    },
+    "gpu_probe_observation.observed_names": {
+      "probe": "run nvidia-smi acceptance capture and import observed GPU names",
+      "why": "Without observed GPU names, the compiler cannot compare delivered GPU family or variant to the declaration.",
+      "suggested_log_shape": {
+        "gpu_probe_observation": {
+          "observed_names": [
+            "NVIDIA H100 SXM5 80GB HBM3"
+          ]
+        }
+      }
+    },
+    "gpu_probe_observation.observed_count": {
+      "probe": "run nvidia-smi acceptance capture and import observed GPU count",
+      "why": "Without observed GPU count, the compiler cannot decide whether the declared quantity was visible.",
+      "suggested_log_shape": {
+        "gpu_probe_observation": {
+          "observed_count": 8
+        }
+      }
+    },
+    "gpu_probe_observation.observed_mig_modes": {
+      "probe": "capture nvidia-smi MIG mode and nvidia-smi -L output",
+      "why": "Without MIG-mode evidence, the compiler cannot fail closed on ambiguous dedicated-capacity visibility.",
+      "suggested_log_shape": {
+        "gpu_probe_observation": {
+          "observed_mig_modes": [
+            "Disabled"
+          ]
+        }
+      }
+    },
+    "gpu_probe_observation.observed_at": {
+      "probe": "capture nvidia-smi timestamp for the acceptance snapshot",
+      "why": "Without an observation timestamp, the compiler cannot bind the GPU snapshot to a point in time.",
+      "suggested_log_shape": {
+        "gpu_probe_observation": {
+          "observed_at": "2026-05-26T14:02:46Z"
+        }
+      }
+    }
+  },
+  "passes": [
+    "utc_timestamp_format",
+    "expected_evidence_absence",
+    "gpu_sku_count_match",
+    "gpu_not_mig_sliced",
+    "no_future_evidence"
+  ],
+  "pass_params": {}
+}

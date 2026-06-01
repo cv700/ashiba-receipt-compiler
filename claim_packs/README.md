@@ -1,6 +1,13 @@
 # Claim Packs
 
-Claim packs are declarative JSON configs for receipt claim types.
+A claim pack is ARC's versioned verifier contract for one class of bounded
+receipt claims. It is a declarative JSON config that defines the claim
+statement, evidence contract, applicability conditions, deterministic pass
+pipeline, pass parameters, and boundary renderer family for a claim type.
+
+A claim pack is not an evidence bundle, receipt, prompt, customer use case, or
+loose invariant. Evidence is supplied separately; the claim pack defines how ARC
+evaluates that evidence.
 
 Each `*.json` file declares:
 
@@ -18,6 +25,9 @@ Each `*.json` file declares:
   requirement can use `path` with `presence: "path_exists"` when explicit null is
   meaningful, `all_of` for grouped required fields, and `same_value` for a
   cross-boundary equality check.
+- `evidence_guidance`: optional scanner guidance keyed by an `expected_evidence`
+  path or `support_requirements.id`, with `probe`, `why`, and
+  `suggested_log_shape` fields.
 - `passes`: ordered deterministic pass IDs from `passes.py`.
 - `pass_params`: optional per-pass parameters.
 
