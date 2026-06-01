@@ -226,12 +226,34 @@ def claim_instantiated(artifacts: dict[str, Any], config: dict[str, Any]) -> boo
 
 def claim_evidence_paths(config: dict[str, Any]) -> list[str]:
     paths = [str(path) for path in config.get("expected_evidence", [])]
+    paths.extend(str(path) for path in config.get("applicability_evidence", []) if isinstance(path, str))
     paths.extend(support_requirement_paths(list(config.get("support_requirements", []))))
+    for pass_id in config.get("passes", []):
+        if not isinstance(pass_id, str):
+            continue
+        paths.extend(get_pass_spec(pass_id).required_paths)
     out = []
     for path in paths:
         if path and path not in out:
             out.append(path)
     return out
+
+
+def artifact_root(path: str) -> str:
+    """Return the top-level artifact key for a dotted evidence path."""
+    root = path.split(".", 1)[0].strip()
+    return root if root and "*" not in root else ""
+
+
+def claim_artifact_roots(registry: dict[str, dict[str, Any]]) -> tuple[str, ...]:
+    """Return artifact roots referenced by claim-pack contracts and pass specs."""
+    roots = []
+    for config in registry.values():
+        for path in claim_evidence_paths(config):
+            root = artifact_root(path)
+            if root and root not in roots:
+                roots.append(root)
+    return tuple(sorted(roots))
 
 
 def path_overlaps(left: str, right: str) -> bool:

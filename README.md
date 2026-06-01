@@ -107,6 +107,12 @@ Compile a receipt card:
 ./compile examples/cyber_renderer_authz_supported --card
 ```
 
+Scan with external additive claim packs:
+
+```bash
+./ashiba scan ./logs --claim-packs-dir ./extra_claim_packs --json
+```
+
 Print only the verdict:
 
 ```bash
@@ -201,6 +207,7 @@ missing pre-committed probe manifest.
 ashiba                         Readiness scanner CLI
 compile                        One-line receipt compiler CLI
 receipt_scan.py                Scanner implementation
+scan_artifacts.py              Scanner artifact dispatch helpers
 receipt_compile.py             Lower-level compiler entrypoint
 receipt_ir.py                  Receipt data model
 passes.py                      Deterministic compiler passes
@@ -222,6 +229,7 @@ Before sharing changes, run:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 test_receipt_compiler.py
+PYTHONDONTWRITEBYTECODE=1 python3 test_gpu_acceptance.py
 PYTHONDONTWRITEBYTECODE=1 python3 demo_gallery.py --json
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/discover_claim_contract.py --json
 PYTHONDONTWRITEBYTECODE=1 python3 demo_real_world_importers.py
@@ -229,7 +237,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 environments/trace_receipt_minimizer_v0/test_s
 PYTHONDONTWRITEBYTECODE=1 ./demo_30s.sh
 PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile \
   ashiba receipt_scan.py compile receipt_validate.py receipt_compile.py \
-  passes.py claim_types.py claim_contracts.py side_effect_envelope.py import_cloudtrail import_github_actions import_otel \
+  passes.py gpu_passes.py claim_types.py claim_contracts.py scan_artifacts.py \
+  side_effect_envelope.py import_cloudtrail import_github_actions import_otel \
   import_kubernetes_audit import_siem_jsonl import_anthropic import_openai \
   import_eventlog import_langsmith importer_common.py demo_real_world_importers.py \
   demo.py constants.py receipt_ir.py verdict.py boundary.py renderer_families.py demo_gallery.py \

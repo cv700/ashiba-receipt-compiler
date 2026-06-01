@@ -103,7 +103,6 @@ def _timestamp_snapshot(rows: list[dict[str, str]]) -> tuple[str, float]:
 def _artifacts(rows: list[dict[str, str]], reservation: dict[str, Any]) -> dict[str, Any]:
     names = _required_row_values(rows, "name")
     mig_modes = _required_row_values(rows, "mig.mode.current")
-    uuids = [row.get("uuid", "") for row in rows if row.get("uuid")]
     observed_at, row_spread_seconds = _timestamp_snapshot(rows)
 
     return {
@@ -117,7 +116,6 @@ def _artifacts(rows: list[dict[str, str]], reservation: dict[str, Any]) -> dict[
             "observed_names": names,
             "observed_count": len(rows),
             "observed_mig_modes": mig_modes,
-            "observed_uuids": uuids,
             "observed_at": observed_at,
             "observation_row_spread_seconds": row_spread_seconds,
         },

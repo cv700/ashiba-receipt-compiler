@@ -58,7 +58,7 @@ def _gpu_sku_tokens(value: Any) -> set[str]:
 def _gpu_sku_family(value: Any) -> str | None:
     """Return the supported GPU SKU family token from a declared SKU string."""
     tokens = _gpu_sku_tokens(value)
-    for family in ("H100", "A100", "A10", "B200"):
+    for family in ("H100", "H200", "A100", "A10", "B200"):
         if family in tokens:
             return family
     return None
@@ -335,10 +335,14 @@ def gpu_sku_count_match(ir: ReceiptIR, params: dict[str, Any] | None = None) -> 
 
     family = _gpu_sku_family(declared_sku)
     if family is None:
+        supported_families = "H100, H200, A100, A10, B200"
         return PassResult(
             pass_id="gpu_sku_count_match",
             status=PASS_UNKNOWN,
-            detail=f"declared GPU SKU {declared_sku!r} does not contain a supported family token (H100, A100, A10, B200)",
+            detail=(
+                f"declared GPU SKU {declared_sku!r} does not contain a supported "
+                f"family token ({supported_families})"
+            ),
             verdict_effect=UNKNOWN,
             metadata={"field": "gpu_inventory.declared_sku"},
         )

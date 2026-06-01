@@ -280,7 +280,6 @@ PASS_SPECS: dict[str, PassSpec] = {
         scope="claim",
         readiness="requires observed MIG modes; enabled MIG mode is ambiguous until instance-level slicing evidence is present",
         required_paths=("gpu_probe_observation.observed_mig_modes", "gpu_probe_observation.observed_count"),
-        contradiction_paths=("gpu_probe_observation.observed_mig_modes",),
         boundary_role=BOUNDARY_ROLE_SUPPORT_DETAIL,
     ),
     # Prefix continuity

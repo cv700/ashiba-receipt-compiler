@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 import tempfile
+import textwrap
 from pathlib import Path
 
 from constants import (
@@ -17,6 +18,7 @@ from constants import (
 )
 from passes import gpu_not_mig_sliced, gpu_sku_count_match
 from receipt_ir import ReceiptIR
+from scan_artifacts import claim_artifact_keys, gpu_artifact_keys, scan_artifact_keys
 from test_support import (
     ENV,
     ROOT,
@@ -107,6 +109,18 @@ def test_gpu_capacity_acceptance_pass_units() -> None:
         },
     })
     assert gpu_sku_count_match(a10_family_supported).status == PASS_SATISFIED
+
+    h200_supported = _pass_ir({
+        "gpu_inventory": {
+            "declared_sku": "H200-SXM",
+            "declared_count": 2,
+        },
+        "gpu_probe_observation": {
+            "observed_names": ["NVIDIA H200 SXM 141GB HBM3e"] * 2,
+            "observed_count": 2,
+        },
+    })
+    assert gpu_sku_count_match(h200_supported).status == PASS_SATISFIED
 
     wrong_sku = _pass_ir({
         "gpu_inventory": {
@@ -237,6 +251,7 @@ def test_nvidia_smi_importer_bridge() -> None:
         assert artifacts["gpu_probe_observation"]["observed_count"] == 8
         assert artifacts["gpu_probe_observation"]["observed_at"] == "2026-05-26T14:02:46Z"
         assert artifacts["gpu_probe_observation"]["observation_row_spread_seconds"] == 0.0
+        assert "observed_uuids" not in artifacts["gpu_probe_observation"]
 
         piped = run_compile_process(
             "-",
@@ -320,19 +335,25 @@ def test_capture_acceptance_writes_tier_a_packet() -> None:
         bin_dir.mkdir()
         fake_nvidia_smi = bin_dir / "nvidia-smi"
         fake_nvidia_smi.write_text(
-            """#!/usr/bin/env bash
-set -euo pipefail
-case "$*" in
-  --query-gpu=*) echo "index, uuid, serial, name, memory.total [MiB], mig.mode.current, timestamp"
-                 echo "0, GPU-fake, 123, NVIDIA A10, 23028 MiB, [N/A], 2026/05/31 22:23:21.446" ;;
-  "-q -x") echo "<nvidia_smi_log></nvidia_smi_log>" ;;
-  "-L") echo "GPU 0: NVIDIA A10 (UUID: GPU-fake)" ;;
-  "topo -m") echo "topology unavailable in fake test"; exit 7 ;;
-  "mig -lgi") echo "No GPU instances found" ;;
-  "mig -lci") echo "No compute instances found" ;;
-  *) echo "unexpected nvidia-smi args: $*" >&2; exit 2 ;;
-esac
-""",
+            textwrap.dedent("""\
+                #!/usr/bin/env bash
+                set -euo pipefail
+                case "$*" in
+                  --query-gpu=*) if [[ "$*" == *uuid* || "$*" == *serial* ]]; then
+                                   echo "identifier field requested in default capture: $*" >&2
+                                   exit 3
+                                 fi
+                                 echo "index, name, memory.total [MiB], mig.mode.current, timestamp"
+                                 echo "0, NVIDIA A10, 23028 MiB, [N/A], 2026/05/31 22:23:21.446" ;;
+                  "-q -x") echo "<nvidia_smi_log><gpu><uuid>GPU-secret</uuid><serial>SERIAL-SECRET</serial></gpu></nvidia_smi_log>"
+                            ;;
+                  "-L") echo "GPU 0: NVIDIA A10 (UUID: GPU-secret)" ;;
+                  "topo -m") echo "topology unavailable in fake test"; exit 7 ;;
+                  "mig -lgi") echo "No GPU instances found" ;;
+                  "mig -lci") echo "No compute instances found" ;;
+                  *) echo "unexpected nvidia-smi args: $*" >&2; exit 2 ;;
+                esac
+                """),
             encoding="utf-8",
         )
         fake_nvidia_smi.chmod(0o755)
@@ -349,8 +370,18 @@ esac
         assert proc.returncode == 0, proc.stderr
         logs = packet / "logs"
         assert (logs / "nvidia_smi_query.csv").is_file()
-        assert (logs / "nvidia_smi_full.xml").is_file()
-        assert (logs / "nvidia_smi_list.txt").read_text(encoding="utf-8").startswith("GPU 0:")
+        query_text = (logs / "nvidia_smi_query.csv").read_text(encoding="utf-8")
+        assert "uuid" not in query_text.lower()
+        assert "serial" not in query_text.lower()
+        full_xml = (logs / "nvidia_smi_full.xml").read_text(encoding="utf-8")
+        assert "GPU-secret" not in full_xml
+        assert "SERIAL-SECRET" not in full_xml
+        assert "<uuid>REDACTED</uuid>" in full_xml
+        assert "<serial>REDACTED</serial>" in full_xml
+        list_text = (logs / "nvidia_smi_list.txt").read_text(encoding="utf-8")
+        assert list_text.startswith("GPU 0:")
+        assert "GPU-secret" not in list_text
+        assert "GPU-REDACTED" in list_text
         assert "topology unavailable" in (logs / "topo.txt").read_text(encoding="utf-8")
         assert (logs / "host_info.txt").read_text(encoding="utf-8").strip()
         assert "No GPU instances" in (logs / "mig_instances.txt").read_text(encoding="utf-8")
@@ -378,6 +409,13 @@ def test_capture_acceptance_fails_closed_when_nvidia_smi_fails() -> None:
 
 
 def test_ashiba_scan_recognizes_gpu_capacity_artifacts() -> None:
+    assert "gpu_inventory" in claim_artifact_keys()
+    assert "gpu_probe_observation" in claim_artifact_keys()
+    assert "gpu_inventory" in gpu_artifact_keys()
+    assert "parser" not in gpu_artifact_keys()
+    assert "parsed_actions" not in claim_artifact_keys()
+    assert "parsed_actions" in scan_artifact_keys()
+
     proc = run_ashiba_process("scan", "examples/gpu_acceptance_supported", "--json")
     assert proc.returncode == 0, proc.stderr
     result = json.loads(proc.stdout)
@@ -454,6 +492,123 @@ def test_ashiba_scan_gpu_capacity_partial_packet_probe() -> None:
         assert compiled.stdout.strip() == "UNKNOWN"
 
 
+def test_ashiba_scan_recognizes_raw_gpu_capture_packet() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "reservation.json").write_text(
+            json.dumps({
+                "declared_sku": "A10",
+                "declared_count": 1,
+                "declared_region": "Virginia, USA",
+            }),
+            encoding="utf-8",
+        )
+        logs = root / "logs"
+        logs.mkdir()
+        (logs / "nvidia_smi_query.csv").write_text(
+            "\n".join([
+                "index, name, memory.total [MiB], mig.mode.current, timestamp",
+                "0, NVIDIA A10, 23028 MiB, [N/A], 2026/05/31 22:23:21.446",
+            ]),
+            encoding="utf-8",
+        )
+
+        proc = run_ashiba_process("scan", str(root), "--json")
+        assert proc.returncode == 0, proc.stderr
+        result = json.loads(proc.stdout)
+        assert "gpu_capacity_acceptance" in result["can_decide"]
+        assert result["cannot_decide"] == []
+        evidence = {
+            label
+            for observation in result["detected_inputs"]
+            for label in observation["evidence"]
+        }
+        assert {"gpu_inventory", "gpu_probe_observation"} <= evidence
+
+        missing_mig = root / "missing_mig"
+        missing_mig.mkdir()
+        (missing_mig / "reservation.json").write_text(
+            json.dumps({"declared_sku": "A10", "declared_count": 1}),
+            encoding="utf-8",
+        )
+        (missing_mig / "nvidia_smi_query.csv").write_text(
+            "\n".join([
+                "index, name, timestamp",
+                "0, NVIDIA A10, 2026/05/31 22:23:21.446",
+            ]),
+            encoding="utf-8",
+        )
+        missing_mig_scan = run_ashiba_process("scan", str(missing_mig), "--json")
+        assert missing_mig_scan.returncode == 0, missing_mig_scan.stderr
+        missing_mig_result = json.loads(missing_mig_scan.stdout)
+        blocked = [
+            item for item in missing_mig_result["cannot_decide"]
+            if item["claim"] == "gpu_capacity_acceptance"
+        ]
+        assert len(blocked) == 1, missing_mig_result
+        assert blocked[0]["missing"] == ["gpu_probe_observation.observed_mig_modes"]
+
+        divergent = root / "divergent"
+        divergent.mkdir()
+        (divergent / "reservation.json").write_text(
+            json.dumps({"declared_sku": "A10", "declared_count": 2}),
+            encoding="utf-8",
+        )
+        (divergent / "nvidia_smi_query.csv").write_text(
+            "\n".join([
+                "index, name, mig.mode.current, timestamp",
+                "0, NVIDIA A10, [N/A], 2026/05/31 22:23:21.446",
+                "1, NVIDIA A10, [N/A], 2026/05/31 22:25:21.446",
+            ]),
+            encoding="utf-8",
+        )
+        divergent_scan = run_ashiba_process("scan", str(divergent), "--json")
+        assert divergent_scan.returncode == 0, divergent_scan.stderr
+        divergent_result = json.loads(divergent_scan.stdout)
+        blocked = [
+            item for item in divergent_result["cannot_decide"]
+            if item["claim"] == "gpu_capacity_acceptance"
+        ]
+        assert len(blocked) == 1, divergent_result
+        assert blocked[0]["missing"] == ["gpu_probe_observation.observed_at"]
+
+        unrelated = root / "unrelated"
+        unrelated.mkdir()
+        (unrelated / "reservation.json").write_text(
+            json.dumps({"declared_sku": "A10", "declared_count": 1}),
+            encoding="utf-8",
+        )
+        (unrelated / "people.csv").write_text(
+            "\n".join([
+                "name,timestamp",
+                "Ada,2026-05-31T22:23:21Z",
+            ]),
+            encoding="utf-8",
+        )
+        unrelated_scan = run_ashiba_process("scan", str(unrelated), "--json")
+        assert unrelated_scan.returncode == 0, unrelated_scan.stderr
+        unrelated_result = json.loads(unrelated_scan.stdout)
+        blocked = [
+            item for item in unrelated_result["cannot_decide"]
+            if item["claim"] == "gpu_capacity_acceptance"
+        ]
+        assert len(blocked) == 1, unrelated_result
+        assert "gpu_probe_observation.observed_names" in blocked[0]["missing"]
+
+        misnamed = root / "misnamed_declaration"
+        misnamed.mkdir()
+        (misnamed / "declared_capacity.json").write_text(
+            json.dumps({"declared_sku": "A10", "declared_count": 1}),
+            encoding="utf-8",
+        )
+        misnamed_scan = run_ashiba_process("scan", str(misnamed), "--json")
+        assert misnamed_scan.returncode == 0, misnamed_scan.stderr
+        misnamed_result = json.loads(misnamed_scan.stdout)
+        assert "gpu_capacity_acceptance" not in misnamed_result["can_decide"]
+        assert all(item["claim"] != "gpu_capacity_acceptance" for item in misnamed_result["cannot_decide"])
+        assert misnamed_result["detected_inputs"][0]["kinds"] == ["unrecognized JSON"]
+
+
 def run_gpu_acceptance_tests() -> None:
     test_gpu_capacity_acceptance_gallery_fixtures()
     test_gpu_capacity_acceptance_pass_units()
@@ -462,6 +617,7 @@ def run_gpu_acceptance_tests() -> None:
     test_capture_acceptance_fails_closed_when_nvidia_smi_fails()
     test_ashiba_scan_recognizes_gpu_capacity_artifacts()
     test_ashiba_scan_gpu_capacity_partial_packet_probe()
+    test_ashiba_scan_recognizes_raw_gpu_capture_packet()
 
 
 def main() -> int:

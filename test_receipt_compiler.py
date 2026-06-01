@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from claim_contracts import claim_conflicts, claim_has_action_scope, claim_missing
+from claim_contracts import claim_artifact_roots, claim_conflicts, claim_has_action_scope, claim_missing
 from constants import (
     CONTRADICTED,
     NOT_APPLICABLE,
@@ -660,6 +660,23 @@ def test_claim_contract_helpers_drive_readiness_semantics() -> None:
     registry = build_claim_registry()
     auth_pack = registry["authorization_bound_action"]
     deployment_pack = registry["deployment_matches_reviewed_commit"]
+    artifact_roots = set(claim_artifact_roots(registry))
+
+    assert {
+        SIDE_EFFECTS_KEY,
+        "authorization",
+        "approval",
+        "deployment",
+        "review",
+        "gpu_inventory",
+        "gpu_probe_observation",
+        "dcgm_diag",
+        "xid_ecc_log",
+        "nvidia_smi",
+        "probe_manifest",
+    } <= artifact_roots
+    assert "parsed_actions" not in artifact_roots
+    assert "tool_call" not in artifact_roots
 
     assert claim_has_action_scope(auth_pack)
     assert not claim_has_action_scope(deployment_pack)
@@ -2514,6 +2531,85 @@ def test_ashiba_scan_action_readiness_json() -> None:
     )
 
 
+def test_ashiba_scan_uses_claim_pack_roots_for_file_shaped_artifacts() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "parser.json").write_text(
+            json.dumps({
+                "repair_events": [
+                    {
+                        "repair_id": "repair-scan-root",
+                        "repair_function": "normalize_json",
+                        "before_hash": "sha256:before",
+                        "after_hash": "sha256:after",
+                        "writeback_to_model_history": False,
+                    }
+                ]
+            }),
+            encoding="utf-8",
+        )
+
+        proc = run_ashiba_process("scan", str(root), "--json")
+        assert proc.returncode == 0, proc.stderr
+        result = json.loads(proc.stdout)
+        assert "parser_repair_visibility" in result["can_decide"]
+        assert result["cannot_decide"] == []
+        assert result["summary"]["input_kinds"]["Ashiba/evidence artifact"] == 1
+        assert result["detected_inputs"][0]["evidence"] == ["parser"]
+
+
+def test_ashiba_scan_claim_packs_dir_extends_artifact_roots() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        pack_dir = root / "claim_packs"
+        pack_dir.mkdir()
+        logs = root / "logs"
+        logs.mkdir()
+        (pack_dir / "external_scan_pack.json").write_text(
+            json.dumps({
+                "schema_version": "receipt-claim-pack-v0.1",
+                "name": "external_scan_pack",
+                "renderer_family": "agent_trace_integrity",
+                "claim": {
+                    "id": "claim.external_scan_pack",
+                    "text": "External scanner claim pack evidence was present.",
+                },
+                "expected_evidence": ["external_scan_marker.value"],
+                "applicability_evidence": ["external_scan_marker"],
+                "passes": [
+                    "utc_timestamp_format",
+                    "expected_evidence_absence",
+                    "no_future_evidence",
+                ],
+                "pass_params": {},
+            }),
+            encoding="utf-8",
+        )
+        (logs / "external_scan_marker.json").write_text(
+            json.dumps({"value": "present"}),
+            encoding="utf-8",
+        )
+
+        default_scan = run_ashiba_process("scan", str(logs), "--json")
+        assert default_scan.returncode == 0, default_scan.stderr
+        default_result = json.loads(default_scan.stdout)
+        assert "external_scan_pack" not in default_result["can_decide"]
+        assert default_result["detected_inputs"][0]["kinds"] == ["unrecognized JSON"]
+
+        external_scan = run_ashiba_process(
+            "scan",
+            str(logs),
+            "--claim-packs-dir",
+            str(pack_dir),
+            "--json",
+        )
+        assert external_scan.returncode == 0, external_scan.stderr
+        external_result = json.loads(external_scan.stdout)
+        assert "external_scan_pack" in external_result["can_decide"]
+        assert external_result["cannot_decide"] == []
+        assert external_result["detected_inputs"][0]["evidence"] == ["external_scan_marker"]
+
+
 def test_ashiba_scan_requires_cross_boundary_authorization_decision_id() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -3076,6 +3172,8 @@ def main() -> int:
     test_ashiba_scan_readiness_gaps()
     test_ashiba_scan_readiness_json_packets()
     test_ashiba_scan_action_readiness_json()
+    test_ashiba_scan_uses_claim_pack_roots_for_file_shaped_artifacts()
+    test_ashiba_scan_claim_packs_dir_extends_artifact_roots()
     test_ashiba_scan_requires_cross_boundary_authorization_decision_id()
     test_ashiba_scan_compile_authorization_invariant()
     test_importer_preserves_scanner_ready_authorization_binding()

@@ -25,7 +25,6 @@ from claim_contracts import (
     conflict_excluded,
     registry_evidence_guidance,
 )
-from claim_types import build_claim_registry
 from evidence_paths import get_path
 from importer_common import (
     authorization_decision_id_from_fields as _decision_id_from_fields,
@@ -43,32 +42,14 @@ from side_effect_envelope import (
     normalize_side_effect,
     normalize_side_effect_artifacts,
 )
-
-
-TEXT_SUFFIXES = {".json", ".jsonl", ".log", ".txt"}
-SCAN_ARTIFACT_KEYS = (
-    SIDE_EFFECTS_KEY,
-    "authorization",
-    "parsed_actions",
-    "tool_call",
-    "deployment",
-    "review",
-    "approval",
-    "gpu_inventory",
-    "gpu_probe_observation",
-    "probe_manifest",
-    "dcgm_diag",
-    "xid_ecc_log",
-    "nvidia_smi",
+from scan_artifacts import (
+    TEXT_SUFFIXES,
+    claim_artifact_keys,
+    gpu_artifact_keys,
+    nvidia_smi_csv_artifact,
+    scan_artifact_keys,
+    scan_claim_registry,
 )
-FILE_SHAPED_ARTIFACT_KEYS = {
-    "gpu_inventory",
-    "gpu_probe_observation",
-    "probe_manifest",
-    "dcgm_diag",
-    "xid_ecc_log",
-    "nvidia_smi",
-}
 
 DEFAULT_MISSING_WHY = "This missing evidence prevents at least one claim from being decidable."
 
@@ -278,6 +259,11 @@ def _payloads_from_file(path: Path) -> list[Any]:
     if jsonl_records:
         return jsonl_records
 
+    if path.suffix.lower() == ".csv":
+        csv_payload = nvidia_smi_csv_artifact(raw, str(path))
+        if csv_payload:
+            return [csv_payload]
+
     kv = _parse_key_value_log(raw)
     return [kv] if kv else []
 
@@ -341,8 +327,9 @@ def _merge_artifacts(
     source: dict[str, Any],
     conflicts: list[EvidenceConflict] | None = None,
     source_label: str = "",
+    claim_packs_dir: Path | None = None,
 ) -> None:
-    for key in SCAN_ARTIFACT_KEYS:
+    for key in scan_artifact_keys(claim_packs_dir):
         if key in source:
             target[key] = _merge_value(target.get(key), source[key], conflicts, key, source_label)
 
@@ -391,6 +378,19 @@ def _payload_authorization(payload: Any) -> dict[str, Any]:
     if isinstance(payload, dict) and isinstance(payload.get("authorization"), dict):
         return {"authorization": payload["authorization"]}
     return {}
+
+
+def _gpu_inventory_from_reservation(payload: Any, source_label: str) -> dict[str, Any]:
+    if Path(source_label).stem != "reservation":
+        return {}
+    if not isinstance(payload, dict) or "gpu_inventory" in payload:
+        return {}
+    inventory = {}
+    for key in ("declared_sku", "declared_count", "declared_topology_class", "declared_region"):
+        value = payload.get(key)
+        if value not in (None, "", [], {}):
+            inventory[key] = value
+    return {"gpu_inventory": inventory} if inventory else {}
 
 
 def _payload_review(payload: dict[str, Any]) -> dict[str, Any]:
@@ -877,11 +877,15 @@ def _approval_records_from_payload(payload: Any) -> list[dict[str, Any]]:
     return unique
 
 
-def _file_shaped_artifacts(payload: Any, source_label: str) -> dict[str, Any]:
+def _file_shaped_artifacts(
+    payload: Any,
+    source_label: str,
+    claim_packs_dir: Path | None = None,
+) -> dict[str, Any]:
     if not isinstance(payload, dict) or not source_label:
         return {}
     stem = Path(source_label).stem
-    if stem not in FILE_SHAPED_ARTIFACT_KEYS:
+    if stem not in claim_artifact_keys(claim_packs_dir):
         return {}
     if isinstance(payload.get(stem), dict):
         return {}
@@ -892,25 +896,43 @@ def _payload_artifacts(
     payload: Any,
     conflicts: list[EvidenceConflict] | None = None,
     source_label: str = "",
+    claim_packs_dir: Path | None = None,
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {}
     out: dict[str, Any] = {}
-    _merge_artifacts(out, _file_shaped_artifacts(payload, source_label), conflicts, source_label)
-    _merge_artifacts(out, _payload_authorization(payload), conflicts, source_label)
-    for key in SCAN_ARTIFACT_KEYS:
+    _merge_artifacts(
+        out,
+        _file_shaped_artifacts(payload, source_label, claim_packs_dir),
+        conflicts,
+        source_label,
+        claim_packs_dir,
+    )
+    _merge_artifacts(out, _payload_authorization(payload), conflicts, source_label, claim_packs_dir)
+    for key in scan_artifact_keys(claim_packs_dir):
         if key in payload:
-            _merge_artifacts(out, {key: payload[key]}, conflicts, source_label)
-    _merge_artifacts(out, _cloudtrail_artifacts(payload), conflicts, source_label)
-    _merge_artifacts(out, _payload_to_deployment(payload), conflicts, source_label)
+            _merge_artifacts(out, {key: payload[key]}, conflicts, source_label, claim_packs_dir)
+    _merge_artifacts(
+        out,
+        _gpu_inventory_from_reservation(payload, source_label),
+        conflicts,
+        source_label,
+        claim_packs_dir,
+    )
+    _merge_artifacts(out, _cloudtrail_artifacts(payload), conflicts, source_label, claim_packs_dir)
+    _merge_artifacts(out, _payload_to_deployment(payload), conflicts, source_label, claim_packs_dir)
     review = _payload_review(payload)
     if review:
-        _merge_artifacts(out, {"review": review}, conflicts, source_label)
-    _merge_artifacts(out, _payload_to_approval(payload), conflicts, source_label)
+        _merge_artifacts(out, {"review": review}, conflicts, source_label, claim_packs_dir)
+    _merge_artifacts(out, _payload_to_approval(payload), conflicts, source_label, claim_packs_dir)
     return normalize_side_effect_artifacts(out)
 
 
-def _payload_kinds(payload: Any, source_label: str = "") -> list[str]:
+def _payload_kinds(
+    payload: Any,
+    source_label: str = "",
+    claim_packs_dir: Path | None = None,
+) -> list[str]:
     kinds: list[str] = []
     if _cloudtrail_records(payload):
         _append_unique(kinds, "CloudTrail")
@@ -927,10 +949,11 @@ def _payload_kinds(payload: Any, source_label: str = "") -> list[str]:
             _append_unique(kinds, "agent event log")
         if any(key in payload for key in ("approval", "approvals")):
             _append_unique(kinds, "approval evidence")
-        if any(key in payload for key in ("authorization", SIDE_EFFECTS_KEY, "parsed_actions", "tool_call", "review")):
-            _append_unique(kinds, "Ashiba/evidence artifact")
-    artifacts = _payload_artifacts(payload, source_label=source_label)
-    if any(key in artifacts for key in ("gpu_inventory", "gpu_probe_observation", "probe_manifest", "dcgm_diag", "xid_ecc_log", "nvidia_smi")):
+    artifacts = _payload_artifacts(payload, source_label=source_label, claim_packs_dir=claim_packs_dir)
+    gpu_keys = set(gpu_artifact_keys(claim_packs_dir))
+    if any(key in artifacts and key not in gpu_keys for key in scan_artifact_keys(claim_packs_dir)):
+        _append_unique(kinds, "Ashiba/evidence artifact")
+    if any(key in artifacts for key in gpu_keys):
         _append_unique(kinds, "GPU artifact")
     if not kinds:
         _append_unique(kinds, "unrecognized JSON")
@@ -948,10 +971,14 @@ def _payload_record_count(payload: Any) -> int:
     return 1
 
 
-def _payload_evidence_labels(payload: Any, source_label: str = "") -> list[str]:
+def _payload_evidence_labels(
+    payload: Any,
+    source_label: str = "",
+    claim_packs_dir: Path | None = None,
+) -> list[str]:
     labels: list[str] = []
-    artifacts = _payload_artifacts(payload, source_label=source_label)
-    for key in SCAN_ARTIFACT_KEYS:
+    artifacts = _payload_artifacts(payload, source_label=source_label, claim_packs_dir=claim_packs_dir)
+    for key in scan_artifact_keys(claim_packs_dir):
         if key in artifacts:
             _append_unique(labels, key)
     if _approval_records_from_payload(payload):
@@ -959,15 +986,20 @@ def _payload_evidence_labels(payload: Any, source_label: str = "") -> list[str]:
     return labels
 
 
-def _file_observation(path: Path, payloads: list[Any], actions: list[ActionCandidate]) -> FileObservation:
+def _file_observation(
+    path: Path,
+    payloads: list[Any],
+    actions: list[ActionCandidate],
+    claim_packs_dir: Path | None = None,
+) -> FileObservation:
     kinds: list[str] = []
     evidence: list[str] = []
     records = 0
     for payload in payloads:
         records += _payload_record_count(payload)
-        for kind in _payload_kinds(payload, str(path)):
+        for kind in _payload_kinds(payload, str(path), claim_packs_dir):
             _append_unique(kinds, kind)
-        for label in _payload_evidence_labels(payload, str(path)):
+        for label in _payload_evidence_labels(payload, str(path), claim_packs_dir):
             _append_unique(evidence, label)
     return FileObservation(
         path=str(path),
@@ -978,7 +1010,11 @@ def _file_observation(path: Path, payloads: list[Any], actions: list[ActionCandi
     )
 
 
-def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanContext:
+def collect_scan_context(
+    logs: Path,
+    policy_path: Path | None = None,
+    claim_packs_dir: Path | None = None,
+) -> ScanContext:
     artifacts: dict[str, Any] = {}
     warnings: list[str] = []
     conflicts: list[EvidenceConflict] = []
@@ -992,9 +1028,9 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
         policy = _load_json_file(policy_path, "policy")
         if not isinstance(policy, dict):
             raise ValueError("policy JSON root must be an object")
-        _merge_artifacts(artifacts, _authorization_from_policy(policy), conflicts, str(policy_path))
-        _merge_artifacts(artifacts, _review_from_policy(policy), conflicts, str(policy_path))
-        _merge_artifacts(artifacts, _approval_from_policy(policy), conflicts, str(policy_path))
+        _merge_artifacts(artifacts, _authorization_from_policy(policy), conflicts, str(policy_path), claim_packs_dir)
+        _merge_artifacts(artifacts, _review_from_policy(policy), conflicts, str(policy_path), claim_packs_dir)
+        _merge_artifacts(artifacts, _approval_from_policy(policy), conflicts, str(policy_path), claim_packs_dir)
         approvals.extend(_approval_records_from_payload(policy))
         observations.append(FileObservation(
             path=str(policy_path),
@@ -1025,15 +1061,16 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
         for payload in payloads:
             _merge_artifacts(
                 artifacts,
-                _payload_artifacts(payload, conflicts, str(path)),
+                _payload_artifacts(payload, conflicts, str(path), claim_packs_dir),
                 conflicts,
                 str(path),
+                claim_packs_dir,
             )
             payload_actions = _payload_action_candidates(payload, str(path))
             file_actions.extend(payload_actions)
             actions.extend(payload_actions)
             approvals.extend(_approval_records_from_payload(payload))
-        observations.append(_file_observation(path, payloads, file_actions))
+        observations.append(_file_observation(path, payloads, file_actions, claim_packs_dir))
     return ScanContext(
         artifacts=artifacts,
         files_scanned=files_scanned,
@@ -1045,8 +1082,12 @@ def collect_scan_context(logs: Path, policy_path: Path | None = None) -> ScanCon
     )
 
 
-def collect_scan_artifacts(logs: Path, policy_path: Path | None = None) -> tuple[dict[str, Any], list[str], list[str]]:
-    context = collect_scan_context(logs, policy_path)
+def collect_scan_artifacts(
+    logs: Path,
+    policy_path: Path | None = None,
+    claim_packs_dir: Path | None = None,
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    context = collect_scan_context(logs, policy_path, claim_packs_dir)
     return context.artifacts, context.files_scanned, context.warnings
 
 
@@ -1137,6 +1178,7 @@ def _action_readiness(
     registry: dict[str, Any],
     guidance: dict[str, dict[str, Any]],
     inferred_claims: list[str] | None = None,
+    claim_packs_dir: Path | None = None,
 ) -> list[ActionReadiness]:
     action_claims = [
         claim
@@ -1152,10 +1194,16 @@ def _action_readiness(
             for conflict in context.conflicts
             if not conflict_excluded(conflict, ACTION_SPECIFIC_CONFLICT_PREFIXES)
         ]
-        _merge_artifacts(artifacts, normalize_side_effect_artifacts(action.artifacts), action_conflicts, action.source)
+        _merge_artifacts(
+            artifacts,
+            normalize_side_effect_artifacts(action.artifacts),
+            action_conflicts,
+            action.source,
+            claim_packs_dir,
+        )
         approval = _match_approval_for_action(action, context.approvals)
         if approval is not None:
-            _merge_artifacts(artifacts, {"approval": approval}, action_conflicts, action.source)
+            _merge_artifacts(artifacts, {"approval": approval}, action_conflicts, action.source, claim_packs_dir)
 
         readiness: list[ClaimReadiness] = []
         for claim in action_claims:
@@ -1234,13 +1282,17 @@ def _infer_claims(context: ScanContext, registry: dict[str, Any]) -> list[str]:
     return claims
 
 
-def scan_readiness(logs: Path, policy_path: Path | None = None) -> ScanResult:
-    context = collect_scan_context(logs, policy_path)
+def scan_readiness(
+    logs: Path,
+    policy_path: Path | None = None,
+    claim_packs_dir: Path | None = None,
+) -> ScanResult:
+    registry = scan_claim_registry(claim_packs_dir)
+    context = collect_scan_context(logs, policy_path, claim_packs_dir)
     artifacts = context.artifacts
-    registry = build_claim_registry()
     guidance = registry_evidence_guidance(registry)
     inferred = _infer_claims(context, registry)
-    action_rows = _action_readiness(context, registry, guidance, inferred)
+    action_rows = _action_readiness(context, registry, guidance, inferred, claim_packs_dir)
     readiness: list[ClaimReadiness] = []
     for claim in inferred:
         if claim_has_action_scope(registry[claim]):
@@ -1608,10 +1660,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="Emit machine-readable readiness output")
     parser.add_argument("--report", action="store_true", help="Write ashiba_report.md and ashiba_report.json")
     parser.add_argument("--out", type=Path, default=Path("."), help="Output directory for --report")
+    parser.add_argument("--claim-packs-dir", type=Path, help="Optional directory of additive JSON claim packs")
     args = parser.parse_args(argv)
 
     try:
-        result = scan_readiness(args.logs, args.policy)
+        result = scan_readiness(args.logs, args.policy, args.claim_packs_dir)
     except (OSError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
