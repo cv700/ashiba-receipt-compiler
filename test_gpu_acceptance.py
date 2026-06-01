@@ -328,7 +328,7 @@ def test_nvidia_smi_importer_bridge() -> None:
             assert f"missing required {column}" in missing_column.stderr
 
 
-def test_capture_acceptance_writes_tier_a_packet() -> None:
+def test_gpu_acceptance_capture_writes_tier_a_packet() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         bin_dir = tmp_path / "bin"
@@ -361,7 +361,7 @@ def test_capture_acceptance_writes_tier_a_packet() -> None:
         env = {**ENV, "PATH": f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"}
         packet = tmp_path / "packet"
         proc = subprocess.run(
-            ["/bin/bash", "capture_acceptance.sh", str(packet)],
+            ["/bin/bash", "examples/probes/capture_gpu_acceptance.sh", str(packet)],
             cwd=ROOT,
             env=env,
             text=True,
@@ -387,7 +387,7 @@ def test_capture_acceptance_writes_tier_a_packet() -> None:
         assert "No GPU instances" in (logs / "mig_instances.txt").read_text(encoding="utf-8")
 
 
-def test_capture_acceptance_fails_closed_when_nvidia_smi_fails() -> None:
+def test_gpu_acceptance_capture_fails_closed_when_nvidia_smi_fails() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         bin_dir = tmp_path / "bin"
@@ -398,7 +398,7 @@ def test_capture_acceptance_fails_closed_when_nvidia_smi_fails() -> None:
 
         env = {**ENV, "PATH": f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"}
         proc = subprocess.run(
-            ["/bin/bash", "capture_acceptance.sh", str(tmp_path / "packet")],
+            ["/bin/bash", "examples/probes/capture_gpu_acceptance.sh", str(tmp_path / "packet")],
             cwd=ROOT,
             env=env,
             text=True,
@@ -613,8 +613,8 @@ def run_gpu_acceptance_tests() -> None:
     test_gpu_capacity_acceptance_gallery_fixtures()
     test_gpu_capacity_acceptance_pass_units()
     test_nvidia_smi_importer_bridge()
-    test_capture_acceptance_writes_tier_a_packet()
-    test_capture_acceptance_fails_closed_when_nvidia_smi_fails()
+    test_gpu_acceptance_capture_writes_tier_a_packet()
+    test_gpu_acceptance_capture_fails_closed_when_nvidia_smi_fails()
     test_ashiba_scan_recognizes_gpu_capacity_artifacts()
     test_ashiba_scan_gpu_capacity_partial_packet_probe()
     test_ashiba_scan_recognizes_raw_gpu_capture_packet()

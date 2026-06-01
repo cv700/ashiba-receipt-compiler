@@ -70,3 +70,25 @@ Expected receipt verdict:
 ```text
 CONTRADICTED
 ```
+
+## GPU Acceptance Capture Probe
+
+The `capture_gpu_acceptance.sh` script captures the buyer-observed GPU evidence
+used by `gpu_capacity_acceptance`.
+
+It writes:
+
+- `logs/nvidia_smi_query.csv` with GPU names, count-relevant rows, MIG mode,
+  driver/version metadata, PCIe fields, and timestamps;
+- redacted human-readable `nvidia-smi` outputs;
+- `topo.txt`, `host_info.txt`, and `mig_instances.txt` for bounded diagnostic
+  context.
+
+Run on the GPU VM:
+
+```bash
+bash examples/probes/capture_gpu_acceptance.sh acceptance_packet
+```
+
+The capture intentionally avoids stable GPU UUID and serial columns in the CSV
+and redacts those identifiers from human-readable `nvidia-smi` outputs.

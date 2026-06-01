@@ -22,8 +22,9 @@ Raw capture packet readiness:
 ```
 
 For raw packets, `ashiba scan` recognizes a file named `reservation.json` with
-declared GPU fields and `nvidia_smi_query.csv` from `capture_acceptance.sh`. The
-compiler still receives shaped artifacts from `import_nvidia_smi`.
+declared GPU fields and `nvidia_smi_query.csv` from
+`examples/probes/capture_gpu_acceptance.sh`. The compiler still receives shaped
+artifacts from `import_nvidia_smi`.
 
 Supported:
 
@@ -65,7 +66,8 @@ dashboard text included `1x A10 (24 GB PCIe)`, but the captured `nvidia-smi`
 name exposed only `NVIDIA A10`; a literal `A10-PCIe` declaration therefore
 compiles to `unknown` because the variant is not observable in the packet.
 
-Default capture and import avoid stable GPU identifiers. `capture_acceptance.sh`
-does not request UUID or serial columns in the CSV, redacts UUID/serial values
-from human-readable `nvidia-smi` outputs, and `import_nvidia_smi` does not
-promote observed UUIDs into receipt artifacts.
+Default capture and import avoid stable GPU identifiers.
+`examples/probes/capture_gpu_acceptance.sh` does not request UUID or serial
+columns in the CSV, redacts UUID/serial values from human-readable `nvidia-smi`
+outputs, and `import_nvidia_smi` does not promote observed UUIDs into receipt
+artifacts.
