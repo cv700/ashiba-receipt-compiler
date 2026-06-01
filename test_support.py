@@ -59,6 +59,10 @@ def run_import_nvidia_smi_process(*args: str, input_text: str | None = None) -> 
     return run_script("import_nvidia_smi", *args, input_text=input_text)
 
 
+def run_import_pdu_csv_process(*args: str, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    return run_script("import_pdu_csv", *args, input_text=input_text)
+
+
 def run_import_anthropic_process(*args: str, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
     return run_script("import_anthropic", *args, input_text=input_text)
 

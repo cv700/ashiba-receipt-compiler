@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import tempfile
+from pathlib import Path
 
 from constants import (
     CONTRADICTED,
@@ -16,7 +18,7 @@ from constants import (
 from passes import gpu_power_utilization_consistency
 from receipt_ir import ReceiptIR
 from scan_artifacts import claim_artifact_keys, gpu_artifact_keys
-from test_support import run_ashiba_process, run_receipt_json
+from test_support import run_ashiba_process, run_compile_process, run_import_pdu_csv_process, run_receipt_json
 
 
 def _pass_ir(artifacts: dict) -> ReceiptIR:
@@ -41,6 +43,12 @@ def _supported_artifacts() -> dict:
         },
         "power_window": {
             "rack_id": "rack-redacted-001",
+            "provenance": {
+                "source_type": "pdu_csv",
+                "custody_tier": "third_party_sensor",
+                "measurement_type": "rack_aggregate",
+                "binding_basis": "pdu_outlet_map",
+            },
             "samples": [
                 {"observed_at": "2026-06-01T00:01:00Z", "rack_power_kw": 7.92},
                 {"observed_at": "2026-06-01T00:02:00Z", "rack_power_kw": 7.8},
@@ -49,6 +57,8 @@ def _supported_artifacts() -> dict:
         "node_rack_binding": {
             "node_id": "node-redacted-001",
             "rack_id": "rack-redacted-001",
+            "binding_basis": "pdu_outlet_map",
+            "load_attribution": "full_rack_declared_inventory",
         },
     }
 
@@ -57,7 +67,7 @@ def test_gpu_power_consistency_gallery_fixtures() -> None:
     cases = [
         ("gpu_power_consistency_supported", SUPPORTED, 0, PASS_SATISFIED),
         ("gpu_power_consistency_contradicted", CONTRADICTED, 0, PASS_CONTRADICTED),
-        ("gpu_power_consistency_unknown_missing_power", UNKNOWN, 2, PASS_UNKNOWN),
+        ("gpu_power_consistency_unknown_missing_power", UNKNOWN, 4, PASS_UNKNOWN),
         ("gpu_power_consistency_unknown_timestamp_mismatch", UNKNOWN, 0, PASS_UNKNOWN),
     ]
 
@@ -81,7 +91,12 @@ def test_gpu_power_consistency_gallery_fixtures() -> None:
             assert "mean rack power" in result["detail"]
         if directory == "gpu_power_consistency_unknown_missing_power":
             missing = {record["expected_path"] for record in receipt["absence"]}
-            assert missing == {"power_window.rack_id", "power_window.samples"}
+            assert missing == {
+                "power_window.rack_id",
+                "power_window.samples",
+                "power_window.provenance.custody_tier",
+                "power_window.provenance.measurement_type",
+            }
         if directory == "gpu_power_consistency_unknown_timestamp_mismatch":
             assert "no samples fell inside the declared window" in result["detail"]
 
@@ -115,6 +130,114 @@ def test_gpu_power_consistency_pass_units() -> None:
     assert malformed_result.verdict_effect == UNKNOWN
 
 
+def test_gpu_power_consistency_provenance_fail_closed() -> None:
+    missing_provenance = _supported_artifacts()
+    missing_provenance["power_window"].pop("provenance")
+    missing_result = gpu_power_utilization_consistency(_pass_ir(missing_provenance))
+    assert missing_result.status == PASS_UNKNOWN
+    assert "power_window.provenance.custody_tier" in missing_result.metadata["missing_expected_paths"]
+
+    operator_export = _supported_artifacts()
+    operator_export["power_window"]["provenance"]["custody_tier"] = "operator_exported"
+    operator_result = gpu_power_utilization_consistency(_pass_ir(operator_export))
+    assert operator_result.status == PASS_UNKNOWN
+    assert "not independent enough" in operator_result.detail
+
+    operator_binding = _supported_artifacts()
+    operator_binding["node_rack_binding"]["binding_basis"] = "operator_assertion"
+    binding_result = gpu_power_utilization_consistency(_pass_ir(operator_binding))
+    assert binding_result.status == PASS_UNKNOWN
+    assert "operator assertion" in binding_result.detail
+
+    aggregate_without_attribution = _supported_artifacts()
+    aggregate_without_attribution["node_rack_binding"].pop("load_attribution")
+    aggregate_result = gpu_power_utilization_consistency(_pass_ir(aggregate_without_attribution))
+    assert aggregate_result.status == PASS_UNKNOWN
+    assert "aggregate rack power lacks load attribution" in aggregate_result.detail
+
+    per_outlet_without_attribution = _supported_artifacts()
+    per_outlet_without_attribution["power_window"]["provenance"]["measurement_type"] = "per_outlet"
+    per_outlet_without_attribution["node_rack_binding"].pop("load_attribution")
+    per_outlet_result = gpu_power_utilization_consistency(_pass_ir(per_outlet_without_attribution))
+    assert per_outlet_result.status == PASS_SATISFIED
+
+
+def test_import_pdu_csv_emits_power_artifacts_with_custody_metadata() -> None:
+    artifacts = _supported_artifacts()
+    csv_text = (
+        "timestamp,rack_id,rack_power_kw\n"
+        "2026-06-01T00:01:00Z,rack-redacted-001,7.92\n"
+        "2026-06-01T00:02:00Z,rack-redacted-001,7.80\n"
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        declaration_path = tmp_dir / "declaration.json"
+        binding_path = tmp_dir / "binding.json"
+        declaration_path.write_text(json.dumps(artifacts["declaration"]), encoding="utf-8")
+        binding_path.write_text(json.dumps(artifacts["node_rack_binding"]), encoding="utf-8")
+
+        imported = run_import_pdu_csv_process(
+            "-",
+            "--declaration",
+            str(declaration_path),
+            "--binding",
+            str(binding_path),
+            "--custody-tier",
+            "third_party_sensor",
+            "--measurement-type",
+            "rack_aggregate",
+            "--source-label",
+            "redacted independent PDU export",
+            "--provided-by",
+            "facility-ops-redacted",
+            input_text=csv_text,
+        )
+        assert imported.returncode == 0, imported.stderr
+        imported_artifacts = json.loads(imported.stdout)
+        assert imported_artifacts["power_window"]["provenance"]["custody_tier"] == "third_party_sensor"
+        assert imported_artifacts["power_window"]["provenance"]["measurement_type"] == "rack_aggregate"
+        assert imported_artifacts["node_rack_binding"]["binding_basis"] == "pdu_outlet_map"
+        assert imported_artifacts["node_rack_binding"]["load_attribution"] == "full_rack_declared_inventory"
+
+        merged = {
+            **imported_artifacts,
+            "gpu_utilization_window": artifacts["gpu_utilization_window"],
+        }
+        verdict = run_compile_process(
+            "-",
+            "-v",
+            "--claim-type",
+            "gpu_power_utilization_consistency",
+            input_text=json.dumps(merged),
+        )
+        assert verdict.returncode == 0, verdict.stderr
+        assert verdict.stdout.strip() == SUPPORTED.upper()
+
+        weak_import = run_import_pdu_csv_process(
+            "-",
+            "--declaration",
+            str(declaration_path),
+            "--binding",
+            str(binding_path),
+            input_text=csv_text,
+        )
+        assert weak_import.returncode == 0, weak_import.stderr
+        weak_merged = {
+            **json.loads(weak_import.stdout),
+            "gpu_utilization_window": artifacts["gpu_utilization_window"],
+        }
+        weak_verdict = run_compile_process(
+            "-",
+            "-v",
+            "--claim-type",
+            "gpu_power_utilization_consistency",
+            input_text=json.dumps(weak_merged),
+        )
+        assert weak_verdict.returncode == 0, weak_verdict.stderr
+        assert weak_verdict.stdout.strip() == UNKNOWN.upper()
+
+
 def test_ashiba_scan_recognizes_gpu_power_consistency_artifacts() -> None:
     for artifact_key in ("declaration", "gpu_utilization_window", "power_window", "node_rack_binding"):
         assert artifact_key in claim_artifact_keys()
@@ -136,7 +259,12 @@ def test_ashiba_scan_recognizes_gpu_power_consistency_artifacts() -> None:
         if item["claim"] == "gpu_power_utilization_consistency"
     ]
     assert len(blocked) == 1, missing_power_result
-    assert blocked[0]["missing"] == ["power_window.rack_id", "power_window.samples"]
+    assert blocked[0]["missing"] == [
+        "power_window.rack_id",
+        "power_window.samples",
+        "power_window.provenance.custody_tier",
+        "power_window.provenance.measurement_type",
+    ]
     assert "export independent power rack_id for the consistency window" in missing_power_result["probeable_next"]
     assert (
         "export BMC, PDU, SMBPBI, or rack power samples for the same measurement window"
@@ -144,10 +272,119 @@ def test_ashiba_scan_recognizes_gpu_power_consistency_artifacts() -> None:
     )
 
 
+def test_power_unknown_when_provenance_missing() -> None:
+    """Power evidence without provenance metadata must yield UNKNOWN, not SUPPORTED."""
+    arts = _supported_artifacts()
+    arts["power_window"].pop("provenance")
+    result = gpu_power_utilization_consistency(_pass_ir(arts))
+    assert result.status == PASS_UNKNOWN, result
+    assert result.verdict_effect == UNKNOWN, result
+    assert "power_window.provenance.custody_tier" in result.metadata["missing_expected_paths"]
+    assert "power_window.provenance.measurement_type" in result.metadata["missing_expected_paths"]
+
+
+def test_power_unknown_when_timestamp_window_mismatch() -> None:
+    """Samples entirely outside the declared window must yield UNKNOWN."""
+    arts = _supported_artifacts()
+    arts["gpu_utilization_window"]["samples"] = [
+        {"observed_at": "2026-05-31T12:00:00Z", "gpu_utilization_pct": 94},
+    ]
+    arts["power_window"]["samples"] = [
+        {"observed_at": "2026-05-31T12:00:00Z", "rack_power_kw": 7.92},
+    ]
+    result = gpu_power_utilization_consistency(_pass_ir(arts))
+    assert result.status == PASS_UNKNOWN, result
+    assert "no samples fell inside the declared window" in result.detail
+
+
+def test_power_unknown_when_node_rack_binding_missing() -> None:
+    """Absent node-to-rack binding fields must yield UNKNOWN."""
+    arts = _supported_artifacts()
+    arts.pop("node_rack_binding")
+    result = gpu_power_utilization_consistency(_pass_ir(arts))
+    assert result.status == PASS_UNKNOWN, result
+    missing = result.metadata["missing_expected_paths"]
+    assert "node_rack_binding.node_id" in missing
+    assert "node_rack_binding.rack_id" in missing
+    assert "node_rack_binding.binding_basis" in missing
+
+
+def test_power_unknown_when_aggregate_rack_load_unattributed() -> None:
+    """Aggregate rack power without load attribution must yield UNKNOWN."""
+    arts = _supported_artifacts()
+    arts["power_window"]["provenance"]["measurement_type"] = "rack_aggregate"
+    arts["node_rack_binding"].pop("load_attribution")
+    result = gpu_power_utilization_consistency(_pass_ir(arts))
+    assert result.status == PASS_UNKNOWN, result
+    assert "aggregate rack power lacks load attribution" in result.detail
+
+
+def test_power_contradicted_when_high_utilization_low_power() -> None:
+    """High declared GPU utilization with idle-level power must contradict."""
+    arts = _supported_artifacts()
+    arts["power_window"]["samples"] = [
+        {"observed_at": "2026-06-01T00:01:00Z", "rack_power_kw": 1.86},
+        {"observed_at": "2026-06-01T00:02:00Z", "rack_power_kw": 1.90},
+    ]
+    result = gpu_power_utilization_consistency(_pass_ir(arts))
+    assert result.status == PASS_CONTRADICTED, result
+    assert result.verdict_effect == CONTRADICTED, result
+    assert "outside declared band" in result.detail
+    assert result.metadata["mean_rack_power_kw"] < 2.0
+
+
+def test_power_not_supported_by_operator_csv_alone_for_independent_tier() -> None:
+    """Operator-exported power data must not yield SUPPORTED — custody is too weak."""
+    arts = _supported_artifacts()
+    arts["power_window"]["provenance"]["custody_tier"] = "operator_exported"
+    result = gpu_power_utilization_consistency(_pass_ir(arts))
+    assert result.status == PASS_UNKNOWN, result
+    assert result.verdict_effect == UNKNOWN, result
+    assert "not independent enough" in result.detail
+
+    arts2 = _supported_artifacts()
+    arts2["node_rack_binding"]["binding_basis"] = "operator_assertion"
+    result2 = gpu_power_utilization_consistency(_pass_ir(arts2))
+    assert result2.status == PASS_UNKNOWN, result2
+    assert "operator assertion" in result2.detail
+
+
+def test_power_supported_when_independent_power_and_gpu_utilization_align() -> None:
+    """Third-party-sensor power + GPU utilization inside declared bands = SUPPORTED."""
+    arts = _supported_artifacts()
+    assert arts["power_window"]["provenance"]["custody_tier"] == "third_party_sensor"
+    assert arts["node_rack_binding"]["binding_basis"] == "pdu_outlet_map"
+    assert arts["node_rack_binding"]["load_attribution"] == "full_rack_declared_inventory"
+    result = gpu_power_utilization_consistency(_pass_ir(arts))
+    assert result.status == PASS_SATISFIED, result
+    assert result.verdict_effect == SUPPORTED, result
+    assert result.metadata["mean_gpu_utilization_pct"] == 93.0
+    assert result.metadata["mean_rack_power_kw"] == 7.86
+
+    lender = _supported_artifacts()
+    lender["power_window"]["provenance"]["custody_tier"] = "lender_controlled"
+    lender_result = gpu_power_utilization_consistency(_pass_ir(lender))
+    assert lender_result.status == PASS_SATISFIED, lender_result
+
+    facility = _supported_artifacts()
+    facility["power_window"]["provenance"]["custody_tier"] = "facility_exported"
+    facility_result = gpu_power_utilization_consistency(_pass_ir(facility))
+    assert facility_result.status == PASS_SATISFIED, facility_result
+
+
 def run_gpu_power_consistency_tests() -> None:
     test_gpu_power_consistency_gallery_fixtures()
     test_gpu_power_consistency_pass_units()
+    test_gpu_power_consistency_provenance_fail_closed()
+    test_import_pdu_csv_emits_power_artifacts_with_custody_metadata()
     test_ashiba_scan_recognizes_gpu_power_consistency_artifacts()
+    test_power_unknown_when_provenance_missing()
+    test_power_unknown_when_timestamp_window_mismatch()
+    test_power_unknown_when_node_rack_binding_missing()
+    test_power_unknown_when_aggregate_rack_load_unattributed()
+    test_power_contradicted_when_high_utilization_low_power()
+    test_power_not_supported_by_operator_csv_alone_for_independent_tier()
+    test_power_supported_when_independent_power_and_gpu_utilization_align()
 
 
 if __name__ == "__main__":

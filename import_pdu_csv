@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""Import PDU/rack power CSV plus declaration JSON into power consistency artifacts.
+
+Usage:
+    ./import_pdu_csv power_readings.csv --declaration declaration.json --binding binding.json --out artifacts/
+    ./import_pdu_csv power_readings.csv --declaration declaration.json --binding binding.json | ./compile - --claim-type gpu_power_utilization_consistency
+
+CSV must contain columns: timestamp, rack_power_kw
+Optional CSV column: rack_id (overrides --binding rack_id)
+
+Custody tier marks who controlled the power export:
+    operator_exported   — operator/borrower-supplied export
+    facility_exported   — facility or colo-controlled export
+    third_party_sensor  — independent sensor/feed such as Packet Power
+    lender_controlled   — lender or IE-controlled collection path
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from pathlib import Path
+import sys
+from typing import Any
+
+from importer_common import load_json, normalize_timestamp, read_text, write_artifacts
+
+
+CUSTODY_TIERS = ("operator_exported", "facility_exported", "third_party_sensor", "lender_controlled")
+BINDING_BASES = ("rack_label", "pdu_outlet_map", "facility_circuit_map", "operator_assertion")
+MEASUREMENT_TYPES = ("per_outlet", "rack_aggregate", "facility_meter")
+LOAD_ATTRIBUTIONS = ("single_bound_node", "full_rack_declared_inventory", "pdu_outlet_map")
+REQUIRED_COLUMNS = ("timestamp", "rack_power_kw")
+
+
+def _normalize_header(value: str) -> str:
+    return value.strip().lower().replace(" ", "_")
+
+
+def _load_rows(path_arg: str) -> list[dict[str, str]]:
+    raw = read_text(path_arg, "PDU CSV")
+    reader = csv.DictReader(raw.splitlines())
+    if not reader.fieldnames:
+        raise ValueError("PDU CSV must contain a header row")
+    headers = {_normalize_header(h) for h in reader.fieldnames if h}
+    for required in REQUIRED_COLUMNS:
+        if required not in headers:
+            raise ValueError(f"PDU CSV missing required column: {required}")
+
+    rows = []
+    for row in reader:
+        normalized = {
+            _normalize_header(key): (value or "").strip()
+            for key, value in row.items()
+            if key is not None
+        }
+        if any(value for value in normalized.values()):
+            rows.append(normalized)
+    if not rows:
+        raise ValueError("PDU CSV did not contain any power sample rows")
+    return rows
+
+
+def _parse_power_kw(raw: str, row_index: int) -> float:
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"PDU CSV row {row_index}: rack_power_kw {raw!r} is not a number")
+    if value < 0:
+        raise ValueError(f"PDU CSV row {row_index}: rack_power_kw {value} is negative")
+    return value
+
+
+def _build_samples(rows: list[dict[str, str]]) -> list[dict[str, Any]]:
+    samples = []
+    for idx, row in enumerate(rows):
+        raw_ts = row.get("timestamp", "")
+        ts = normalize_timestamp(raw_ts)
+        if not ts:
+            raise ValueError(f"PDU CSV row {idx}: timestamp {raw_ts!r} could not be normalized to UTC")
+        power = _parse_power_kw(row.get("rack_power_kw", ""), idx)
+        samples.append({"observed_at": ts, "rack_power_kw": power})
+    return samples
+
+
+def _extract_rack_id(rows: list[dict[str, str]], binding: dict[str, Any]) -> str:
+    csv_rack_ids = {row.get("rack_id", "").strip() for row in rows if row.get("rack_id", "").strip()}
+    if len(csv_rack_ids) > 1:
+        raise ValueError(f"PDU CSV contains multiple rack_id values: {sorted(csv_rack_ids)}")
+    if csv_rack_ids:
+        return next(iter(csv_rack_ids))
+    rack_id = binding.get("rack_id")
+    if not isinstance(rack_id, str) or not rack_id:
+        raise ValueError("no rack_id found in CSV or binding; provide rack_id column or binding.rack_id")
+    return rack_id
+
+
+def _build_provenance(
+    custody_tier: str,
+    source_label: str,
+    provided_by: str,
+    collection_method: str,
+    clock_source: str,
+    redaction_method: str,
+    binding_basis: str,
+    measurement_type: str,
+) -> dict[str, Any]:
+    provenance: dict[str, Any] = {
+        "source_type": "pdu_csv",
+        "custody_tier": custody_tier,
+    }
+    if provided_by:
+        provenance["provided_by"] = provided_by
+    if source_label:
+        provenance["source_label"] = source_label
+    if collection_method:
+        provenance["collection_method"] = collection_method
+    if clock_source:
+        provenance["clock_source"] = clock_source
+    if redaction_method:
+        provenance["redaction_method"] = redaction_method
+    if binding_basis:
+        provenance["binding_basis"] = binding_basis
+    if measurement_type:
+        provenance["measurement_type"] = measurement_type
+    return provenance
+
+
+def _artifacts(
+    rows: list[dict[str, str]],
+    declaration: dict[str, Any],
+    binding: dict[str, Any],
+    custody_tier: str,
+    source_label: str,
+    provided_by: str,
+    collection_method: str,
+    clock_source: str,
+    redaction_method: str,
+    binding_basis: str,
+    measurement_type: str,
+    load_attribution: str,
+) -> dict[str, Any]:
+    samples = _build_samples(rows)
+    rack_id = _extract_rack_id(rows, binding)
+    node_id = binding.get("node_id")
+    if not isinstance(node_id, str) or not node_id:
+        raise ValueError("binding missing required node_id")
+
+    power_window: dict[str, Any] = {
+        "rack_id": rack_id,
+        "samples": samples,
+        "sample_count": len(samples),
+    }
+    resolved_binding_basis = binding_basis or str(binding.get("binding_basis") or "operator_assertion")
+    if resolved_binding_basis not in BINDING_BASES:
+        raise ValueError(f"binding_basis {resolved_binding_basis!r} must be one of {', '.join(BINDING_BASES)}")
+    resolved_load_attribution = load_attribution or str(binding.get("load_attribution") or "")
+    if resolved_load_attribution and resolved_load_attribution not in LOAD_ATTRIBUTIONS:
+        raise ValueError(
+            f"load_attribution {resolved_load_attribution!r} must be one of {', '.join(LOAD_ATTRIBUTIONS)}"
+        )
+
+    provenance = _build_provenance(
+        custody_tier, source_label, provided_by, collection_method,
+        clock_source, redaction_method, resolved_binding_basis, measurement_type,
+    )
+    power_window["provenance"] = provenance
+
+    node_rack_binding: dict[str, Any] = {
+        "node_id": node_id,
+        "rack_id": rack_id,
+        "binding_basis": resolved_binding_basis,
+    }
+    if resolved_load_attribution:
+        node_rack_binding["load_attribution"] = resolved_load_attribution
+
+    return {
+        "declaration": declaration,
+        "power_window": power_window,
+        "node_rack_binding": node_rack_binding,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("pdu_csv", help="PDU/rack power CSV file, or - for stdin")
+    parser.add_argument(
+        "--declaration", "-d", required=True,
+        help="Declaration JSON with hardware_class, window, and expected bands",
+    )
+    parser.add_argument(
+        "--binding", "-b", required=True,
+        help="Node-to-rack binding JSON with node_id and rack_id",
+    )
+    parser.add_argument(
+        "--custody-tier", "--provenance", "-p",
+        dest="custody_tier",
+        choices=CUSTODY_TIERS,
+        default="operator_exported",
+        help="Custody tier of the power evidence (default: operator_exported)",
+    )
+    parser.add_argument(
+        "--source-label", "-s", default="",
+        help="Label identifying the power data source (e.g., 'Packet Power rack 14')",
+    )
+    parser.add_argument(
+        "--provided-by", default="",
+        help="Who provided the power data (e.g., 'Equinix DA11 facility ops')",
+    )
+    parser.add_argument(
+        "--collection-method", default="",
+        help="How the data was collected (e.g., 'PDU SNMP poll 60s interval')",
+    )
+    parser.add_argument(
+        "--clock-source", default="",
+        help="Clock source for timestamps (e.g., 'PDU NTP-synced', 'operator workstation')",
+    )
+    parser.add_argument(
+        "--redaction-method", default="",
+        help="Any redaction applied (e.g., 'rack_id anonymized')",
+    )
+    parser.add_argument(
+        "--binding-basis",
+        choices=BINDING_BASES,
+        default="",
+        help="Basis for node-to-rack binding; defaults to binding JSON or operator_assertion",
+    )
+    parser.add_argument(
+        "--measurement-type", "-m",
+        choices=MEASUREMENT_TYPES,
+        default="rack_aggregate",
+        help="Granularity of the power measurement (default: rack_aggregate)",
+    )
+    parser.add_argument(
+        "--load-attribution",
+        choices=LOAD_ATTRIBUTIONS,
+        default="",
+        help="Attribution basis for rack_aggregate power measurements",
+    )
+    parser.add_argument("--out", "-o", type=Path, help="Write artifact files to this directory")
+    args = parser.parse_args()
+
+    try:
+        declaration = load_json(args.declaration, "declaration")
+        if not isinstance(declaration, dict):
+            raise ValueError("declaration JSON root must be an object")
+        binding = load_json(args.binding, "binding")
+        if not isinstance(binding, dict):
+            raise ValueError("binding JSON root must be an object")
+        merged = _artifacts(
+            _load_rows(args.pdu_csv),
+            declaration,
+            binding,
+            args.custody_tier,
+            args.source_label,
+            args.provided_by,
+            args.collection_method,
+            args.clock_source,
+            args.redaction_method,
+            args.binding_basis,
+            args.measurement_type,
+            args.load_attribution,
+        )
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    if args.out:
+        write_artifacts(args.out, merged)
+        print(f"power consistency artifacts -> {args.out}/", file=sys.stderr)
+    else:
+        print(json.dumps(merged, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

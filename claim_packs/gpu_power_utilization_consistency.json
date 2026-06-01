@@ -19,13 +19,18 @@
     "gpu_utilization_window.samples",
     "power_window.rack_id",
     "power_window.samples",
+    "power_window.provenance.custody_tier",
+    "power_window.provenance.measurement_type",
     "node_rack_binding.node_id",
-    "node_rack_binding.rack_id"
+    "node_rack_binding.rack_id",
+    "node_rack_binding.binding_basis"
   ],
   "applicability_evidence": [
     "declaration.hardware_class",
     "gpu_utilization_window.samples",
     "power_window.samples",
+    "power_window.provenance.custody_tier",
+    "power_window.provenance.measurement_type",
     "node_rack_binding.node_id"
   ],
   "support_requirements": [],
@@ -147,6 +152,28 @@
         }
       }
     },
+    "power_window.provenance.custody_tier": {
+      "probe": "record the custody tier for the independent power evidence",
+      "why": "Without a custody tier, the receipt cannot distinguish operator-supplied power files from facility, third-party, or lender-controlled evidence.",
+      "suggested_log_shape": {
+        "power_window": {
+          "provenance": {
+            "custody_tier": "third_party_sensor"
+          }
+        }
+      }
+    },
+    "power_window.provenance.measurement_type": {
+      "probe": "record whether the power evidence is per-outlet, rack aggregate, or facility meter data",
+      "why": "Without measurement granularity, the receipt cannot determine whether power evidence is attributable to the bound node/rack pair.",
+      "suggested_log_shape": {
+        "power_window": {
+          "provenance": {
+            "measurement_type": "rack_aggregate"
+          }
+        }
+      }
+    },
     "node_rack_binding.node_id": {
       "probe": "provide node-to-rack binding for the observed GPU node",
       "why": "Without node-to-rack binding, utilization and power evidence may refer to different physical assets.",
@@ -162,6 +189,16 @@
       "suggested_log_shape": {
         "node_rack_binding": {
           "rack_id": "rack-redacted-001"
+        }
+      }
+    },
+    "node_rack_binding.binding_basis": {
+      "probe": "record the basis for node-to-rack binding",
+      "why": "Without a binding basis, the receipt cannot distinguish a physical or facility map from a bare operator assertion.",
+      "suggested_log_shape": {
+        "node_rack_binding": {
+          "binding_basis": "pdu_outlet_map",
+          "load_attribution": "full_rack_declared_inventory"
         }
       }
     }

@@ -1,6 +1,13 @@
 {
   "source": "pdu_export",
   "source_control": "independent_or_lender_controlled",
+  "provenance": {
+    "source_type": "pdu_csv",
+    "custody_tier": "third_party_sensor",
+    "measurement_type": "rack_aggregate",
+    "binding_basis": "pdu_outlet_map",
+    "source_label": "redacted independent PDU export"
+  },
   "rack_id": "rack-redacted-001",
   "samples": [
     {

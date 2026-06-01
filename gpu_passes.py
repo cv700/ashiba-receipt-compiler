@@ -34,9 +34,23 @@ GPU_POWER_UTILIZATION_REQUIRED_PATHS = (
     "gpu_utilization_window.samples",
     "power_window.rack_id",
     "power_window.samples",
+    "power_window.provenance.custody_tier",
+    "power_window.provenance.measurement_type",
     "node_rack_binding.node_id",
     "node_rack_binding.rack_id",
+    "node_rack_binding.binding_basis",
 )
+GPU_POWER_UTILIZATION_OPTIONAL_PATHS = (
+    "power_window.provenance.source_label",
+    "power_window.provenance.clock_source",
+    "power_window.provenance.collection_method",
+    "node_rack_binding.load_attribution",
+)
+INDEPENDENT_POWER_CUSTODY_TIERS = {"facility_exported", "third_party_sensor", "lender_controlled"}
+POWER_CUSTODY_TIERS = {"operator_exported", *INDEPENDENT_POWER_CUSTODY_TIERS}
+POWER_MEASUREMENT_TYPES = {"per_outlet", "rack_aggregate", "facility_meter"}
+POWER_BINDING_BASES = {"rack_label", "pdu_outlet_map", "facility_circuit_map", "operator_assertion"}
+RACK_AGGREGATE_LOAD_ATTRIBUTIONS = {"single_bound_node", "full_rack_declared_inventory", "pdu_outlet_map"}
 
 
 def _string_list(value: Any) -> list[str] | None:
@@ -122,7 +136,12 @@ def _required_power_utilization_values(ir: ReceiptIR) -> tuple[dict[str, Any], l
         path: get_path(ir.artifacts, path)
         for path in GPU_POWER_UTILIZATION_REQUIRED_PATHS
     }
+    values.update({
+        path: get_path(ir.artifacts, path)
+        for path in GPU_POWER_UTILIZATION_OPTIONAL_PATHS
+    })
     missing = [path for path, value in values.items() if not evidence_is_present(value)]
+    missing = [path for path in missing if path in GPU_POWER_UTILIZATION_REQUIRED_PATHS]
     return values, missing
 
 
@@ -203,6 +222,65 @@ def _power_utilization_binding_result(values: dict[str, Any]) -> PassResult | tu
             },
         )
     return gpu_node_id, power_rack_id
+
+
+def _power_utilization_provenance_result(values: dict[str, Any]) -> PassResult | dict[str, Any]:
+    custody_tier = str(values["power_window.provenance.custody_tier"])
+    measurement_type = str(values["power_window.provenance.measurement_type"])
+    binding_basis = str(values["node_rack_binding.binding_basis"])
+    load_attribution = values.get("node_rack_binding.load_attribution")
+
+    invalid = []
+    if custody_tier not in POWER_CUSTODY_TIERS:
+        invalid.append("power_window.provenance.custody_tier")
+    if measurement_type not in POWER_MEASUREMENT_TYPES:
+        invalid.append("power_window.provenance.measurement_type")
+    if binding_basis not in POWER_BINDING_BASES:
+        invalid.append("node_rack_binding.binding_basis")
+    metadata = {
+        "power_custody_tier": custody_tier,
+        "power_measurement_type": measurement_type,
+        "node_rack_binding_basis": binding_basis,
+        "node_rack_load_attribution": load_attribution,
+    }
+    for optional_path in (
+        "power_window.provenance.source_label",
+        "power_window.provenance.clock_source",
+        "power_window.provenance.collection_method",
+    ):
+        if evidence_is_present(values.get(optional_path)):
+            metadata[optional_path.rsplit(".", 1)[1]] = values[optional_path]
+    if invalid:
+        return _unknown_power_utilization_result(
+            "power/utilization consistency could not be determined; invalid provenance field(s): "
+            + ", ".join(invalid),
+            {"missing_expected_paths": invalid, **metadata},
+        )
+    if custody_tier not in INDEPENDENT_POWER_CUSTODY_TIERS:
+        return _unknown_power_utilization_result(
+            f"power/utilization consistency could not be determined; power evidence custody tier "
+            f"{custody_tier!r} is not independent enough for this claim",
+            metadata,
+        )
+    if binding_basis == "operator_assertion":
+        return _unknown_power_utilization_result(
+            "power/utilization consistency could not be determined; node-to-rack binding is only an operator assertion",
+            metadata,
+        )
+    if measurement_type == "facility_meter":
+        return _unknown_power_utilization_result(
+            "power/utilization consistency could not be determined; facility-meter evidence is too coarse for a bound node/rack claim in v0",
+            metadata,
+        )
+    if (
+        measurement_type == "rack_aggregate"
+        and load_attribution not in RACK_AGGREGATE_LOAD_ATTRIBUTIONS
+    ):
+        return _unknown_power_utilization_result(
+            "power/utilization consistency could not be determined; aggregate rack power lacks load attribution for the bound node/rack pair",
+            metadata,
+        )
+    return metadata
 
 
 def _power_utilization_samples_in_window(
@@ -731,6 +809,10 @@ def gpu_power_utilization_consistency(ir: ReceiptIR, params: dict[str, Any] | No
         return binding
     gpu_node_id, power_rack_id = binding
 
+    provenance = _power_utilization_provenance_result(values)
+    if isinstance(provenance, PassResult):
+        return provenance
+
     sample_result = _power_utilization_samples_in_window(values, start, end)
     if isinstance(sample_result, PassResult):
         return sample_result
@@ -752,6 +834,7 @@ def gpu_power_utilization_consistency(ir: ReceiptIR, params: dict[str, Any] | No
         "mean_rack_power_kw": round(mean_rack_power_kw, 3),
         "expected_gpu_utilization_pct": {"min": util_min, "max": util_max},
         "expected_power_band_kw": {"min": power_min, "max": power_max},
+        **provenance,
     }
     contradictions = []
     if mean_gpu_utilization_pct < util_min or mean_gpu_utilization_pct > util_max:

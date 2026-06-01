@@ -235,9 +235,9 @@
         {
           "claim_type": "gpu_power_utilization_consistency",
           "verdict": "unknown",
-          "absence_count": 2,
+          "absence_count": 4,
           "compiler_error_count": 0,
-          "rationale": "GPU utilization and node binding evidence are present, but independent power rack and sample evidence are missing"
+          "rationale": "GPU utilization and node binding evidence are present, but independent power rack, sample, and provenance evidence are missing"
         }
       ]
     },
