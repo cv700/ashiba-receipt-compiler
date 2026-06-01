@@ -2,12 +2,12 @@
   "schema_version": "receipt-gallery-manifest-v1",
   "compiler_version": "evidence-compiler-v0.6",
   "summary": {
-    "expected_directories": 37,
-    "expected_receipts": 42,
+    "expected_directories": 41,
+    "expected_receipts": 46,
     "expected_verdict_counts": {
-      "supported": 18,
-      "contradicted": 11,
-      "unknown": 12,
+      "supported": 19,
+      "contradicted": 12,
+      "unknown": 14,
       "not_applicable": 1
     },
     "expected_compiler_errors": 0
@@ -202,6 +202,54 @@
           "absence_count": 1,
           "compiler_error_count": 0,
           "rationale": "observed GPU evidence is present, but the declared SKU is missing"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_power_consistency_contradicted",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_power_utilization_consistency",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "GPU utilization samples are inside the declared training band while independent rack-power samples are below the declared training power band"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_power_consistency_supported",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_power_utilization_consistency",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "GPU utilization samples, independent rack-power samples, and node-to-rack binding support the declared workload-state bands for the measurement window"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_power_consistency_unknown_missing_power",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_power_utilization_consistency",
+          "verdict": "unknown",
+          "absence_count": 2,
+          "compiler_error_count": 0,
+          "rationale": "GPU utilization and node binding evidence are present, but independent power rack and sample evidence are missing"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_power_consistency_unknown_timestamp_mismatch",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_power_utilization_consistency",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "all required evidence paths are present, but no GPU or power samples fall inside the declared measurement window"
         }
       ]
     },

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from constants import (
@@ -17,6 +18,25 @@ from constants import (
 )
 from evidence_paths import evidence_is_present, get_path
 from receipt_ir import PassResult, ReceiptIR
+
+
+UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
+GPU_POWER_UTILIZATION_PASS_ID = "gpu_power_utilization_consistency"
+GPU_POWER_UTILIZATION_REQUIRED_PATHS = (
+    "declaration.hardware_class",
+    "declaration.window_start",
+    "declaration.window_end",
+    "declaration.expected_power_band_kw.min",
+    "declaration.expected_power_band_kw.max",
+    "declaration.expected_gpu_utilization_pct.min",
+    "declaration.expected_gpu_utilization_pct.max",
+    "gpu_utilization_window.node_id",
+    "gpu_utilization_window.samples",
+    "power_window.rack_id",
+    "power_window.samples",
+    "node_rack_binding.node_id",
+    "node_rack_binding.rack_id",
+)
 
 
 def _string_list(value: Any) -> list[str] | None:
@@ -46,6 +66,198 @@ def _integer(value: Any) -> int | None:
     if isinstance(value, str) and value.strip().isdigit():
         return int(value.strip())
     return None
+
+
+def _utc_timestamp(value: Any) -> datetime | None:
+    """Parse a UTC timestamp with trailing Z, or return None."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.strptime(value, UTC_FMT).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _window_sample_values(
+    samples: Any,
+    value_key: str,
+    start: datetime,
+    end: datetime,
+) -> tuple[list[float], list[int], int] | None:
+    """Return numeric sample values inside a window, malformed indexes, and outside count."""
+    if not isinstance(samples, list) or not samples:
+        return None
+
+    values: list[float] = []
+    malformed_indexes: list[int] = []
+    outside_window_count = 0
+    for idx, sample in enumerate(samples):
+        if not isinstance(sample, dict):
+            malformed_indexes.append(idx)
+            continue
+        observed_at = _utc_timestamp(sample.get("observed_at"))
+        value = _number(sample.get(value_key))
+        if observed_at is None or value is None:
+            malformed_indexes.append(idx)
+            continue
+        if observed_at < start or observed_at > end:
+            outside_window_count += 1
+            continue
+        values.append(value)
+    return values, malformed_indexes, outside_window_count
+
+
+def _unknown_power_utilization_result(detail: str, metadata: dict[str, Any]) -> PassResult:
+    return PassResult(
+        pass_id=GPU_POWER_UTILIZATION_PASS_ID,
+        status=PASS_UNKNOWN,
+        detail=detail,
+        verdict_effect=UNKNOWN,
+        metadata=metadata,
+    )
+
+
+def _required_power_utilization_values(ir: ReceiptIR) -> tuple[dict[str, Any], list[str]]:
+    values = {
+        path: get_path(ir.artifacts, path)
+        for path in GPU_POWER_UTILIZATION_REQUIRED_PATHS
+    }
+    missing = [path for path, value in values.items() if not evidence_is_present(value)]
+    return values, missing
+
+
+def _declared_power_utilization_window(
+    values: dict[str, Any],
+) -> tuple[datetime, datetime, float, float, float, float] | PassResult:
+    start = _utc_timestamp(values["declaration.window_start"])
+    end = _utc_timestamp(values["declaration.window_end"])
+    power_min = _number(values["declaration.expected_power_band_kw.min"])
+    power_max = _number(values["declaration.expected_power_band_kw.max"])
+    util_min = _number(values["declaration.expected_gpu_utilization_pct.min"])
+    util_max = _number(values["declaration.expected_gpu_utilization_pct.max"])
+    invalid = []
+    if start is None:
+        invalid.append("declaration.window_start")
+    if end is None:
+        invalid.append("declaration.window_end")
+    if power_min is None:
+        invalid.append("declaration.expected_power_band_kw.min")
+    if power_max is None:
+        invalid.append("declaration.expected_power_band_kw.max")
+    if util_min is None:
+        invalid.append("declaration.expected_gpu_utilization_pct.min")
+    if util_max is None:
+        invalid.append("declaration.expected_gpu_utilization_pct.max")
+    if invalid:
+        return _unknown_power_utilization_result(
+            "power/utilization consistency could not be determined; invalid field(s): " + ", ".join(invalid),
+            {"missing_expected_paths": invalid},
+        )
+
+    assert start is not None
+    assert end is not None
+    assert power_min is not None
+    assert power_max is not None
+    assert util_min is not None
+    assert util_max is not None
+    if end <= start:
+        return _unknown_power_utilization_result(
+            "measurement window is invalid; declaration.window_end must be after window_start",
+            {
+                "window_start": values["declaration.window_start"],
+                "window_end": values["declaration.window_end"],
+            },
+        )
+    if power_min > power_max or util_min > util_max:
+        return _unknown_power_utilization_result(
+            "declared expected power or utilization band has min greater than max",
+            {
+                "expected_power_band_kw": {"min": power_min, "max": power_max},
+                "expected_gpu_utilization_pct": {"min": util_min, "max": util_max},
+            },
+        )
+    return start, end, power_min, power_max, util_min, util_max
+
+
+def _power_utilization_binding_result(values: dict[str, Any]) -> PassResult | tuple[str, str]:
+    gpu_node_id = str(values["gpu_utilization_window.node_id"])
+    bound_node_id = str(values["node_rack_binding.node_id"])
+    power_rack_id = str(values["power_window.rack_id"])
+    bound_rack_id = str(values["node_rack_binding.rack_id"])
+    binding_mismatches = []
+    if gpu_node_id != bound_node_id:
+        binding_mismatches.append(f"GPU node {gpu_node_id!r} does not match binding node {bound_node_id!r}")
+    if power_rack_id != bound_rack_id:
+        binding_mismatches.append(f"power rack {power_rack_id!r} does not match binding rack {bound_rack_id!r}")
+    if binding_mismatches:
+        return PassResult(
+            pass_id=GPU_POWER_UTILIZATION_PASS_ID,
+            status=PASS_CONTRADICTED,
+            detail="; ".join(binding_mismatches) + ".",
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "gpu_node_id": gpu_node_id,
+                "binding_node_id": bound_node_id,
+                "power_rack_id": power_rack_id,
+                "binding_rack_id": bound_rack_id,
+            },
+        )
+    return gpu_node_id, power_rack_id
+
+
+def _power_utilization_samples_in_window(
+    values: dict[str, Any],
+    start: datetime,
+    end: datetime,
+) -> tuple[list[float], list[float], int, int] | PassResult:
+    gpu_samples = _window_sample_values(
+        values["gpu_utilization_window.samples"],
+        "gpu_utilization_pct",
+        start,
+        end,
+    )
+    power_samples = _window_sample_values(
+        values["power_window.samples"],
+        "rack_power_kw",
+        start,
+        end,
+    )
+    if gpu_samples is None or power_samples is None:
+        missing_sample_paths = []
+        if gpu_samples is None:
+            missing_sample_paths.append("gpu_utilization_window.samples")
+        if power_samples is None:
+            missing_sample_paths.append("power_window.samples")
+        return _unknown_power_utilization_result(
+            "power/utilization consistency could not be determined; sample list missing or empty",
+            {"missing_expected_paths": missing_sample_paths},
+        )
+
+    gpu_values, malformed_gpu_indexes, outside_gpu_count = gpu_samples
+    power_values, malformed_power_indexes, outside_power_count = power_samples
+    if malformed_gpu_indexes or malformed_power_indexes:
+        return _unknown_power_utilization_result(
+            "power/utilization consistency could not be determined; malformed sample row(s) present",
+            {
+                "malformed_gpu_sample_indexes": malformed_gpu_indexes,
+                "malformed_power_sample_indexes": malformed_power_indexes,
+            },
+        )
+    if not gpu_values or not power_values:
+        missing_inside = []
+        if not gpu_values:
+            missing_inside.append("gpu_utilization_window.samples")
+        if not power_values:
+            missing_inside.append("power_window.samples")
+        return _unknown_power_utilization_result(
+            "power/utilization consistency could not be determined; no samples fell inside the declared window",
+            {
+                "missing_expected_paths": missing_inside,
+                "outside_window_gpu_sample_count": outside_gpu_count,
+                "outside_window_power_sample_count": outside_power_count,
+            },
+        )
+    return gpu_values, power_values, outside_gpu_count, outside_power_count
 
 
 def _gpu_sku_tokens(value: Any) -> set[str]:
@@ -497,4 +709,77 @@ def gpu_not_mig_sliced(ir: ReceiptIR, params: dict[str, Any] | None = None) -> P
         detail=detail,
         verdict_effect=SUPPORTED,
         metadata={"observed_mig_modes": modes},
+    )
+
+
+def gpu_power_utilization_consistency(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check bound GPU utilization and independent power samples against declared bands."""
+    values, missing = _required_power_utilization_values(ir)
+    if missing:
+        return _unknown_power_utilization_result(
+            "power/utilization consistency could not be determined; missing field(s): " + ", ".join(missing),
+            {"missing_expected_paths": missing},
+        )
+
+    declared = _declared_power_utilization_window(values)
+    if isinstance(declared, PassResult):
+        return declared
+    start, end, power_min, power_max, util_min, util_max = declared
+
+    binding = _power_utilization_binding_result(values)
+    if isinstance(binding, PassResult):
+        return binding
+    gpu_node_id, power_rack_id = binding
+
+    sample_result = _power_utilization_samples_in_window(values, start, end)
+    if isinstance(sample_result, PassResult):
+        return sample_result
+    gpu_values, power_values, outside_gpu_count, outside_power_count = sample_result
+
+    mean_gpu_utilization_pct = sum(gpu_values) / len(gpu_values)
+    mean_rack_power_kw = sum(power_values) / len(power_values)
+    metadata = {
+        "hardware_class": str(values["declaration.hardware_class"]),
+        "node_id": gpu_node_id,
+        "rack_id": power_rack_id,
+        "window_start": values["declaration.window_start"],
+        "window_end": values["declaration.window_end"],
+        "gpu_sample_count": len(gpu_values),
+        "power_sample_count": len(power_values),
+        "outside_window_gpu_sample_count": outside_gpu_count,
+        "outside_window_power_sample_count": outside_power_count,
+        "mean_gpu_utilization_pct": round(mean_gpu_utilization_pct, 3),
+        "mean_rack_power_kw": round(mean_rack_power_kw, 3),
+        "expected_gpu_utilization_pct": {"min": util_min, "max": util_max},
+        "expected_power_band_kw": {"min": power_min, "max": power_max},
+    }
+    contradictions = []
+    if mean_gpu_utilization_pct < util_min or mean_gpu_utilization_pct > util_max:
+        contradictions.append(
+            f"mean GPU utilization {mean_gpu_utilization_pct:.3g}% is outside declared band "
+            f"{util_min:g}-{util_max:g}%"
+        )
+    if mean_rack_power_kw < power_min or mean_rack_power_kw > power_max:
+        contradictions.append(
+            f"mean rack power {mean_rack_power_kw:.3g} kW is outside declared band "
+            f"{power_min:g}-{power_max:g} kW"
+        )
+    if contradictions:
+        return PassResult(
+            pass_id=GPU_POWER_UTILIZATION_PASS_ID,
+            status=PASS_CONTRADICTED,
+            detail="; ".join(contradictions) + ".",
+            verdict_effect=CONTRADICTED,
+            metadata=metadata,
+        )
+
+    return PassResult(
+        pass_id=GPU_POWER_UTILIZATION_PASS_ID,
+        status=PASS_SATISFIED,
+        detail=(
+            f"mean GPU utilization {mean_gpu_utilization_pct:.3g}% and mean rack power "
+            f"{mean_rack_power_kw:.3g} kW fell inside declared bands for bound node/rack evidence"
+        ),
+        verdict_effect=SUPPORTED,
+        metadata=metadata,
     )

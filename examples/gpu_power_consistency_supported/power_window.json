@@ -1,0 +1,15 @@
+{
+  "source": "pdu_export",
+  "source_control": "independent_or_lender_controlled",
+  "rack_id": "rack-redacted-001",
+  "samples": [
+    {
+      "observed_at": "2026-06-01T00:01:00Z",
+      "rack_power_kw": 7.92
+    },
+    {
+      "observed_at": "2026-06-01T00:02:00Z",
+      "rack_power_kw": 7.8
+    }
+  ]
+}

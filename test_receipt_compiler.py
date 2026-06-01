@@ -9,6 +9,7 @@ from test_execution_contexts import run_execution_context_tests
 from test_gallery import run_gallery_tests
 from test_gpu_acceptance import run_gpu_acceptance_tests
 from test_gpu_collateral import run_gpu_collateral_tests
+from test_gpu_power_consistency import run_gpu_power_consistency_tests
 from test_importers import run_importer_tests
 from test_receipt_core import run_receipt_core_tests
 from test_scan import run_scan_tests
@@ -22,6 +23,7 @@ def main() -> int:
     run_authorization_flow_tests()
     run_importer_tests()
     run_gpu_acceptance_tests()
+    run_gpu_power_consistency_tests()
     run_scan_tests()
     run_gallery_tests()
     print("receipt compiler smoke tests passed")

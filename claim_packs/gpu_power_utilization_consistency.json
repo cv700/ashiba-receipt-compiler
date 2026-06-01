@@ -1,0 +1,176 @@
+{
+  "schema_version": "receipt-claim-pack-v0.1",
+  "name": "gpu_power_utilization_consistency",
+  "description": "Checks whether bound GPU utilization and independent rack-power samples fell inside declared workload-state bands during a measurement window.",
+  "renderer_family": "gpu_collateral",
+  "claim": {
+    "id": "claim.gpu_power_utilization_consistency",
+    "text": "The GPU utilization samples and independent rack-power samples for a bound node/rack pair fell inside the declared workload-state bands during the same measurement window."
+  },
+  "expected_evidence": [
+    "declaration.hardware_class",
+    "declaration.window_start",
+    "declaration.window_end",
+    "declaration.expected_power_band_kw.min",
+    "declaration.expected_power_band_kw.max",
+    "declaration.expected_gpu_utilization_pct.min",
+    "declaration.expected_gpu_utilization_pct.max",
+    "gpu_utilization_window.node_id",
+    "gpu_utilization_window.samples",
+    "power_window.rack_id",
+    "power_window.samples",
+    "node_rack_binding.node_id",
+    "node_rack_binding.rack_id"
+  ],
+  "applicability_evidence": [
+    "declaration.hardware_class",
+    "gpu_utilization_window.samples",
+    "power_window.samples",
+    "node_rack_binding.node_id"
+  ],
+  "support_requirements": [],
+  "evidence_guidance": {
+    "declaration.hardware_class": {
+      "probe": "record declared hardware class for the consistency window",
+      "why": "Without the declared hardware class, the receipt cannot bind the expected bands to a GPU capacity class.",
+      "suggested_log_shape": {
+        "declaration": {
+          "hardware_class": "8x H100 SXM"
+        }
+      }
+    },
+    "declaration.window_start": {
+      "probe": "record the measurement window start in UTC",
+      "why": "Without a window start, telemetry samples cannot be bounded to the asserted period.",
+      "suggested_log_shape": {
+        "declaration": {
+          "window_start": "2026-06-01T00:00:00Z"
+        }
+      }
+    },
+    "declaration.window_end": {
+      "probe": "record the measurement window end in UTC",
+      "why": "Without a window end, telemetry samples cannot be bounded to the asserted period.",
+      "suggested_log_shape": {
+        "declaration": {
+          "window_end": "2026-06-01T00:10:00Z"
+        }
+      }
+    },
+    "declaration.expected_power_band_kw.min": {
+      "probe": "declare the minimum independent power band for the workload and hardware class",
+      "why": "Without a lower power bound, idle-looking rack power cannot contradict a high-utilization workload claim.",
+      "suggested_log_shape": {
+        "declaration": {
+          "expected_power_band_kw": {
+            "min": 6.5
+          }
+        }
+      }
+    },
+    "declaration.expected_power_band_kw.max": {
+      "probe": "declare the maximum independent power band for the workload and hardware class",
+      "why": "Without an upper power bound, anomalous rack power cannot be checked against the asserted workload state.",
+      "suggested_log_shape": {
+        "declaration": {
+          "expected_power_band_kw": {
+            "max": 9.0
+          }
+        }
+      }
+    },
+    "declaration.expected_gpu_utilization_pct.min": {
+      "probe": "declare the minimum GPU utilization band for the workload and hardware class",
+      "why": "Without a lower utilization bound, the receipt cannot distinguish idle or lightly used GPUs from the asserted workload state.",
+      "suggested_log_shape": {
+        "declaration": {
+          "expected_gpu_utilization_pct": {
+            "min": 80
+          }
+        }
+      }
+    },
+    "declaration.expected_gpu_utilization_pct.max": {
+      "probe": "declare the maximum GPU utilization band for the workload and hardware class",
+      "why": "Without an upper utilization bound, anomalous GPU telemetry cannot be checked against the asserted workload state.",
+      "suggested_log_shape": {
+        "declaration": {
+          "expected_gpu_utilization_pct": {
+            "max": 100
+          }
+        }
+      }
+    },
+    "gpu_utilization_window.node_id": {
+      "probe": "export GPU telemetry node_id for the consistency window",
+      "why": "Without a node identifier, GPU telemetry cannot be bound to independent power evidence.",
+      "suggested_log_shape": {
+        "gpu_utilization_window": {
+          "node_id": "node-redacted-001"
+        }
+      }
+    },
+    "gpu_utilization_window.samples": {
+      "probe": "export DCGM or NVML utilization samples for the measurement window",
+      "why": "Without GPU utilization samples, the receipt cannot check the GPU-reported side of the consistency claim.",
+      "suggested_log_shape": {
+        "gpu_utilization_window": {
+          "samples": [
+            {
+              "observed_at": "2026-06-01T00:01:00Z",
+              "gpu_utilization_pct": 94
+            }
+          ]
+        }
+      }
+    },
+    "power_window.rack_id": {
+      "probe": "export independent power rack_id for the consistency window",
+      "why": "Without a rack identifier, independent power samples cannot be bound to the observed GPU node.",
+      "suggested_log_shape": {
+        "power_window": {
+          "rack_id": "rack-redacted-001"
+        }
+      }
+    },
+    "power_window.samples": {
+      "probe": "export BMC, PDU, SMBPBI, or rack power samples for the same measurement window",
+      "why": "Without independent power samples, the receipt cannot check the non-GPU telemetry side of the consistency claim.",
+      "suggested_log_shape": {
+        "power_window": {
+          "samples": [
+            {
+              "observed_at": "2026-06-01T00:01:00Z",
+              "rack_power_kw": 7.92
+            }
+          ]
+        }
+      }
+    },
+    "node_rack_binding.node_id": {
+      "probe": "provide node-to-rack binding for the observed GPU node",
+      "why": "Without node-to-rack binding, utilization and power evidence may refer to different physical assets.",
+      "suggested_log_shape": {
+        "node_rack_binding": {
+          "node_id": "node-redacted-001"
+        }
+      }
+    },
+    "node_rack_binding.rack_id": {
+      "probe": "provide node-to-rack binding for the observed power rack",
+      "why": "Without node-to-rack binding, utilization and power evidence may refer to different physical assets.",
+      "suggested_log_shape": {
+        "node_rack_binding": {
+          "rack_id": "rack-redacted-001"
+        }
+      }
+    }
+  },
+  "passes": [
+    "utc_timestamp_format",
+    "expected_evidence_absence",
+    "gpu_power_utilization_consistency",
+    "no_future_evidence"
+  ],
+  "pass_params": {}
+}

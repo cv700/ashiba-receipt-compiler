@@ -1,0 +1,14 @@
+{
+  "hardware_class": "8x H100 SXM",
+  "window_start": "2026-06-01T00:00:00Z",
+  "window_end": "2026-06-01T00:10:00Z",
+  "declared_workload_state": "training",
+  "expected_power_band_kw": {
+    "min": 6.5,
+    "max": 9.0
+  },
+  "expected_gpu_utilization_pct": {
+    "min": 80,
+    "max": 100
+  }
+}

@@ -282,6 +282,43 @@ PASS_SPECS: dict[str, PassSpec] = {
         required_paths=("gpu_probe_observation.observed_mig_modes", "gpu_probe_observation.observed_count"),
         boundary_role=BOUNDARY_ROLE_SUPPORT_DETAIL,
     ),
+    "gpu_power_utilization_consistency": PassSpec(
+        pass_id="gpu_power_utilization_consistency",
+        family="gpu_power_consistency",
+        scope="claim",
+        readiness=(
+            "requires declared power/utilization bands, GPU utilization samples, "
+            "independent power samples, and node-to-rack binding"
+        ),
+        required_paths=(
+            "declaration.hardware_class",
+            "declaration.window_start",
+            "declaration.window_end",
+            "declaration.expected_power_band_kw.min",
+            "declaration.expected_power_band_kw.max",
+            "declaration.expected_gpu_utilization_pct.min",
+            "declaration.expected_gpu_utilization_pct.max",
+            "gpu_utilization_window.node_id",
+            "gpu_utilization_window.samples",
+            "power_window.rack_id",
+            "power_window.samples",
+            "node_rack_binding.node_id",
+            "node_rack_binding.rack_id",
+        ),
+        contradiction_paths=(
+            "declaration.expected_power_band_kw.min",
+            "declaration.expected_power_band_kw.max",
+            "declaration.expected_gpu_utilization_pct.min",
+            "declaration.expected_gpu_utilization_pct.max",
+            "gpu_utilization_window.node_id",
+            "gpu_utilization_window.samples",
+            "power_window.rack_id",
+            "power_window.samples",
+            "node_rack_binding.node_id",
+            "node_rack_binding.rack_id",
+        ),
+        boundary_role=BOUNDARY_ROLE_SUPPORT_DETAIL,
+    ),
     # Prefix continuity
     "prefix_continuity": PassSpec(
         pass_id="prefix_continuity",

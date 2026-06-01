@@ -34,6 +34,7 @@ from gpu_passes import (
     ecc_threshold_check,
     gpu_node_id_match,
     gpu_not_mig_sliced,
+    gpu_power_utilization_consistency,
     gpu_serial_cross_reference,
     gpu_serial_set_match,
     gpu_sku_count_match,
