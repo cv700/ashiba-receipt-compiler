@@ -54,6 +54,172 @@ The distinction matters. A clean window under meaningful load can support "no
 observed impairment signals crossed these thresholds during this window." It
 cannot by itself support "this node has 37% spare capacity tomorrow."
 
+## Headroom As A Bridge Metric
+
+The better product framing is not "Ashiba invented headroom." It did not.
+Headroom language is already common across server telemetry, power management,
+DCIM, and finance.
+
+The more precise framing is:
+
+```text
+Ashiba is exploring whether GPU/rack headroom can become a receipt-grade bridge
+metric for outside financial counterparties.
+```
+
+In ordinary infrastructure tooling, headroom answers an operator question:
+
+```text
+How much cushion remains before this system hits a power, thermal, bandwidth,
+or performance limit?
+```
+
+In finance, headroom answers a covenant question:
+
+```text
+How much cushion remains before this borrower or asset breaches a threshold?
+```
+
+The branch tries to connect those two ideas. It takes low-level GPU/rack
+signals and begins shaping them into a bounded artifact that a lender,
+marketplace, or insurer could use without becoming the operator of the cluster.
+
+That means the actual bridge is:
+
+```text
+operator telemetry -> limiting-dimension margins -> bounded receipt ->
+finance / settlement / covenant action
+```
+
+The current branch stops at the deterministic receipt primitive. It does not
+yet compute a single scalar "headroom score." But it defines the limiting
+dimensions that such a score would need to respect, and it preserves the most
+important ARC behavior: if the evidence is weak, low-load, missing, malformed,
+or unbound, the output is `unknown`, not a comforting number.
+
+## Nearest Headroom Neighbors
+
+The nearest public neighbors make the branch's boundary sharper.
+
+### Dell iDRAC compute headroom
+
+Dell's iDRAC telemetry documentation includes a server-level
+`SystemUsagePctReading` that aggregates CPU, memory, and I/O utilization and
+describes it as a measurement of "the compute headroom available on the
+server." This is a direct headroom neighbor.
+
+The gap: Dell's metric is server-local operational telemetry. It is not a
+GPU/rack financial receipt, and it does not appear to bind a financially
+relevant time window, node schedule, GPU UUID set, threshold declaration, and
+counterparty-facing verdict.
+
+Source: https://www.dell.com/support/manuals/en-us/poweredge-t360/idrac_telemetry_reference_guide_pub/cumulative-system-usage
+
+### Modius rack headroom
+
+Modius describes AI DCIM for GPU-heavy data centers as normalizing telemetry
+from sources such as Redfish and time-series monitoring systems, then computing
+derived metrics including rack headroom and GPU throttling.
+
+The gap: this is operator-side DCIM and capacity planning. It is very close to
+the infrastructure metric, but not the same as a portable ARC receipt for an
+outside lender, insurer, or marketplace.
+
+Source: https://modius.com/blog/dcim-for-ai-designing-power-cooling-and-observability-for-gpu-heavy-data-centers/
+
+### Power and thermal headroom prior art
+
+Power headroom, thermal headroom, TDP headroom, rack power constraints, and
+task scheduling based on available headroom are crowded. There are old patents
+and ordinary engineering practices around using remaining thermal or power
+budget to control frequency, voltage, throttling, scheduling, and platform
+power allocation.
+
+The gap: these systems generally use headroom for control. Ashiba is not
+claiming the control loop. The branch uses headroom-adjacent telemetry to
+compile an evidentiary artifact about a bounded window.
+
+Example source: https://patents.google.com/patent/US11703930B2/en
+
+### CapitalBridge covenant headroom
+
+CapitalBridge is not a compute-infrastructure neighbor, but it is an excellent
+finance-language neighbor. It frames covenant headroom as the remaining cushion
+before a covenant breach, with status changes before the binary breach event.
+
+The gap: CapitalBridge works on financial covenants such as DSCR, LTV, ICR, and
+asset cover. It does not translate GPU/rack telemetry into a physical-capacity
+margin.
+
+Source: https://capitalbridge.app/covenant-headroom-monitoring
+
+### Symmetric Research SCU
+
+Symmetric Research is the closest compute-finance neighbor. Its public
+description says it builds independent collateral verification for GPU-backed
+lending and has a Standard Compute Unit that normalizes heterogeneous GPU
+fleets into a single comparable metric.
+
+The gap: SCU appears to be a comparability/unitization metric for compute
+capital. The Ashiba branch is narrower and more evidentiary: did a bound node
+show observed sustained-capacity impairment during a declared window under
+meaningful load?
+
+Source: https://www.linkedin.com/company/symres
+
+### Aravolta telemetry underwriting
+
+Aravolta is the closest commercial GPU-finance telemetry neighbor. Its public
+materials describe real-time GPU utilization, temperature, power draw, memory
+usage, workload patterns, thermal violations, power spikes, lifecycle tracking,
+asset risk, and lender dashboards.
+
+The gap: Aravolta appears to be visibility, underwriting, and dashboard oriented.
+Ashiba's possible wedge is not that it sees unique telemetry. It is that it can
+turn a narrow claim about that telemetry into a fail-closed receipt artifact.
+
+Source: https://www.aravolta.com/lenders/telemetry-underwriting
+
+## What Is Actually Differentiated
+
+The branch should not imply that headroom metrics are new. They are not.
+
+The differentiated hypothesis is narrower:
+
+```text
+Make headroom receipt-grade for finance and settlement.
+```
+
+That means the branch is testing whether ARC can convert headroom-adjacent
+operator evidence into something with these properties:
+
+- the window is declared;
+- the GPUs are bound to a node and GPU UUID set;
+- the limiting dimensions are named;
+- thresholds are explicit;
+- low-load evidence cannot support the claim;
+- missing or malformed evidence returns `unknown`;
+- threshold violations return `contradicted`;
+- a clean window supports only the bounded claim, not future capacity.
+
+This is why the current implementation uses an impairment watch instead of a
+positive headroom score. The safest first bridge metric is not:
+
+```text
+remaining safe capacity = 37%
+```
+
+It is:
+
+```text
+the observed window did not cross declared impairment thresholds under
+meaningful load
+```
+
+That is less exciting, but it is more receipt-shaped. A later branch can derive
+a scalar headroom score from the same dimensions if the evidence base and buyer
+need justify it.
+
 ## How We Got Here
 
 The ARC project already has a strong product discipline:
