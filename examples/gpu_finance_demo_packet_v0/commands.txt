@@ -1,0 +1,30 @@
+# ashiba-receipt-compiler - GPU Finance Demo Packet
+# Run from repo root
+
+set -euo pipefail
+
+# 0. Run baseline tests
+PYTHONDONTWRITEBYTECODE=1 python3 test_gpu_acceptance.py
+PYTHONDONTWRITEBYTECODE=1 python3 test_gpu_collateral.py
+
+# 1. Receipt 1 - Supported GPU capacity (Lambda A10)
+./compile examples/gpu_acceptance_lambda_a10_supported \
+  --claim-type gpu_capacity_acceptance --card \
+  > examples/gpu_finance_demo_packet_v0/receipt_cards/capacity_supported.txt
+
+./compile examples/gpu_acceptance_lambda_a10_supported \
+  --claim-type gpu_capacity_acceptance \
+  > examples/gpu_finance_demo_packet_v0/receipt_json/capacity_supported.json
+
+python3 -c 'import json; p="examples/gpu_finance_demo_packet_v0/receipt_json/capacity_supported.json"; d=json.load(open(p)); assert d["verdict"]["status"] == "supported", d["verdict"]'
+
+# 2. Receipt 2 - Unknown MIG ambiguity (GI/CI evidence required)
+./compile examples/gpu_acceptance_mig_unknown \
+  --claim-type gpu_capacity_acceptance --card \
+  > examples/gpu_finance_demo_packet_v0/receipt_cards/mig_unknown.txt
+
+./compile examples/gpu_acceptance_mig_unknown \
+  --claim-type gpu_capacity_acceptance \
+  > examples/gpu_finance_demo_packet_v0/receipt_json/mig_unknown.json
+
+python3 -c 'import json; p="examples/gpu_finance_demo_packet_v0/receipt_json/mig_unknown.json"; d=json.load(open(p)); assert d["verdict"]["status"] == "unknown", d["verdict"]; assert "GI/CI evidence" in d["verdict"]["basis"], d["verdict"]["basis"]'

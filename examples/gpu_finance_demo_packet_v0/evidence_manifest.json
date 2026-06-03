@@ -1,0 +1,46 @@
+[
+  {
+    "receipt": "capacity_supported",
+    "packet_path": null,
+    "source_example_path": "examples/gpu_acceptance_lambda_a10_supported/gpu_inventory.json",
+    "claim_type": "gpu_capacity_acceptance",
+    "source_type": "manual_declaration",
+    "custody_tier": "declaration",
+    "copied_into_packet": false,
+    "generated_by_command": "./compile examples/gpu_acceptance_lambda_a10_supported --claim-type gpu_capacity_acceptance",
+    "notes": "Declares family-level A10 GPU capacity; this is evidence of the declared claim, not provider-side truth."
+  },
+  {
+    "receipt": "capacity_supported",
+    "packet_path": null,
+    "source_example_path": "examples/gpu_acceptance_lambda_a10_supported/gpu_probe_observation.json",
+    "claim_type": "gpu_capacity_acceptance",
+    "source_type": "real_redacted_arc_fixture",
+    "custody_tier": "operator_exported",
+    "copied_into_packet": false,
+    "generated_by_command": "./compile examples/gpu_acceptance_lambda_a10_supported --claim-type gpu_capacity_acceptance",
+    "notes": "nvidia-smi observation with observed GPU name, count, MIG mode, and timestamp. Stable identifiers, serials, UUIDs, SSH details, and account details are omitted."
+  },
+  {
+    "receipt": "mig_unknown",
+    "packet_path": null,
+    "source_example_path": "examples/gpu_acceptance_mig_unknown/gpu_inventory.json",
+    "claim_type": "gpu_capacity_acceptance",
+    "source_type": "synthetic_arc_fixture",
+    "custody_tier": "synthetic",
+    "copied_into_packet": false,
+    "generated_by_command": "./compile examples/gpu_acceptance_mig_unknown --claim-type gpu_capacity_acceptance",
+    "notes": "Declares H100 capacity for the MIG ambiguity case."
+  },
+  {
+    "receipt": "mig_unknown",
+    "packet_path": null,
+    "source_example_path": "examples/gpu_acceptance_mig_unknown/gpu_probe_observation.json",
+    "claim_type": "gpu_capacity_acceptance",
+    "source_type": "synthetic_arc_fixture",
+    "custody_tier": "synthetic",
+    "copied_into_packet": false,
+    "generated_by_command": "./compile examples/gpu_acceptance_mig_unknown --claim-type gpu_capacity_acceptance",
+    "notes": "MIG is enabled in the observation, with no instance-level GI/CI records present."
+  }
+]
