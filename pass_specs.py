@@ -325,6 +325,48 @@ PASS_SPECS: dict[str, PassSpec] = {
         ),
         boundary_role=BOUNDARY_ROLE_SUPPORT_DETAIL,
     ),
+    "gpu_sustained_capacity_impairment_watch": PassSpec(
+        pass_id="gpu_sustained_capacity_impairment_watch",
+        family="gpu_capacity_impairment",
+        scope="claim",
+        readiness=(
+            "requires declared impairment thresholds, meaningful-load telemetry samples, "
+            "and node/GPU binding for the measurement window"
+        ),
+        required_paths=(
+            "declaration.hardware_class",
+            "declaration.window_start",
+            "declaration.window_end",
+            "declaration.min_sample_count",
+            "declaration.min_mean_gpu_utilization_pct",
+            "declaration.min_clock_ratio",
+            "declaration.max_throttle_sample_fraction",
+            "declaration.min_thermal_margin_c",
+            "declaration.min_power_margin_watts",
+            "declaration.max_uncorrectable_ecc_delta",
+            "declaration.max_xid_count_delta",
+            "declaration.max_fabric_error_delta",
+            "gpu_impairment_window.node_id",
+            "gpu_impairment_window.samples",
+            "gpu_impairment_binding.node_id",
+            "gpu_impairment_binding.gpu_uuids",
+            "gpu_impairment_binding.binding_basis",
+        ),
+        contradiction_paths=(
+            "declaration.min_clock_ratio",
+            "declaration.max_throttle_sample_fraction",
+            "declaration.min_thermal_margin_c",
+            "declaration.min_power_margin_watts",
+            "declaration.max_uncorrectable_ecc_delta",
+            "declaration.max_xid_count_delta",
+            "declaration.max_fabric_error_delta",
+            "gpu_impairment_window.node_id",
+            "gpu_impairment_window.samples",
+            "gpu_impairment_binding.node_id",
+            "gpu_impairment_binding.gpu_uuids",
+        ),
+        boundary_role=BOUNDARY_ROLE_SUPPORT_DETAIL,
+    ),
     # Prefix continuity
     "prefix_continuity": PassSpec(
         pass_id="prefix_continuity",

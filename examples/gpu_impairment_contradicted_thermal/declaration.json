@@ -1,0 +1,14 @@
+{
+  "hardware_class": "8x H100 SXM",
+  "window_start": "2026-06-01T00:00:00Z",
+  "window_end": "2026-06-01T00:10:00Z",
+  "min_sample_count": 2,
+  "min_mean_gpu_utilization_pct": 70,
+  "min_clock_ratio": 0.9,
+  "max_throttle_sample_fraction": 0.02,
+  "min_thermal_margin_c": 5,
+  "min_power_margin_watts": 50,
+  "max_uncorrectable_ecc_delta": 0,
+  "max_xid_count_delta": 0,
+  "max_fabric_error_delta": 0
+}

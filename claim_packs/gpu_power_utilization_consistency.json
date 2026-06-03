@@ -26,7 +26,6 @@
     "node_rack_binding.binding_basis"
   ],
   "applicability_evidence": [
-    "declaration.hardware_class",
     "gpu_utilization_window.samples",
     "power_window.samples",
     "power_window.provenance.custody_tier",

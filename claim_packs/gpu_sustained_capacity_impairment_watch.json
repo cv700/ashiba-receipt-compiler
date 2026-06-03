@@ -1,0 +1,91 @@
+{
+  "schema_version": "receipt-claim-pack-v0.1",
+  "name": "gpu_sustained_capacity_impairment_watch",
+  "description": "Checks whether GPU telemetry samples under meaningful observed load stayed within declared capacity-impairment thresholds during a measurement window.",
+  "renderer_family": "gpu_collateral",
+  "claim": {
+    "id": "claim.gpu_sustained_capacity_impairment_watch",
+    "text": "The bound GPU node showed no observed sustained-capacity impairment signals across declared clock, throttle, thermal, power, ECC, Xid, and fabric thresholds during the measurement window under meaningful load."
+  },
+  "expected_evidence": [
+    "declaration.hardware_class",
+    "declaration.window_start",
+    "declaration.window_end",
+    "declaration.min_sample_count",
+    "declaration.min_mean_gpu_utilization_pct",
+    "declaration.min_clock_ratio",
+    "declaration.max_throttle_sample_fraction",
+    "declaration.min_thermal_margin_c",
+    "declaration.min_power_margin_watts",
+    "declaration.max_uncorrectable_ecc_delta",
+    "declaration.max_xid_count_delta",
+    "declaration.max_fabric_error_delta",
+    "gpu_impairment_window.node_id",
+    "gpu_impairment_window.samples",
+    "gpu_impairment_binding.node_id",
+    "gpu_impairment_binding.gpu_uuids",
+    "gpu_impairment_binding.binding_basis"
+  ],
+  "applicability_evidence": [
+    "gpu_impairment_window.node_id",
+    "gpu_impairment_window.samples",
+    "gpu_impairment_binding.node_id"
+  ],
+  "support_requirements": [],
+  "evidence_guidance": {
+    "declaration.min_mean_gpu_utilization_pct": {
+      "probe": "declare the minimum mean GPU utilization required before clean telemetry can support the impairment-watch claim",
+      "why": "Idle clean telemetry does not support sustained-capacity evidence.",
+      "suggested_log_shape": {
+        "declaration": {
+          "min_mean_gpu_utilization_pct": 70
+        }
+      }
+    },
+    "gpu_impairment_window.samples": {
+      "probe": "export timestamped GPU samples with utilization, clocks, limits, throttle reasons, ECC/Xid deltas, and fabric error deltas",
+      "why": "The impairment watch can only be objective when every limiting dimension has named observed values and declared thresholds.",
+      "suggested_log_shape": {
+        "gpu_impairment_window": {
+          "samples": [
+            {
+              "observed_at": "2026-06-01T00:01:00Z",
+              "gpu_uuid": "GPU-redacted-001",
+              "gpu_utilization_pct": 88,
+              "sm_clock_mhz": 1880,
+              "expected_sm_clock_mhz": 1980,
+              "gpu_temp_c": 75,
+              "thermal_limit_c": 90,
+              "power_watts": 610,
+              "power_limit_watts": 700,
+              "throttle_reasons": [],
+              "uncorrectable_ecc_delta": 0,
+              "xid_count_delta": 0,
+              "fabric_error_delta": 0
+            }
+          ]
+        }
+      }
+    },
+    "gpu_impairment_binding.gpu_uuids": {
+      "probe": "bind the sampled GPU UUIDs to the node schedule under review",
+      "why": "Without UUID binding, impairment telemetry may refer to GPUs outside the financed or declared node.",
+      "suggested_log_shape": {
+        "gpu_impairment_binding": {
+          "node_id": "node-redacted-001",
+          "gpu_uuids": [
+            "GPU-redacted-001"
+          ],
+          "binding_basis": "nvidia_smi_uuid"
+        }
+      }
+    }
+  },
+  "passes": [
+    "utc_timestamp_format",
+    "expected_evidence_absence",
+    "gpu_sustained_capacity_impairment_watch",
+    "no_future_evidence"
+  ],
+  "pass_params": {}
+}

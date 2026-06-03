@@ -2,12 +2,12 @@
   "schema_version": "receipt-gallery-manifest-v1",
   "compiler_version": "evidence-compiler-v0.6",
   "summary": {
-    "expected_directories": 41,
-    "expected_receipts": 46,
+    "expected_directories": 46,
+    "expected_receipts": 51,
     "expected_verdict_counts": {
-      "supported": 19,
-      "contradicted": 12,
-      "unknown": 14,
+      "supported": 20,
+      "contradicted": 14,
+      "unknown": 16,
       "not_applicable": 1
     },
     "expected_compiler_errors": 0
@@ -202,6 +202,66 @@
           "absence_count": 1,
           "compiler_error_count": 0,
           "rationale": "observed GPU evidence is present, but the declared SKU is missing"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_impairment_contradicted_fabric",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_sustained_capacity_impairment_watch",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "samples are under meaningful load, but the fabric error delta exceeds the declared maximum"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_impairment_contradicted_thermal",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_sustained_capacity_impairment_watch",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "samples are under meaningful load, but thermal margin and throttle fraction cross declared impairment thresholds"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_impairment_supported",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_sustained_capacity_impairment_watch",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "samples are under meaningful load and all declared clock, throttle, thermal, power, ECC, Xid, and fabric impairment thresholds are met"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_impairment_unknown_idle",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_sustained_capacity_impairment_watch",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "samples are clean but below the meaningful-load threshold, so idle telemetry cannot support the impairment-watch claim"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_impairment_unknown_missing_clock",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_sustained_capacity_impairment_watch",
+          "verdict": "unknown",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "a sample is missing the expected clock field needed to compute an objective clock ratio"
         }
       ]
     },

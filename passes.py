@@ -38,6 +38,7 @@ from gpu_passes import (
     gpu_serial_cross_reference,
     gpu_serial_set_match,
     gpu_sku_count_match,
+    gpu_sustained_capacity_impairment_watch,
 )
 from pass_specs import PASS_SPECS, PassSpec, get_pass_spec as _get_pass_spec
 from receipt_ir import PassResult, ReceiptIR

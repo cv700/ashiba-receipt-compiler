@@ -1,0 +1,35 @@
+{
+  "node_id": "node-redacted-001",
+  "samples": [
+    {
+      "observed_at": "2026-06-01T00:01:00Z",
+      "gpu_uuid": "GPU-redacted-001",
+      "gpu_utilization_pct": 12,
+      "sm_clock_mhz": 1880,
+      "expected_sm_clock_mhz": 1980,
+      "gpu_temp_c": 45,
+      "thermal_limit_c": 90,
+      "power_watts": 170,
+      "power_limit_watts": 700,
+      "throttle_reasons": [],
+      "uncorrectable_ecc_delta": 0,
+      "xid_count_delta": 0,
+      "fabric_error_delta": 0
+    },
+    {
+      "observed_at": "2026-06-01T00:02:00Z",
+      "gpu_uuid": "GPU-redacted-002",
+      "gpu_utilization_pct": 15,
+      "sm_clock_mhz": 1875,
+      "expected_sm_clock_mhz": 1980,
+      "gpu_temp_c": 46,
+      "thermal_limit_c": 90,
+      "power_watts": 175,
+      "power_limit_watts": 700,
+      "throttle_reasons": [],
+      "uncorrectable_ecc_delta": 0,
+      "xid_count_delta": 0,
+      "fabric_error_delta": 0
+    }
+  ]
+}

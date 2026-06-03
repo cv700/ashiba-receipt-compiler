@@ -22,6 +22,7 @@ from receipt_ir import PassResult, ReceiptIR
 
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 GPU_POWER_UTILIZATION_PASS_ID = "gpu_power_utilization_consistency"
+GPU_IMPAIRMENT_WATCH_PASS_ID = "gpu_sustained_capacity_impairment_watch"
 GPU_POWER_UTILIZATION_REQUIRED_PATHS = (
     "declaration.hardware_class",
     "declaration.window_start",
@@ -51,6 +52,38 @@ POWER_CUSTODY_TIERS = {"operator_exported", *INDEPENDENT_POWER_CUSTODY_TIERS}
 POWER_MEASUREMENT_TYPES = {"per_outlet", "rack_aggregate", "facility_meter"}
 POWER_BINDING_BASES = {"rack_label", "pdu_outlet_map", "facility_circuit_map", "operator_assertion"}
 RACK_AGGREGATE_LOAD_ATTRIBUTIONS = {"single_bound_node", "full_rack_declared_inventory", "pdu_outlet_map"}
+GPU_IMPAIRMENT_REQUIRED_PATHS = (
+    "declaration.hardware_class",
+    "declaration.window_start",
+    "declaration.window_end",
+    "declaration.min_sample_count",
+    "declaration.min_mean_gpu_utilization_pct",
+    "declaration.min_clock_ratio",
+    "declaration.max_throttle_sample_fraction",
+    "declaration.min_thermal_margin_c",
+    "declaration.min_power_margin_watts",
+    "declaration.max_uncorrectable_ecc_delta",
+    "declaration.max_xid_count_delta",
+    "declaration.max_fabric_error_delta",
+    "gpu_impairment_window.node_id",
+    "gpu_impairment_window.samples",
+    "gpu_impairment_binding.node_id",
+    "gpu_impairment_binding.gpu_uuids",
+    "gpu_impairment_binding.binding_basis",
+)
+GPU_IMPAIRMENT_BINDING_BASES = {"nvidia_smi_uuid", "dcgm_uuid", "probe_manifest", "operator_assertion"}
+GPU_IMPAIRMENT_SAMPLE_NUMERIC_FIELDS = (
+    "gpu_utilization_pct",
+    "sm_clock_mhz",
+    "expected_sm_clock_mhz",
+    "gpu_temp_c",
+    "thermal_limit_c",
+    "power_watts",
+    "power_limit_watts",
+    "uncorrectable_ecc_delta",
+    "xid_count_delta",
+    "fabric_error_delta",
+)
 
 
 def _string_list(value: Any) -> list[str] | None:
@@ -129,6 +162,28 @@ def _unknown_power_utilization_result(detail: str, metadata: dict[str, Any]) -> 
         verdict_effect=UNKNOWN,
         metadata=metadata,
     )
+
+
+def _unknown_impairment_result(detail: str, metadata: dict[str, Any]) -> PassResult:
+    return PassResult(
+        pass_id=GPU_IMPAIRMENT_WATCH_PASS_ID,
+        status=PASS_UNKNOWN,
+        detail=detail,
+        verdict_effect=UNKNOWN,
+        metadata=metadata,
+    )
+
+
+def _required_impairment_values(ir: ReceiptIR) -> tuple[dict[str, Any], list[str]]:
+    values = {
+        path: get_path(ir.artifacts, path)
+        for path in GPU_IMPAIRMENT_REQUIRED_PATHS
+    }
+    missing = [
+        path for path, value in values.items()
+        if not evidence_is_present(value)
+    ]
+    return values, missing
 
 
 def _required_power_utilization_values(ir: ReceiptIR) -> tuple[dict[str, Any], list[str]]:
@@ -787,6 +842,374 @@ def gpu_not_mig_sliced(ir: ReceiptIR, params: dict[str, Any] | None = None) -> P
         detail=detail,
         verdict_effect=SUPPORTED,
         metadata={"observed_mig_modes": modes},
+    )
+
+
+def _declared_impairment_thresholds(
+    values: dict[str, Any],
+) -> tuple[datetime, datetime, dict[str, float | int]] | PassResult:
+    start = _utc_timestamp(values["declaration.window_start"])
+    end = _utc_timestamp(values["declaration.window_end"])
+    if start is None or end is None:
+        return _unknown_impairment_result(
+            "capacity impairment watch could not be determined; declaration window is not valid UTC",
+            {
+                "window_start": values["declaration.window_start"],
+                "window_end": values["declaration.window_end"],
+            },
+        )
+    if start >= end:
+        return _unknown_impairment_result(
+            "capacity impairment watch could not be determined; declaration window start is not before end",
+            {
+                "window_start": values["declaration.window_start"],
+                "window_end": values["declaration.window_end"],
+            },
+        )
+
+    min_sample_count = _integer(values["declaration.min_sample_count"])
+    min_mean_utilization = _number(values["declaration.min_mean_gpu_utilization_pct"])
+    min_clock_ratio = _number(values["declaration.min_clock_ratio"])
+    max_throttle_fraction = _number(values["declaration.max_throttle_sample_fraction"])
+    min_thermal_margin = _number(values["declaration.min_thermal_margin_c"])
+    min_power_margin = _number(values["declaration.min_power_margin_watts"])
+    max_ecc_delta = _integer(values["declaration.max_uncorrectable_ecc_delta"])
+    max_xid_delta = _integer(values["declaration.max_xid_count_delta"])
+    max_fabric_delta = _integer(values["declaration.max_fabric_error_delta"])
+    thresholds: dict[str, float | int] = {}
+    invalid: list[str] = []
+
+    if min_sample_count is None or min_sample_count <= 0:
+        invalid.append("declaration.min_sample_count")
+    else:
+        thresholds["min_sample_count"] = min_sample_count
+    if min_mean_utilization is None or min_mean_utilization < 0 or min_mean_utilization > 100:
+        invalid.append("declaration.min_mean_gpu_utilization_pct")
+    else:
+        thresholds["min_mean_gpu_utilization_pct"] = min_mean_utilization
+    if min_clock_ratio is None or min_clock_ratio <= 0:
+        invalid.append("declaration.min_clock_ratio")
+    else:
+        thresholds["min_clock_ratio"] = min_clock_ratio
+    if max_throttle_fraction is None or max_throttle_fraction < 0 or max_throttle_fraction > 1:
+        invalid.append("declaration.max_throttle_sample_fraction")
+    else:
+        thresholds["max_throttle_sample_fraction"] = max_throttle_fraction
+    if min_thermal_margin is None or min_thermal_margin < 0:
+        invalid.append("declaration.min_thermal_margin_c")
+    else:
+        thresholds["min_thermal_margin_c"] = min_thermal_margin
+    if min_power_margin is None or min_power_margin < 0:
+        invalid.append("declaration.min_power_margin_watts")
+    else:
+        thresholds["min_power_margin_watts"] = min_power_margin
+    if max_ecc_delta is None or max_ecc_delta < 0:
+        invalid.append("declaration.max_uncorrectable_ecc_delta")
+    else:
+        thresholds["max_uncorrectable_ecc_delta"] = max_ecc_delta
+    if max_xid_delta is None or max_xid_delta < 0:
+        invalid.append("declaration.max_xid_count_delta")
+    else:
+        thresholds["max_xid_count_delta"] = max_xid_delta
+    if max_fabric_delta is None or max_fabric_delta < 0:
+        invalid.append("declaration.max_fabric_error_delta")
+    else:
+        thresholds["max_fabric_error_delta"] = max_fabric_delta
+
+    if invalid:
+        return _unknown_impairment_result(
+            "capacity impairment watch could not be determined; invalid threshold field(s): "
+            + ", ".join(invalid),
+            {"invalid_threshold_paths": invalid},
+        )
+    return start, end, thresholds
+
+
+def _impairment_binding_result(values: dict[str, Any]) -> PassResult | tuple[str, set[str], str]:
+    window_node_id = str(values["gpu_impairment_window.node_id"])
+    binding_node_id = str(values["gpu_impairment_binding.node_id"])
+    binding_basis = str(values["gpu_impairment_binding.binding_basis"])
+    bound_gpu_uuids = _string_list(values["gpu_impairment_binding.gpu_uuids"])
+    if not bound_gpu_uuids:
+        return _unknown_impairment_result(
+            "capacity impairment watch could not be determined; bound GPU UUID list is missing or empty",
+            {"missing_expected_paths": ["gpu_impairment_binding.gpu_uuids"]},
+        )
+    if binding_basis not in GPU_IMPAIRMENT_BINDING_BASES:
+        return _unknown_impairment_result(
+            f"capacity impairment watch could not be determined; binding basis {binding_basis!r} is not recognized",
+            {
+                "binding_basis": binding_basis,
+                "accepted_binding_bases": sorted(GPU_IMPAIRMENT_BINDING_BASES),
+            },
+        )
+    if window_node_id != binding_node_id:
+        return PassResult(
+            pass_id=GPU_IMPAIRMENT_WATCH_PASS_ID,
+            status=PASS_CONTRADICTED,
+            detail=(
+                f"capacity impairment evidence node {window_node_id!r} does not match "
+                f"binding node {binding_node_id!r}"
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "gpu_impairment_window_node_id": window_node_id,
+                "gpu_impairment_binding_node_id": binding_node_id,
+            },
+        )
+    return window_node_id, set(bound_gpu_uuids), binding_basis
+
+
+def _impairment_samples_in_window(
+    values: dict[str, Any],
+    start: datetime,
+    end: datetime,
+    bound_gpu_uuids: set[str],
+) -> PassResult | tuple[list[dict[str, Any]], int]:
+    samples = values["gpu_impairment_window.samples"]
+    if not isinstance(samples, list) or not samples:
+        return _unknown_impairment_result(
+            "capacity impairment watch could not be determined; sample list missing or empty",
+            {"missing_expected_paths": ["gpu_impairment_window.samples"]},
+        )
+
+    rows: list[dict[str, Any]] = []
+    malformed_indexes: list[int] = []
+    unbound_gpu_uuids: list[str] = []
+    outside_window_count = 0
+
+    for idx, sample in enumerate(samples):
+        if not isinstance(sample, dict):
+            malformed_indexes.append(idx)
+            continue
+        observed_at = _utc_timestamp(sample.get("observed_at"))
+        if observed_at is None:
+            malformed_indexes.append(idx)
+            continue
+        if observed_at < start or observed_at > end:
+            outside_window_count += 1
+            continue
+
+        gpu_uuid = sample.get("gpu_uuid")
+        if not isinstance(gpu_uuid, str) or not gpu_uuid:
+            malformed_indexes.append(idx)
+            continue
+        if gpu_uuid not in bound_gpu_uuids:
+            unbound_gpu_uuids.append(gpu_uuid)
+
+        numeric_values: dict[str, float] = {}
+        row_malformed = False
+        for field in GPU_IMPAIRMENT_SAMPLE_NUMERIC_FIELDS:
+            numeric_value = _number(sample.get(field))
+            if numeric_value is None:
+                row_malformed = True
+                break
+            numeric_values[field] = numeric_value
+        throttle_reasons = sample.get("throttle_reasons")
+        if not isinstance(throttle_reasons, list) or any(not isinstance(reason, str) for reason in throttle_reasons):
+            row_malformed = True
+        if row_malformed:
+            malformed_indexes.append(idx)
+            continue
+        if numeric_values["expected_sm_clock_mhz"] <= 0:
+            malformed_indexes.append(idx)
+            continue
+        if (
+            numeric_values["uncorrectable_ecc_delta"] < 0
+            or numeric_values["xid_count_delta"] < 0
+            or numeric_values["fabric_error_delta"] < 0
+        ):
+            malformed_indexes.append(idx)
+            continue
+
+        rows.append({
+            "gpu_uuid": gpu_uuid,
+            **numeric_values,
+            "throttle_reasons": throttle_reasons,
+        })
+
+    if malformed_indexes:
+        return _unknown_impairment_result(
+            "capacity impairment watch could not be determined; malformed sample row(s) present",
+            {"malformed_sample_indexes": malformed_indexes},
+        )
+    if unbound_gpu_uuids:
+        return PassResult(
+            pass_id=GPU_IMPAIRMENT_WATCH_PASS_ID,
+            status=PASS_CONTRADICTED,
+            detail="capacity impairment samples reference GPU UUID(s) outside the bound node schedule.",
+            verdict_effect=CONTRADICTED,
+            metadata={"unbound_gpu_uuids": sorted(set(unbound_gpu_uuids))},
+        )
+    if not rows:
+        return _unknown_impairment_result(
+            "capacity impairment watch could not be determined; no samples fell inside the declared window",
+            {"outside_window_sample_count": outside_window_count},
+        )
+    return rows, outside_window_count
+
+
+def _impairment_window_summary(rows: list[dict[str, Any]]) -> dict[str, float | int]:
+    sample_count = len(rows)
+    mean_utilization = sum(row["gpu_utilization_pct"] for row in rows) / sample_count
+    clock_ratios = [row["sm_clock_mhz"] / row["expected_sm_clock_mhz"] for row in rows]
+    thermal_margins = [row["thermal_limit_c"] - row["gpu_temp_c"] for row in rows]
+    power_margins = [row["power_limit_watts"] - row["power_watts"] for row in rows]
+    throttle_count = sum(1 for row in rows if row["throttle_reasons"])
+    return {
+        "sample_count": sample_count,
+        "mean_gpu_utilization_pct": mean_utilization,
+        "min_clock_ratio": min(clock_ratios),
+        "min_thermal_margin_c": min(thermal_margins),
+        "min_power_margin_watts": min(power_margins),
+        "throttle_sample_fraction": throttle_count / sample_count,
+        "total_uncorrectable_ecc_delta": int(sum(row["uncorrectable_ecc_delta"] for row in rows)),
+        "total_xid_count_delta": int(sum(row["xid_count_delta"] for row in rows)),
+        "total_fabric_error_delta": int(sum(row["fabric_error_delta"] for row in rows)),
+    }
+
+
+def _impairment_dimension_margins(
+    summary: dict[str, float | int],
+    thresholds: dict[str, float | int],
+) -> dict[str, float | int]:
+    return {
+        "sample_count_above_min": int(summary["sample_count"]) - int(thresholds["min_sample_count"]),
+        "mean_gpu_utilization_pct_above_min": round(
+            float(summary["mean_gpu_utilization_pct"]) - float(thresholds["min_mean_gpu_utilization_pct"]), 3
+        ),
+        "clock_ratio_above_min": round(float(summary["min_clock_ratio"]) - float(thresholds["min_clock_ratio"]), 6),
+        "thermal_margin_c_above_min": round(
+            float(summary["min_thermal_margin_c"]) - float(thresholds["min_thermal_margin_c"]), 3
+        ),
+        "power_margin_watts_above_min": round(
+            float(summary["min_power_margin_watts"]) - float(thresholds["min_power_margin_watts"]), 3
+        ),
+        "throttle_fraction_below_max": round(
+            float(thresholds["max_throttle_sample_fraction"]) - float(summary["throttle_sample_fraction"]), 6
+        ),
+        "uncorrectable_ecc_delta_remaining": int(thresholds["max_uncorrectable_ecc_delta"])
+        - int(summary["total_uncorrectable_ecc_delta"]),
+        "xid_count_delta_remaining": int(thresholds["max_xid_count_delta"]) - int(summary["total_xid_count_delta"]),
+        "fabric_error_delta_remaining": int(thresholds["max_fabric_error_delta"])
+        - int(summary["total_fabric_error_delta"]),
+    }
+
+
+def gpu_sustained_capacity_impairment_watch(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Check objective impairment dimensions under meaningful observed load."""
+    values, missing = _required_impairment_values(ir)
+    if missing:
+        return _unknown_impairment_result(
+            "capacity impairment watch could not be determined; missing field(s): " + ", ".join(missing),
+            {"missing_expected_paths": missing},
+        )
+
+    declared = _declared_impairment_thresholds(values)
+    if isinstance(declared, PassResult):
+        return declared
+    start, end, thresholds = declared
+
+    binding = _impairment_binding_result(values)
+    if isinstance(binding, PassResult):
+        return binding
+    node_id, bound_gpu_uuids, binding_basis = binding
+
+    sample_result = _impairment_samples_in_window(values, start, end, bound_gpu_uuids)
+    if isinstance(sample_result, PassResult):
+        return sample_result
+    rows, outside_window_count = sample_result
+
+    summary = _impairment_window_summary(rows)
+    metadata = {
+        "hardware_class": str(values["declaration.hardware_class"]),
+        "node_id": node_id,
+        "window_start": values["declaration.window_start"],
+        "window_end": values["declaration.window_end"],
+        "binding_basis": binding_basis,
+        "gpu_uuid_count": len(bound_gpu_uuids),
+        "outside_window_sample_count": outside_window_count,
+        "observed": {
+            "sample_count": summary["sample_count"],
+            "mean_gpu_utilization_pct": round(float(summary["mean_gpu_utilization_pct"]), 3),
+            "min_clock_ratio": round(float(summary["min_clock_ratio"]), 6),
+            "min_thermal_margin_c": round(float(summary["min_thermal_margin_c"]), 3),
+            "min_power_margin_watts": round(float(summary["min_power_margin_watts"]), 3),
+            "throttle_sample_fraction": round(float(summary["throttle_sample_fraction"]), 6),
+            "total_uncorrectable_ecc_delta": summary["total_uncorrectable_ecc_delta"],
+            "total_xid_count_delta": summary["total_xid_count_delta"],
+            "total_fabric_error_delta": summary["total_fabric_error_delta"],
+        },
+        "thresholds": thresholds,
+        "dimension_margins": _impairment_dimension_margins(summary, thresholds),
+    }
+
+    if int(summary["sample_count"]) < int(thresholds["min_sample_count"]):
+        return _unknown_impairment_result(
+            "capacity impairment watch could not be determined; too few samples fell inside the declared window",
+            metadata,
+        )
+    if float(summary["mean_gpu_utilization_pct"]) < float(thresholds["min_mean_gpu_utilization_pct"]):
+        return _unknown_impairment_result(
+            "capacity impairment watch could not be determined; observed load was below the meaningful-load threshold",
+            metadata,
+        )
+
+    contradictions = []
+    if float(summary["min_clock_ratio"]) < float(thresholds["min_clock_ratio"]):
+        contradictions.append(
+            f"minimum clock ratio {float(summary['min_clock_ratio']):.3g} is below declared floor "
+            f"{float(thresholds['min_clock_ratio']):g}"
+        )
+    if float(summary["throttle_sample_fraction"]) > float(thresholds["max_throttle_sample_fraction"]):
+        contradictions.append(
+            f"throttle sample fraction {float(summary['throttle_sample_fraction']):.3g} exceeds declared maximum "
+            f"{float(thresholds['max_throttle_sample_fraction']):g}"
+        )
+    if float(summary["min_thermal_margin_c"]) < float(thresholds["min_thermal_margin_c"]):
+        contradictions.append(
+            f"minimum thermal margin {float(summary['min_thermal_margin_c']):.3g} C is below declared floor "
+            f"{float(thresholds['min_thermal_margin_c']):g} C"
+        )
+    if float(summary["min_power_margin_watts"]) < float(thresholds["min_power_margin_watts"]):
+        contradictions.append(
+            f"minimum power margin {float(summary['min_power_margin_watts']):.3g} W is below declared floor "
+            f"{float(thresholds['min_power_margin_watts']):g} W"
+        )
+    if int(summary["total_uncorrectable_ecc_delta"]) > int(thresholds["max_uncorrectable_ecc_delta"]):
+        contradictions.append(
+            f"uncorrectable ECC delta {int(summary['total_uncorrectable_ecc_delta'])} exceeds declared maximum "
+            f"{int(thresholds['max_uncorrectable_ecc_delta'])}"
+        )
+    if int(summary["total_xid_count_delta"]) > int(thresholds["max_xid_count_delta"]):
+        contradictions.append(
+            f"Xid count delta {int(summary['total_xid_count_delta'])} exceeds declared maximum "
+            f"{int(thresholds['max_xid_count_delta'])}"
+        )
+    if int(summary["total_fabric_error_delta"]) > int(thresholds["max_fabric_error_delta"]):
+        contradictions.append(
+            f"fabric error delta {int(summary['total_fabric_error_delta'])} exceeds declared maximum "
+            f"{int(thresholds['max_fabric_error_delta'])}"
+        )
+
+    if contradictions:
+        return PassResult(
+            pass_id=GPU_IMPAIRMENT_WATCH_PASS_ID,
+            status=PASS_CONTRADICTED,
+            detail="; ".join(contradictions) + ".",
+            verdict_effect=CONTRADICTED,
+            metadata=metadata,
+        )
+
+    return PassResult(
+        pass_id=GPU_IMPAIRMENT_WATCH_PASS_ID,
+        status=PASS_SATISFIED,
+        detail=(
+            "observed GPU samples met declared capacity-impairment thresholds under meaningful load; "
+            "this is not a predictive headroom guarantee"
+        ),
+        verdict_effect=SUPPORTED,
+        metadata=metadata,
     )
 
 

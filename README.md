@@ -165,6 +165,11 @@ Three claim packs exercise the GPU-backed lending and acceptance verification sh
   and MIG-mode field are consistent with a declared GPU capacity snapshot. This
   supports the full local path from `import_nvidia_smi` artifacts through
   `ashiba scan` readiness and `./compile` receipt output.
+- `gpu_sustained_capacity_impairment_watch`: verifies that bound GPU telemetry
+  samples under meaningful observed load stayed within declared impairment
+  thresholds for clock ratio, throttle fraction, thermal margin, power margin,
+  ECC/Xid deltas, and fabric error deltas during a measurement window. This is
+  an observed impairment watch, not a predictive compute-headroom guarantee.
 
 These are synthetic, point-in-time, node-level demos. They do not assess cluster
 health, goodput, residual value, firmware authenticity, or ongoing performance.

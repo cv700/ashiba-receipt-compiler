@@ -1,0 +1,8 @@
+{
+  "node_id": "node-redacted-001",
+  "gpu_uuids": [
+    "GPU-redacted-001",
+    "GPU-redacted-002"
+  ],
+  "binding_basis": "nvidia_smi_uuid"
+}
