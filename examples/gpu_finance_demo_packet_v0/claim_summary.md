@@ -2,9 +2,9 @@
 
 ## Demo Claim
 
-For a declared GPU-backed compute asset, ARC can determine whether supplied
-evidence supports a narrow GPU capacity snapshot claim, or leaves it unknown
-when capacity evidence is ambiguous.
+For declared GPU-backed compute asset claims, ARC can compile separate bounded
+receipts for capacity snapshot, MIG ambiguity, and collateral serial binding
+from the supplied evidence.
 
 ## Receipt 1 - Supported Capacity Snapshot
 
@@ -33,6 +33,20 @@ deciding whether declared capacity was actually sliced.
 Generated-output note: ARC names the GI/CI evidence gap in the verdict basis.
 The generated receipt card's `Evidence missing` section is `(none)` because all
 configured expected fields are present; the issue is ambiguity, not absence.
+
+## Receipt 3 - Contradicted Serial Binding
+
+Claim: The GPU serial numbers observed during probe execution matched the
+serial numbers declared in the collateral schedule.
+
+Expected verdict: `contradicted`
+
+Source example: `examples/gpu_serial_match_contradicted`
+
+Label: `SYNTHETIC` adversarial ARC fixture, for demonstration only.
+
+Why: The declared serial set includes `GPU-H100-SXM-0008`, while the observed
+serial set includes `GPU-H100-SXM-XXXX` instead.
 
 ## Scope Limits
 

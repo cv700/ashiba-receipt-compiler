@@ -9,6 +9,17 @@ customer proprietary data is used.
 This folder is a wrapper packet: it stores docs plus generated receipt cards and
 JSON. The compiler inputs remain the source examples named in `commands.txt`.
 
+## Files That Matter
+
+- `README.md` - 5-minute walkthrough.
+- `claim_summary.md` - receipt claims and scope limits.
+- `evidence_manifest.json` - all 7 evidence artifacts labeled by source.
+- `commands.txt` - exact regeneration commands.
+- `receipt_cards/` - 3 ARC-generated receipt cards.
+- `receipt_json/` - 3 ARC-generated JSON receipts.
+- `ie_report_excerpt.md` - short IE-style report excerpt.
+- `reviewer_note.md` - PR review note and final verification record.
+
 ## 5-Minute Walkthrough
 
 1. Read `claim_summary.md` to see what claim is being tested and what it does
@@ -33,7 +44,17 @@ JSON. The compiler inputs remain the source examples named in `commands.txt`.
 6. Read `receipt_cards/mig_unknown.txt` and note the MIG GI/CI evidence gap in
    the basis. ARC does not list this under `Evidence missing`; the generated
    card treats MIG enabled as ambiguous evidence.
-7. Read `ie_report_excerpt.md` for the IE-style one-page finding.
+7. Run Receipt 3:
+
+```bash
+./compile examples/gpu_serial_match_contradicted \
+  --claim-type gpu_serial_collateral_match --card
+```
+
+NOTE: Receipt 3 is a synthetic adversarial fixture. It is not a real asset.
+
+8. Read `receipt_cards/serial_contradicted_synthetic.txt`.
+9. Read `ie_report_excerpt.md` for the IE-style one-page finding.
 
 ## What This Proves
 
@@ -41,6 +62,8 @@ JSON. The compiler inputs remain the source examples named in `commands.txt`.
   consistent evidence.
 - ARC can return `unknown` instead of false support when MIG evidence is
   ambiguous.
+- ARC can return `contradicted` when synthetic collateral identity evidence
+  conflicts.
 
 ## What This Does Not Prove
 

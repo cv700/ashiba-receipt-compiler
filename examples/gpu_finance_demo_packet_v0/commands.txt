@@ -28,3 +28,17 @@ python3 -c 'import json; p="examples/gpu_finance_demo_packet_v0/receipt_json/cap
   > examples/gpu_finance_demo_packet_v0/receipt_json/mig_unknown.json
 
 python3 -c 'import json; p="examples/gpu_finance_demo_packet_v0/receipt_json/mig_unknown.json"; d=json.load(open(p)); assert d["verdict"]["status"] == "unknown", d["verdict"]; assert "GI/CI evidence" in d["verdict"]["basis"], d["verdict"]["basis"]'
+
+# 3. Receipt 3 - Contradicted serial collateral binding (SYNTHETIC)
+printf 'NOTE: This receipt was generated from a synthetic adversarial fixture.\nIt does not represent any real asset, operator, or customer.\nIt demonstrates ARC behavior when declared identity conflicts with observed identity.\n---\n[ARC-generated output below]\n\n' \
+  > examples/gpu_finance_demo_packet_v0/receipt_cards/serial_contradicted_synthetic.txt
+
+./compile examples/gpu_serial_match_contradicted \
+  --claim-type gpu_serial_collateral_match --card \
+  >> examples/gpu_finance_demo_packet_v0/receipt_cards/serial_contradicted_synthetic.txt
+
+./compile examples/gpu_serial_match_contradicted \
+  --claim-type gpu_serial_collateral_match \
+  > examples/gpu_finance_demo_packet_v0/receipt_json/serial_contradicted_synthetic.json
+
+python3 -c 'import json; p="examples/gpu_finance_demo_packet_v0/receipt_json/serial_contradicted_synthetic.json"; d=json.load(open(p)); assert d["verdict"]["status"] == "contradicted", d["verdict"]; assert "Serial set mismatch" in d["verdict"]["basis"], d["verdict"]["basis"]'

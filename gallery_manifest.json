@@ -2,13 +2,13 @@
   "schema_version": "receipt-gallery-manifest-v1",
   "compiler_version": "evidence-compiler-v0.6",
   "summary": {
-    "expected_directories": 37,
-    "expected_receipts": 42,
+    "expected_directories": 38,
+    "expected_receipts": 43,
     "expected_verdict_counts": {
       "supported": 18,
       "contradicted": 11,
       "unknown": 12,
-      "not_applicable": 1
+      "not_applicable": 2
     },
     "expected_compiler_errors": 0
   },
@@ -202,6 +202,19 @@
           "absence_count": 1,
           "compiler_error_count": 0,
           "rationale": "observed GPU evidence is present, but the declared SKU is missing"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_finance_demo_packet_v0",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_capacity_acceptance",
+          "verdict": "not_applicable",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "demo packet wrapper contains reviewer docs, evidence labels, and generated outputs; it is not itself a compile-ready evidence fixture",
+          "directory_verdict_rationale": "the directory name describes a demo packet, not a receipt verdict"
         }
       ]
     },
