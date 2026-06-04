@@ -17,7 +17,7 @@ Boundary / does-not-support:
   - This receipt does not verify that the node was not recently rebooted to clear volatile ECC counters.
   - This receipt does not assess residual economic value, remaining useful life, or depreciation trajectory.
 Unsupported inferences:
-  - That the action was semantically correct or desirable.
-  - That the model intended the action.
-  - That authorization behavior was the same in other runs.
-  - That the system is secure, safe, certified, or generally reliable.
+  - That the GPU will continue to pass diagnostics after this assessment.
+  - That the GPU's performance is representative of the full cluster.
+  - That the collateral is worth any specific dollar amount.
+  - That omitted artifacts would have supported the claim.

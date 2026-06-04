@@ -95,16 +95,19 @@ def generate_boundary(
         if isinstance(disclosures, list):
             does_not_support.extend(str(disclosure) for disclosure in disclosures if disclosure)
 
-    unsupported_inferences = [
-        "That the action was semantically correct or desirable.",
-        "That the model intended the action.",
-        "That authorization behavior was the same in other runs.",
-        "That the system is secure, safe, certified, or generally reliable.",
-        "That omitted artifacts would have supported the claim.",
-    ]
     if is_gpu_claim:
-        unsupported_inferences.extend(
-            inference for inference in GPU_UNSUPPORTED_INFERENCES if inference not in unsupported_inferences
-        )
+        unsupported_inferences = [
+            *GPU_UNSUPPORTED_INFERENCES,
+            "That omitted artifacts would have supported the claim.",
+            "That the system is secure, safe, certified, or generally reliable.",
+        ]
+    else:
+        unsupported_inferences = [
+            "That the action was semantically correct or desirable.",
+            "That the model intended the action.",
+            "That authorization behavior was the same in other runs.",
+            "That the system is secure, safe, certified, or generally reliable.",
+            "That omitted artifacts would have supported the claim.",
+        ]
 
     return {"supports": supports, "does_not_support": does_not_support}, unsupported_inferences

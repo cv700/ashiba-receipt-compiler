@@ -3,8 +3,8 @@
 ## Demo Claim
 
 For declared GPU-backed compute asset claims, ARC can compile separate bounded
-receipts for capacity snapshot, MIG ambiguity, and collateral serial binding
-from the supplied evidence.
+receipts for capacity snapshot, positive collateral serial binding, MIG
+ambiguity, and adversarial collateral serial conflict from the supplied evidence.
 
 ## Receipt 1 - Supported Capacity Snapshot
 
@@ -18,7 +18,19 @@ Source example: `examples/gpu_acceptance_lambda_a10_supported`
 Why: The declared A10 count and buyer-observed `nvidia-smi` name/count/MIG
 fields are complete and consistent for the snapshot.
 
-## Receipt 2 - Unknown MIG Ambiguity
+## Receipt 2 - Supported Serial Binding
+
+Claim: The GPU serial numbers observed during probe execution matched the
+serial numbers declared in the collateral schedule.
+
+Expected verdict: `supported`
+
+Source example: `examples/gpu_serial_match_supported`
+
+Why: The declared collateral serial set and observed probe serial set match
+for the declared node.
+
+## Receipt 3 - Unknown MIG Ambiguity
 
 Claim: The observed GPU names, count, timestamp, and MIG-mode field were
 consistent with the declared GPU capacity snapshot.
@@ -34,7 +46,7 @@ Generated-output note: ARC names the GI/CI evidence gap in the verdict basis.
 The generated receipt card's `Evidence missing` section is `(none)` because all
 configured expected fields are present; the issue is ambiguity, not absence.
 
-## Receipt 3 - Contradicted Serial Binding
+## Receipt 4 - Contradicted Serial Binding
 
 Claim: The GPU serial numbers observed during probe execution matched the
 serial numbers declared in the collateral schedule.

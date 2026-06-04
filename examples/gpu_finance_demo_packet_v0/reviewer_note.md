@@ -11,14 +11,15 @@ Added `examples/gpu_finance_demo_packet_v0/`:
 - `claim_summary.md`
 - `evidence_manifest.json`
 - `commands.txt`
-- `receipt_cards/` with 3 ARC-generated cards
-- `receipt_json/` with 3 ARC-generated JSON receipts
+- `receipt_cards/` with 4 ARC-generated cards
+- `receipt_json/` with 4 ARC-generated JSON receipts
 - `ie_report_excerpt.md`
 - `reviewer_note.md`
 
 Updated `gallery_manifest.json` so the wrapper packet is registered as
-`not_applicable` in gallery tests. No runtime code was added. No pass logic or
-claim pack was changed.
+`not_applicable` in gallery tests. Updated GPU boundary generation so GPU
+receipt cards show GPU/collateral unsupported inferences instead of
+agent-action boilerplate. No pass logic or claim pack was changed.
 
 ## Product Layer Reached
 
@@ -31,10 +32,13 @@ Receipt 1: `gpu_acceptance_lambda_a10_supported` returns `SUPPORTED` when the
 declared A10 capacity snapshot and observed `nvidia-smi` evidence are complete
 and consistent.
 
-Receipt 2: `gpu_acceptance_mig_unknown` returns `UNKNOWN` when MIG is enabled
+Receipt 2: `gpu_serial_match_supported` returns `SUPPORTED` when declared
+collateral serials match observed serials for the declared node.
+
+Receipt 3: `gpu_acceptance_mig_unknown` returns `UNKNOWN` when MIG is enabled
 and GI/CI instance records are absent.
 
-Receipt 3: `gpu_serial_match_contradicted` returns `CONTRADICTED` when declared
+Receipt 4: `gpu_serial_match_contradicted` returns `CONTRADICTED` when declared
 serials conflict with observed serials. This is a synthetic adversarial fixture.
 
 ## What They Do Not Prove
@@ -65,7 +69,8 @@ and probe observation.
 New demo packet files live under `examples/gpu_finance_demo_packet_v0/`.
 `gallery_manifest.json` was updated only so the wrapper packet does not break
 gallery tests. The redundant spec file was removed because the README and this
-reviewer note now define the cold-review path. No `passes.py` edits. No
+reviewer note now define the cold-review path. `boundary.py` was updated only
+to make GPU card language domain-specific. No `passes.py` edits. No
 `claim_packs/` edits.
 
 ## Commands Run - Final Verified
@@ -79,6 +84,9 @@ PYTHONDONTWRITEBYTECODE=1 python3 test_scan.py              -> PASS
 ./compile examples/gpu_acceptance_lambda_a10_supported \
   --claim-type gpu_capacity_acceptance --card                -> SUPPORTED
 
+./compile examples/gpu_serial_match_supported \
+  --claim-type gpu_serial_collateral_match --card            -> SUPPORTED
+
 ./compile examples/gpu_acceptance_mig_unknown \
   --claim-type gpu_capacity_acceptance --card                -> UNKNOWN
 
@@ -89,8 +97,10 @@ PYTHONDONTWRITEBYTECODE=1 python3 test_scan.py              -> PASS
 ## What To Check First
 
 1. Open `receipt_cards/capacity_supported.txt` and confirm `SUPPORTED`.
-2. Open `receipt_cards/mig_unknown.txt` and confirm `UNKNOWN`.
-3. Open `receipt_cards/serial_contradicted_synthetic.txt` and confirm
+2. Open `receipt_cards/serial_supported.txt` and confirm `SUPPORTED`.
+3. Open `receipt_cards/mig_unknown.txt` and confirm `UNKNOWN`.
+4. Open `receipt_cards/serial_contradicted_synthetic.txt` and confirm
    `CONTRADICTED` plus the visible `SYNTHETIC` note at the top.
-4. Open `ie_report_excerpt.md` and confirm it reads in under 60 seconds.
-5. Run `zsh examples/gpu_finance_demo_packet_v0/commands.txt`.
+5. Open `ie_report_excerpt.md` and confirm it reads in under 60 seconds.
+6. Run `zsh examples/gpu_finance_demo_packet_v0/commands.txt`; it writes fresh
+   regenerated outputs to a temp directory and leaves tracked snapshots clean.

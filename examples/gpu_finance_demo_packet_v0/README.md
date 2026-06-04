@@ -15,8 +15,8 @@ JSON. The compiler inputs remain the source examples named in `commands.txt`.
 - `claim_summary.md` - receipt claims and scope limits.
 - `evidence_manifest.json` - all 7 evidence artifacts labeled by source.
 - `commands.txt` - exact regeneration commands.
-- `receipt_cards/` - 3 ARC-generated receipt cards.
-- `receipt_json/` - 3 ARC-generated JSON receipts.
+- `receipt_cards/` - 4 ARC-generated receipt cards.
+- `receipt_json/` - 4 ARC-generated JSON receipts.
 - `ie_report_excerpt.md` - short IE-style report excerpt.
 - `reviewer_note.md` - PR review note and final verification record.
 
@@ -37,29 +37,39 @@ JSON. The compiler inputs remain the source examples named in `commands.txt`.
 5. Run Receipt 2:
 
 ```bash
+./compile examples/gpu_serial_match_supported \
+  --claim-type gpu_serial_collateral_match --card
+```
+
+6. Read `receipt_cards/serial_supported.txt`.
+7. Run Receipt 3:
+
+```bash
 ./compile examples/gpu_acceptance_mig_unknown \
   --claim-type gpu_capacity_acceptance --card
 ```
 
-6. Read `receipt_cards/mig_unknown.txt` and note the MIG GI/CI evidence gap in
+8. Read `receipt_cards/mig_unknown.txt` and note the MIG GI/CI evidence gap in
    the basis. ARC does not list this under `Evidence missing`; the generated
    card treats MIG enabled as ambiguous evidence.
-7. Run Receipt 3:
+9. Run Receipt 4:
 
 ```bash
 ./compile examples/gpu_serial_match_contradicted \
   --claim-type gpu_serial_collateral_match --card
 ```
 
-NOTE: Receipt 3 is a synthetic adversarial fixture. It is not a real asset.
+NOTE: Receipt 4 is a synthetic adversarial fixture. It is not a real asset.
 
-8. Read `receipt_cards/serial_contradicted_synthetic.txt`.
-9. Read `ie_report_excerpt.md` for the IE-style one-page finding.
+10. Read `receipt_cards/serial_contradicted_synthetic.txt`.
+11. Read `ie_report_excerpt.md` for the IE-style one-page finding.
 
 ## What This Proves
 
 - ARC can compile a supported GPU capacity snapshot receipt from complete,
   consistent evidence.
+- ARC can compile a supported collateral serial-binding receipt when declared
+  serials and observed serials match.
 - ARC can return `unknown` instead of false support when MIG evidence is
   ambiguous.
 - ARC can return `contradicted` when synthetic collateral identity evidence

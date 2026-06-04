@@ -3,42 +3,61 @@
 
 set -euo pipefail
 
+OUT_DIR=$(mktemp -d "${TMPDIR:-/tmp}/ashiba-gpu-finance-demo.XXXXXX")
+export OUT_DIR
+mkdir -p "$OUT_DIR/receipt_cards" "$OUT_DIR/receipt_json"
+
 # 0. Run baseline tests
+PYTHONDONTWRITEBYTECODE=1 python3 test_receipt_compiler.py
 PYTHONDONTWRITEBYTECODE=1 python3 test_gpu_acceptance.py
 PYTHONDONTWRITEBYTECODE=1 python3 test_gpu_collateral.py
+PYTHONDONTWRITEBYTECODE=1 python3 test_scan.py
 
 # 1. Receipt 1 - Supported GPU capacity (Lambda A10)
 ./compile examples/gpu_acceptance_lambda_a10_supported \
   --claim-type gpu_capacity_acceptance --card \
-  > examples/gpu_finance_demo_packet_v0/receipt_cards/capacity_supported.txt
+  > "$OUT_DIR/receipt_cards/capacity_supported.txt"
 
 ./compile examples/gpu_acceptance_lambda_a10_supported \
   --claim-type gpu_capacity_acceptance \
-  > examples/gpu_finance_demo_packet_v0/receipt_json/capacity_supported.json
+  > "$OUT_DIR/receipt_json/capacity_supported.json"
 
-python3 -c 'import json; p="examples/gpu_finance_demo_packet_v0/receipt_json/capacity_supported.json"; d=json.load(open(p)); assert d["verdict"]["status"] == "supported", d["verdict"]'
+python3 -c 'import json, os; p=os.environ["OUT_DIR"] + "/receipt_json/capacity_supported.json"; d=json.load(open(p)); assert d["verdict"]["status"] == "supported", d["verdict"]'
 
-# 2. Receipt 2 - Unknown MIG ambiguity (GI/CI evidence required)
+# 2. Receipt 2 - Supported serial collateral binding
+./compile examples/gpu_serial_match_supported \
+  --claim-type gpu_serial_collateral_match --card \
+  > "$OUT_DIR/receipt_cards/serial_supported.txt"
+
+./compile examples/gpu_serial_match_supported \
+  --claim-type gpu_serial_collateral_match \
+  > "$OUT_DIR/receipt_json/serial_supported.json"
+
+python3 -c 'import json, os; p=os.environ["OUT_DIR"] + "/receipt_json/serial_supported.json"; d=json.load(open(p)); assert d["verdict"]["status"] == "supported", d["verdict"]'
+
+# 3. Receipt 3 - Unknown MIG ambiguity (GI/CI evidence required)
 ./compile examples/gpu_acceptance_mig_unknown \
   --claim-type gpu_capacity_acceptance --card \
-  > examples/gpu_finance_demo_packet_v0/receipt_cards/mig_unknown.txt
+  > "$OUT_DIR/receipt_cards/mig_unknown.txt"
 
 ./compile examples/gpu_acceptance_mig_unknown \
   --claim-type gpu_capacity_acceptance \
-  > examples/gpu_finance_demo_packet_v0/receipt_json/mig_unknown.json
+  > "$OUT_DIR/receipt_json/mig_unknown.json"
 
-python3 -c 'import json; p="examples/gpu_finance_demo_packet_v0/receipt_json/mig_unknown.json"; d=json.load(open(p)); assert d["verdict"]["status"] == "unknown", d["verdict"]; assert "GI/CI evidence" in d["verdict"]["basis"], d["verdict"]["basis"]'
+python3 -c 'import json, os; p=os.environ["OUT_DIR"] + "/receipt_json/mig_unknown.json"; d=json.load(open(p)); assert d["verdict"]["status"] == "unknown", d["verdict"]; assert "GI/CI evidence" in d["verdict"]["basis"], d["verdict"]["basis"]'
 
-# 3. Receipt 3 - Contradicted serial collateral binding (SYNTHETIC)
+# 4. Receipt 4 - Contradicted serial collateral binding (SYNTHETIC)
 printf 'NOTE: This receipt was generated from a synthetic adversarial fixture.\nIt does not represent any real asset, operator, or customer.\nIt demonstrates ARC behavior when declared identity conflicts with observed identity.\n---\n[ARC-generated output below]\n\n' \
-  > examples/gpu_finance_demo_packet_v0/receipt_cards/serial_contradicted_synthetic.txt
+  > "$OUT_DIR/receipt_cards/serial_contradicted_synthetic.txt"
 
 ./compile examples/gpu_serial_match_contradicted \
   --claim-type gpu_serial_collateral_match --card \
-  >> examples/gpu_finance_demo_packet_v0/receipt_cards/serial_contradicted_synthetic.txt
+  >> "$OUT_DIR/receipt_cards/serial_contradicted_synthetic.txt"
 
 ./compile examples/gpu_serial_match_contradicted \
   --claim-type gpu_serial_collateral_match \
-  > examples/gpu_finance_demo_packet_v0/receipt_json/serial_contradicted_synthetic.json
+  > "$OUT_DIR/receipt_json/serial_contradicted_synthetic.json"
 
-python3 -c 'import json; p="examples/gpu_finance_demo_packet_v0/receipt_json/serial_contradicted_synthetic.json"; d=json.load(open(p)); assert d["verdict"]["status"] == "contradicted", d["verdict"]; assert "Serial set mismatch" in d["verdict"]["basis"], d["verdict"]["basis"]'
+python3 -c 'import json, os; p=os.environ["OUT_DIR"] + "/receipt_json/serial_contradicted_synthetic.json"; d=json.load(open(p)); assert d["verdict"]["status"] == "contradicted", d["verdict"]; assert "Serial set mismatch" in d["verdict"]["basis"], d["verdict"]["basis"]'
+
+printf 'Generated fresh demo outputs in: %s\n' "$OUT_DIR"
