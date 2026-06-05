@@ -1,0 +1,31 @@
+NOTE: This receipt was generated from a synthetic adversarial fixture.
+It does not represent any real asset, operator, or customer.
+It demonstrates ARC behavior when declared identity conflicts with observed identity.
+---
+[ARC-generated output below]
+
+Receipt Card
+Claim: claim.gpu_serial_collateral_match: The GPU serial numbers observed during probe execution matched the serial numbers declared in the collateral schedule.
+Verdict: contradicted
+Basis: Serial set mismatch: declared but not observed: ['GPU-H100-SXM-0008']; observed but not declared: ['GPU-H100-SXM-XXXX'].
+Evidence present:
+  - gpu_inventory.declared_serials
+  - gpu_inventory.declared_node_id
+  - gpu_probe_observation.observed_serials
+  - gpu_probe_observation.observed_node_id
+  - gpu_probe_observation.observed_at
+  - probe_manifest.probe_id
+  - probe_manifest.probe_hash
+  - probe_manifest.committed_at
+Evidence missing:
+  - (none)
+Boundary / does-not-support:
+  - This receipt does not support claims about other executions, general system reliability, or behavior under different conditions.
+  - This receipt does not verify that the node was under representative production load during testing.
+  - This receipt does not verify that the node was not recently rebooted to clear volatile ECC counters.
+  - This receipt does not assess residual economic value, remaining useful life, or depreciation trajectory.
+Unsupported inferences:
+  - That the GPU will continue to pass diagnostics after this assessment.
+  - That the GPU's performance is representative of the full cluster.
+  - That the collateral is worth any specific dollar amount.
+  - That omitted artifacts would have supported the claim.

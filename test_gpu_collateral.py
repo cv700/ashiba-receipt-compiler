@@ -200,6 +200,9 @@ def test_gpu_boundary_uses_renderer_family_not_claim_id_prefix() -> None:
     assert "representative production load" in gpu_boundary
     assert "residual economic value" in gpu_boundary
     assert "That the collateral is worth any specific dollar amount." in receipt["unsupported_inferences"]
+    unsupported = "\n".join(receipt["unsupported_inferences"])
+    assert "model intended the action" not in unsupported
+    assert "authorization behavior" not in unsupported
 
 def _pass_ir(artifacts: dict) -> ReceiptIR:
     return ReceiptIR(claim={"id": "claim.test", "text": "test"}, expected_evidence=[], artifacts=artifacts)

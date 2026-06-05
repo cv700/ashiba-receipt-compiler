@@ -1,0 +1,23 @@
+Receipt Card
+Claim: claim.gpu_capacity_acceptance: The observed GPU names, count, timestamp, and MIG-mode field were consistent with the declared GPU capacity snapshot.
+Verdict: supported
+Basis: all required evidence was present and all required deterministic passes were satisfied
+Evidence present:
+  - gpu_inventory.declared_sku
+  - gpu_inventory.declared_count
+  - gpu_probe_observation.observed_names
+  - gpu_probe_observation.observed_count
+  - gpu_probe_observation.observed_mig_modes
+  - gpu_probe_observation.observed_at
+Evidence missing:
+  - (none)
+Boundary / does-not-support:
+  - This receipt does not support claims about other executions, general system reliability, or behavior under different conditions.
+  - This receipt does not verify that the node was under representative production load during testing.
+  - This receipt does not verify that the node was not recently rebooted to clear volatile ECC counters.
+  - This receipt does not assess residual economic value, remaining useful life, or depreciation trajectory.
+Unsupported inferences:
+  - That the GPU will continue to pass diagnostics after this assessment.
+  - That the GPU's performance is representative of the full cluster.
+  - That the collateral is worth any specific dollar amount.
+  - That omitted artifacts would have supported the claim.

@@ -1,0 +1,115 @@
+{
+    "schema_version": "gpu-finance-demo-evidence-manifest-v1",
+    "evidence": [
+        {
+            "receipt": "capacity_supported",
+            "packet_path": null,
+            "source_example_path": "examples/gpu_acceptance_lambda_a10_supported/gpu_inventory.json",
+            "claim_type": "gpu_capacity_acceptance",
+            "source_type": "manual_declaration",
+            "custody_tier": "declaration",
+            "copied_into_packet": false,
+            "generated_by_command": "./compile examples/gpu_acceptance_lambda_a10_supported --claim-type gpu_capacity_acceptance",
+            "notes": "Declares family-level A10 GPU capacity; this is evidence of the declared claim, not provider-side truth."
+        },
+        {
+            "receipt": "capacity_supported",
+            "packet_path": null,
+            "source_example_path": "examples/gpu_acceptance_lambda_a10_supported/gpu_probe_observation.json",
+            "claim_type": "gpu_capacity_acceptance",
+            "source_type": "tenant_observed_redacted_fixture",
+            "custody_tier": "tenant_observed",
+            "copied_into_packet": false,
+            "generated_by_command": "./compile examples/gpu_acceptance_lambda_a10_supported --claim-type gpu_capacity_acceptance",
+            "notes": "nvidia-smi observation with observed GPU name, count, MIG mode, and timestamp. Stable identifiers, serials, UUIDs, SSH details, and account details are omitted."
+        },
+        {
+            "receipt": "serial_supported",
+            "packet_path": null,
+            "source_example_path": "examples/gpu_serial_match_supported/gpu_inventory.json",
+            "claim_type": "gpu_serial_collateral_match",
+            "source_type": "synthetic_arc_fixture",
+            "custody_tier": "synthetic",
+            "copied_into_packet": false,
+            "generated_by_command": "./compile examples/gpu_serial_match_supported --claim-type gpu_serial_collateral_match",
+            "notes": "Declares the collateral serial set for the positive serial-binding case."
+        },
+        {
+            "receipt": "serial_supported",
+            "packet_path": null,
+            "source_example_path": "examples/gpu_serial_match_supported/gpu_probe_observation.json",
+            "claim_type": "gpu_serial_collateral_match",
+            "source_type": "synthetic_arc_fixture",
+            "custody_tier": "synthetic",
+            "copied_into_packet": false,
+            "generated_by_command": "./compile examples/gpu_serial_match_supported --claim-type gpu_serial_collateral_match",
+            "notes": "Reports the same serial set and node ID as the declared collateral schedule."
+        },
+        {
+            "receipt": "serial_supported",
+            "packet_path": null,
+            "source_example_path": "examples/gpu_serial_match_supported/probe_manifest.json",
+            "claim_type": "gpu_serial_collateral_match",
+            "source_type": "synthetic_arc_fixture",
+            "custody_tier": "synthetic",
+            "copied_into_packet": false,
+            "generated_by_command": "./compile examples/gpu_serial_match_supported --claim-type gpu_serial_collateral_match",
+            "notes": "Probe metadata for the positive serial collateral binding claim."
+        },
+        {
+            "receipt": "mig_unknown",
+            "packet_path": null,
+            "source_example_path": "examples/gpu_acceptance_mig_unknown/gpu_inventory.json",
+            "claim_type": "gpu_capacity_acceptance",
+            "source_type": "synthetic_arc_fixture",
+            "custody_tier": "synthetic",
+            "copied_into_packet": false,
+            "generated_by_command": "./compile examples/gpu_acceptance_mig_unknown --claim-type gpu_capacity_acceptance",
+            "notes": "Declares H100 capacity for the MIG ambiguity case."
+        },
+        {
+            "receipt": "mig_unknown",
+            "packet_path": null,
+            "source_example_path": "examples/gpu_acceptance_mig_unknown/gpu_probe_observation.json",
+            "claim_type": "gpu_capacity_acceptance",
+            "source_type": "synthetic_arc_fixture",
+            "custody_tier": "synthetic",
+            "copied_into_packet": false,
+            "generated_by_command": "./compile examples/gpu_acceptance_mig_unknown --claim-type gpu_capacity_acceptance",
+            "notes": "MIG is enabled in the observation, with no instance-level GI/CI records present."
+        },
+        {
+            "receipt": "serial_contradicted_synthetic",
+            "packet_path": null,
+            "source_example_path": "examples/gpu_serial_match_contradicted/gpu_inventory.json",
+            "claim_type": "gpu_serial_collateral_match",
+            "source_type": "synthetic_adversarial_arc_fixture",
+            "custody_tier": "synthetic",
+            "copied_into_packet": false,
+            "generated_by_command": "./compile examples/gpu_serial_match_contradicted --claim-type gpu_serial_collateral_match",
+            "notes": "SYNTHETIC: declares serial GPU-H100-SXM-0008; designed to conflict with the observed serial set."
+        },
+        {
+            "receipt": "serial_contradicted_synthetic",
+            "packet_path": null,
+            "source_example_path": "examples/gpu_serial_match_contradicted/gpu_probe_observation.json",
+            "claim_type": "gpu_serial_collateral_match",
+            "source_type": "synthetic_adversarial_arc_fixture",
+            "custody_tier": "synthetic",
+            "copied_into_packet": false,
+            "generated_by_command": "./compile examples/gpu_serial_match_contradicted --claim-type gpu_serial_collateral_match",
+            "notes": "SYNTHETIC: reports GPU-H100-SXM-XXXX instead of GPU-H100-SXM-0008; triggers a contradicted verdict."
+        },
+        {
+            "receipt": "serial_contradicted_synthetic",
+            "packet_path": null,
+            "source_example_path": "examples/gpu_serial_match_contradicted/probe_manifest.json",
+            "claim_type": "gpu_serial_collateral_match",
+            "source_type": "synthetic_adversarial_arc_fixture",
+            "custody_tier": "synthetic",
+            "copied_into_packet": false,
+            "generated_by_command": "./compile examples/gpu_serial_match_contradicted --claim-type gpu_serial_collateral_match",
+            "notes": "SYNTHETIC: probe metadata for the serial collateral binding claim."
+        }
+    ]
+}
