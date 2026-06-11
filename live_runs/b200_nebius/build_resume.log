@@ -1,0 +1,65 @@
+[  4%] Built target fmt
+[ 13%] Built target spdlog
+[ 13%] Built target cargo-prebuild_regorus_ffi
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> /tmp/attestation-sdk/nv-attestation-cli/build/_deps/regorus-src/src/builtins/time/compat.rs:270:24
+    |
+270 |     fn parse(reminder: &str) -> GoTimeFormatItems {
+    |                        ^^^^     ^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                        |
+    |                        the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+270 |     fn parse(reminder: &str) -> GoTimeFormatItems<'_> {
+    |                                                  ++++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> /tmp/attestation-sdk/nv-attestation-cli/build/_deps/regorus-src/src/builtins/time/compat.rs:278:25
+    |
+278 |     fn format(reminder: &str) -> GoTimeFormatItems {
+    |                         ^^^^     ^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                         |
+    |                         the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+278 |     fn format(reminder: &str) -> GoTimeFormatItems<'_> {
+    |                                                   ++++
+
+warning: `regorus` (lib) generated 2 warnings (run `cargo fix --lib -p regorus` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 0.11s
+Copying byproducts `libregorus_ffi.a` to /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build
+[ 13%] Built target _cargo-build_regorus_ffi
+[ 13%] Built target cargo-build_regorus_ffi
+[ 25%] Built target openssl_external
+[ 36%] Built target xmlsec_external
+[ 47%] Built target curl_external
+[ 48%] Linking CXX shared library libnvat.so
+[ 90%] Built target nvat
+[ 90%] Built target CLI11
+[ 91%] Building CXX object CMakeFiles/nvattest.dir/src/main.cpp.o
+[ 93%] Building CXX object CMakeFiles/nvattest.dir/src/version.cpp.o
+[ 94%] Building CXX object CMakeFiles/nvattest.dir/src/attest.cpp.o
+[ 95%] Building CXX object CMakeFiles/nvattest.dir/src/collect_evidence.cpp.o
+[ 97%] Building CXX object CMakeFiles/nvattest.dir/src/utils.cpp.o
+[ 98%] Building CXX object CMakeFiles/nvattest.dir/src/logging.cpp.o
+[100%] Linking CXX executable nvattest
+[100%] Built target nvattest
+-- Install configuration: "Release"
+-- Installing: /usr/local/bin/nvattest
+-- Set non-toolchain portion of runtime path of "/usr/local/bin/nvattest" to ""
+-- Installing: /usr/local/lib/libnvat.so.1.2.2
+-- Installing: /usr/local/lib/libnvat.so.1
+-- Installing: /usr/local/lib/libnvat.so
+-- Installing: /usr/local/include/nvat.h
+-- Installing: /usr/local/share/cmake/nvat/nvatTargets.cmake
+-- Installing: /usr/local/share/cmake/nvat/nvatTargets-release.cmake
+-- Installing: /usr/local/share/cmake/nvat/Modules/FindLibXml2.cmake
+-- Installing: /usr/local/share/cmake/nvat/Modules/Findxmlsec.cmake
+-- Installing: /usr/local/share/cmake/nvat/nvatConfig.cmake
+-- Installing: /usr/local/share/cmake/nvat/nvatConfigVersion.cmake
+BUILD_RESUMED_OK

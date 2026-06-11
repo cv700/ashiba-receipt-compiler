@@ -1,0 +1,27 @@
+=== finding: containerized B200 cannot produce attestation ===
+captured_at: 2026-06-11T01:32:22Z
+pod: paq3wmi0tn3dep (RunPod Secure Cloud)
+
+--- libcorelib package:
+ii  libcorelib1    1.0.0.1772474517-1 amd64        Runtime libraries for the A library to fetch evidence from Nvidia GPUs
+
+--- gpu pci addr per nvidia-smi:
+00000000:E3:00.0
+
+--- pci devices visible in container:
+0000:00:00.0
+0000:00:00.3
+0000:00:01.0
+0000:00:01.1
+0000:00:02.0
+0000:00:03.0
+0000:00:04.0
+0000:00:05.0
+0000:00:07.0
+0000:00:07.1
+
+--- config space size (64 = legacy only, DOE unreachable):
+64
+
+--- container capabilities:
+Current: cap_chown,cap_dac_override,cap_fowner,cap_fsetid,cap_kill,cap_setgid,cap_setuid,cap_setpcap,cap_net_bind_service,cap_net_raw,cap_sys_chroot,cap_mknod,cap_audit_write,cap_setfcap=ep

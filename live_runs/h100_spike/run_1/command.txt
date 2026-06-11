@@ -1,0 +1,1 @@
+nvattest attest --device gpu --verifier remote --gpu-evidence-source=corelib --nonce 2850c198390b3441ab7c108f0be55ee4 --output-format json

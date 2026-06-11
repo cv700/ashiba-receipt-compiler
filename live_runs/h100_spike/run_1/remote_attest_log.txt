@@ -1,0 +1,2 @@
+--gpu-architecture: --gpu-architecture is required when --gpu-evidence-source=corelib
+Run with --help for more information.

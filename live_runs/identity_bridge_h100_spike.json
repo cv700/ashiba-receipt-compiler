@@ -1,0 +1,15 @@
+{
+  "identity_bridge": {
+    "schedule_id": "ARC-SPIKE-2026-06-10",
+    "mapping_source": "Lambda Cloud dashboard instance record + on-box nvidia-smi readout (serial 1650224003989, uuid GPU-bf402902-90a6-d04d-1f73-9522584fb39f), instance 68.209.73.162, Georgia USA",
+    "mapping_time": "2026-06-11T00:45:00Z",
+    "mapper": "coopveit@gmail.com",
+    "mappings": [
+      {
+        "contract_gpu_id": "LAMBDA-GA-H100-0",
+        "provider_asset_id": "serial:1650224003989",
+        "ueid": "FILL_FROM_ATTESTATION_RUN_1"
+      }
+    ]
+  }
+}

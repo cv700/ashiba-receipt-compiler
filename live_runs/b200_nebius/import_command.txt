@@ -1,0 +1,9 @@
+./import_nvattest run_1/real_attestation_claims.json \
+  --nonce 1183d7c1dc69bd7f8ed554f4e7b7b4a10fb3e388cb70fef18e306f700abff223 \
+  --identity-bridge identity_bridge.template.json \
+  --contract-id FILL-IN --window-start FILL-IN --window-end FILL-IN \
+  --declared-gpu-id FILL-IN \
+  --expected-gpu-class B200 --operator FILL-IN \
+  --tool-version 'nvattest 1.2.2 (Linux/x86_64)' \
+  --command 'sudo nvattest --format json collect-evidence --device gpu --gpu-evidence-source corelib --gpu-architecture blackwell --nonce 1183d7c1dc69bd7f8ed554f4e7b7b4a10fb3e388cb70fef18e306f700abff223\nnvattest --format json attest --device gpu --verifier remote --gpu-evidence-source file --gpu-evidence-file b200_nebius/run_1/gpu_evidence.json --nonce 1183d7c1dc69bd7f8ed554f4e7b7b4a10fb3e388cb70fef18e306f700abff223' \
+  --collected-at 2026-06-11T02:21:07Z --out evidence/

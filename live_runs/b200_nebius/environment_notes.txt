@@ -1,0 +1,6 @@
+captured_at_utc: 2026-06-11T02:21:01Z
+uname: Linux computeinstance-u00h5s0gc9gpr28nve 6.11.0-1016-nvidia #16-Ubuntu SMP PREEMPT_DYNAMIC Sun Sep 21 17:06:33 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+uptime_seconds: 736.14
+os: Ubuntu 24.04.4 LTS
+nvidia_driver: 580.159.04
+evidence_source: corelib

@@ -1,0 +1,15 @@
+# ARC live attestation spike — challenge nonce pre-commitment
+# generated_at: 2026-06-11T00:29:24Z
+# generated_on: relying-party laptop (lender side), before instance rental
+# custody: nonces originate here, not on the provider box
+run1_nonce: 2850c198390b3441ab7c108f0be55ee4
+run2_nonce: 71a0ca172482570c5949e892bac8251e
+run3_nonce: aa22f6b93eba310163b149b0bf4a9e32
+post_reboot_nonce: dea3ed41672bfb2aa418d212149accda
+
+# SUPERSEDES the 16-byte nonces above — nvattest 1.2.2 requires 32-byte nonces
+# regenerated_at: 2026-06-11T00:56:13Z, same custody (relying-party laptop)
+run1_nonce_v2: 1183d7c1dc69bd7f8ed554f4e7b7b4a10fb3e388cb70fef18e306f700abff223
+run2_nonce_v2: 04ed8f1a0a9cf69108d258b99413aaa084ec67b416bf4411e0517828302e660c
+run3_nonce_v2: 8f22f786fb3ded500ddebf58b233f1e594af73d9dc98cfab6b2051a2923ffd64
+post_reboot_nonce_v2: d5c20d308a0ed990bd712adc6bcf4c55fe9b928a3618e5ffe31bd7bece4ab623

@@ -1,0 +1,10 @@
+== conf-compute -gc:
+CPU CC capabilities: None
+== conf-compute -gg:
+GPU CC capabilities: CC Capable
+== conf-compute -e:
+CC Environment: UNAVAILABLE
+== conf-compute -f:
+CC status: OFF
+== conf-compute -d:
+DevTools Mode: OFF

@@ -1,0 +1,36 @@
+diff --git a/nv-attestation-sdk-cpp/src/gpu/evidence.cpp b/nv-attestation-sdk-cpp/src/gpu/evidence.cpp
+index 99d2245..2a63dbf 100644
+--- a/nv-attestation-sdk-cpp/src/gpu/evidence.cpp
++++ b/nv-attestation-sdk-cpp/src/gpu/evidence.cpp
+@@ -15,6 +15,7 @@
+  * limitations under the License.
+  */
+ 
++#include <cstdlib>
+ #include <algorithm>
+ #include <vector>
+ #include <string>
+@@ -382,6 +383,12 @@ Error GpuEvidence::AttestationReport::create(const std::vector<uint8_t>& attesta
+ }
+ 
+ Error GpuEvidence::AttestationReport::get_driver_version(std::string& out_driver_version) const {
++    // ARC spike fallback: opaque data absent over DOE on this firmware; the
++    // version is a RIM-selection hint, not signed evidence. Disclosed out-of-band.
++    if (const char* env = std::getenv("NVAT_DRIVER_VERSION_FALLBACK"); env && *env) {
++        out_driver_version = env;
++        return Error::Ok;
++    }
+     const GpuParsedOpaqueFieldData* driver_version_field = nullptr;
+     Error error = m_gpu_opaque_data_parser.get_field(GpuOpaqueDataType::DRIVER_VERSION, driver_version_field);
+     if (error != Error::Ok) {
+@@ -398,6 +405,10 @@ Error GpuEvidence::AttestationReport::get_driver_version(std::string& out_driver
+ }
+ 
+ Error GpuEvidence::AttestationReport::get_vbios_version(std::string& out_vbios_version) const {
++    if (const char* env = std::getenv("NVAT_VBIOS_VERSION_FALLBACK"); env && *env) {
++        out_vbios_version = env;
++        return Error::Ok;
++    }
+     const GpuParsedOpaqueFieldData* vbios_version_field = nullptr;
+     Error error = m_gpu_opaque_data_parser.get_field(GpuOpaqueDataType::VBIOS_VERSION, vbios_version_field);
+     if (error != Error::Ok) {

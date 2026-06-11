@@ -1,0 +1,15 @@
+{
+  "identity_bridge": {
+    "schedule_id": "ARC-SPIKE-2026-06-10-B200",
+    "mapping_source": "RunPod pod paq3wmi0tn3dep (Secure Cloud) + on-box nvidia-smi readout (serial 1653925010934, uuid GPU-1e532702-a45d-bdd3-6b12-5e7b74051fe0)",
+    "mapping_time": "2026-06-11T01:30:00Z",
+    "mapper": "coopveit@gmail.com",
+    "mappings": [
+      {
+        "contract_gpu_id": "RUNPOD-B200-0",
+        "provider_asset_id": "serial:1653925010934",
+        "ueid": "FILL_FROM_ATTESTATION_RUN_1"
+      }
+    ]
+  }
+}

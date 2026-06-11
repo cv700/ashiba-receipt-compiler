@@ -1,0 +1,63 @@
+Run end-to-end attestation against a given device. 
+
+Results are printed to standard out. Control output format through the global 
+--format option. 
+
+
+nvattest attest [OPTIONS]
+
+
+OPTIONS:
+  -h,     --help              Print this help message and exit 
+          --nonce TEXT        Nonce for the attestation in hex format. A nonce will be 
+                              generated if not supplied. 
+  -d,     --device TEXT:{gpu,nvswitch} [gpu]  
+                              Device to attest 
+          --verifier TEXT:{local,remote} [local]  
+                              Appraise evidence using the given verifier type 
+          --relying-party-policy TEXT:FILE 
+                              Path to a local file which contains a Relying Party Rego policy 
+          --rim-store TEXT:{remote,dir} [remote]  
+                              Type of RIM store to use if --verifier=local 
+          --rim-url TEXT [https://rim.attestation.nvidia.com]  (Env:NVAT_RIM_SERVICE_BASE_URL) 
+                              Base URL for the NVIDIA RIM service. Used if --rim-store=remote 
+          --rim-dir TEXT:DIR [.]  
+                              Path to a directory containing RIM files. Used if --rim-store=dir 
+          --ocsp-url TEXT [https://ocsp.ndis.nvidia.com]  (Env:NVAT_OCSP_BASE_URL) 
+                              Base URL for the OCSP responder 
+          --nras-url TEXT [https://nras.attestation.nvidia.com]  (Env:NVAT_NRAS_BASE_URL) 
+                              Base URL for the NVIDIA Remote Attestation Service 
+          --service-key TEXT (Env:NV_ATTESTATION_SERVICE_KEY) 
+                              Service key used to authenticate remote service calls to 
+                              attestation services 
+
+GPU Evidence:
+          --gpu-evidence-source TEXT:{nvml,corelib,file} [nvml]  
+                              Source of GPU evidence. Used if --device=gpu 
+                              
+                              NVML is the default and requires the NVIDIA GPU driver to be 
+                              installed and the GPU to be in CC mode. Corelib can be used 
+                              outside of CC mode and requires the Corelib library to be 
+                              installed. Files can be used to appraise previously collected 
+                              evidence. 
+          --gpu-architecture TEXT:{blackwell} 
+                              GPU architecture. Required if --gpu-evidence-source=corelib 
+          --gpu-evidence-file TEXT 
+                              Path to a file containing GPU evidence. Used if 
+                              --gpu-evidence-source=file 
+
+NVSwitch Evidence:
+          --nvswitch-evidence-source TEXT:{nscq,file} [nscq]  
+                              Source of NVSwitch evidence. Used if --device=nvswitch 
+                              
+                              NSCQ is the default and requires NSCQ to be installed. Files can 
+                              be used to appraise previously collected evidence. 
+          --nvswitch-evidence-file TEXT 
+                              Path to a file containing NVSwitch evidence. Used if 
+                              --nvswitch-evidence-source=file 
+
+Evidence Appraisal Options:
+          --verify-rim-signatures, --no-verify-rim-signatures{false} [1]  
+                              Whether to verify RIM file signatures 
+          --verify-rim-cert-chain, --no-verify-rim-cert-chain{false} [1]  
+                              Whether to verify RIM file certificate chains 

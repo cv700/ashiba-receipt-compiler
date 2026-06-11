@@ -1,0 +1,6 @@
+captured_at_utc: 2026-06-11T01:23:21Z
+uname: Linux 0d211520ca78 6.8.0-100-generic #100-Ubuntu SMP PREEMPT_DYNAMIC Tue Jan 13 16:40:06 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
+uptime_seconds: 2367401.99
+os: Ubuntu 24.04.3 LTS
+nvidia_driver: 580.126.20
+evidence_source: corelib

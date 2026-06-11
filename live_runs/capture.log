@@ -1,0 +1,2875 @@
+=== Step 1: Record CC mode, GPU info, tool version, environment ===
+CC status: OFF
+0, NVIDIA H100 80GB HBM3, 1650224003989, GPU-bf402902-90a6-d04d-1f73-9522584fb39f, 580.105.08, 96.00.D9.00.01
+captured_at_utc: 2026-06-11T00:47:59Z
+uname: Linux 68-209-73-162 6.8.0-1046-nvidia #49~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Wed Jan 28 22:29:18 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
+uptime_seconds: 419.09
+os: Ubuntu 22.04.5 LTS
+nvidia_driver: 580.105.08
+
+=== Step 2: Install attestation SDK ===
+Installing build dependencies...
+Get:1 https://nvidia.github.io/libnvidia-container/stable/deb/amd64  InRelease [1477 B]
+Get:2 https://download.docker.com/linux/ubuntu jammy InRelease [48.5 kB]
+Get:3 https://packages.microsoft.com/repos/azure-cli jammy InRelease [3596 B]
+Get:4 https://download.docker.com/linux/ubuntu jammy/stable amd64 Packages [79.7 kB]
+Get:5 https://nvidia.github.io/libnvidia-container/stable/deb/amd64  Packages [26.1 kB]
+Get:6 https://packages.microsoft.com/repos/azure-cli jammy/main all Packages [1093 B]
+Get:7 https://packages.microsoft.com/repos/azure-cli jammy/main amd64 Packages [3325 B]
+Ign:8 http://linux.mellanox.com/public/repo/doca/2.9.3/ubuntu22.04/x86_64 ./ InRelease
+Get:9 http://security.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
+Get:10 https://pkg.cloudflare.com/cloudflared jammy InRelease [5043 B]
+Hit:11 http://linux.mellanox.com/public/repo/doca/2.9.3/ubuntu22.04/x86_64 ./ Release
+Get:12 http://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy InRelease [18.1 kB]
+Hit:14 http://archive.ubuntu.com/ubuntu jammy InRelease
+Hit:15 http://archive.lambdalabs.com/ubuntu jammy InRelease
+Get:16 https://pkg.cloudflare.com/cloudflared jammy/main amd64 Packages [376 B]
+Hit:17 https://ppa.launchpadcontent.net/flexiondotorg/nvtop/ubuntu jammy InRelease
+Get:18 http://archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]
+Get:19 http://security.ubuntu.com/ubuntu jammy-security/main amd64 Packages [3292 kB]
+Get:20 http://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu jammy/main amd64 Packages [32.7 kB]
+Get:21 http://security.ubuntu.com/ubuntu jammy-security/main Translation-en [463 kB]
+Get:22 http://security.ubuntu.com/ubuntu jammy-security/main amd64 c-n-f Metadata [14.5 kB]
+Get:23 http://security.ubuntu.com/ubuntu jammy-security/restricted amd64 Packages [5862 kB]
+Get:24 http://security.ubuntu.com/ubuntu jammy-security/restricted Translation-en [1121 kB]
+Get:25 http://security.ubuntu.com/ubuntu jammy-security/restricted amd64 c-n-f Metadata [600 B]
+Get:26 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 Packages [1036 kB]
+Get:27 http://security.ubuntu.com/ubuntu jammy-security/universe Translation-en [229 kB]
+Get:28 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 c-n-f Metadata [23.0 kB]
+Get:29 http://security.ubuntu.com/ubuntu jammy-security/multiverse amd64 Packages [64.3 kB]
+Get:30 http://security.ubuntu.com/ubuntu jammy-security/multiverse Translation-en [12.6 kB]
+Get:31 http://security.ubuntu.com/ubuntu jammy-security/multiverse amd64 c-n-f Metadata [544 B]
+Get:32 http://archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]
+Get:33 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [3575 kB]
+Get:34 http://archive.ubuntu.com/ubuntu jammy-updates/main Translation-en [536 kB]
+Get:35 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 c-n-f Metadata [19.9 kB]
+Get:36 http://archive.ubuntu.com/ubuntu jammy-updates/restricted amd64 Packages [6114 kB]
+Get:37 http://archive.ubuntu.com/ubuntu jammy-updates/restricted Translation-en [1164 kB]
+Get:38 http://archive.ubuntu.com/ubuntu jammy-updates/restricted amd64 c-n-f Metadata [584 B]
+Get:39 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages [1273 kB]
+Get:40 http://archive.ubuntu.com/ubuntu jammy-updates/universe Translation-en [319 kB]
+Get:41 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 c-n-f Metadata [30.6 kB]
+Get:42 http://archive.ubuntu.com/ubuntu jammy-updates/multiverse amd64 Packages [71.6 kB]
+Get:43 http://archive.ubuntu.com/ubuntu jammy-updates/multiverse Translation-en [15.5 kB]
+Get:44 http://archive.ubuntu.com/ubuntu jammy-updates/multiverse amd64 c-n-f Metadata [756 B]
+Get:45 http://archive.ubuntu.com/ubuntu jammy-backports/main amd64 Packages [70.2 kB]
+Get:46 http://archive.ubuntu.com/ubuntu jammy-backports/main Translation-en [11.4 kB]
+Get:47 http://archive.ubuntu.com/ubuntu jammy-backports/main amd64 c-n-f Metadata [412 B]
+Get:48 http://archive.ubuntu.com/ubuntu jammy-backports/universe amd64 Packages [30.8 kB]
+Get:49 http://archive.ubuntu.com/ubuntu jammy-backports/universe Translation-en [16.9 kB]
+Get:50 http://archive.ubuntu.com/ubuntu jammy-backports/universe amd64 c-n-f Metadata [676 B]
+Fetched 26.0 MB in 3s (8981 kB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+cmake is already the newest version (3.22.1-1ubuntu1.22.04.2).
+libxml2 is already the newest version (2.9.13+dfsg-1ubuntu0.11).
+libxml2 set to manually installed.
+The following package was automatically installed and is no longer required:
+  libpkgconf3
+Use 'sudo apt autoremove' to remove it.
+The following additional packages will be installed:
+  binfmt-support clang-14 curl icu-devtools lib32gcc-s1 lib32stdc++6
+  libclang-common-14-dev libclang-cpp14 libclang1-14 libcurl4 libevent-2.1-7
+  libffi-dev libgc1 libgcrypt20 libgcrypt20-dev libgmp-dev libgmpxx4ldbl
+  libgnutls-dane0 libgnutls-openssl27 libgnutls28-dev libgnutls30
+  libgnutlsxx28 libgpg-error-dev libicu-dev libidn2-dev libllvm14
+  libncurses-dev libnspr4-dev libnss3 libnss3-dev libobjc-11-dev libobjc4
+  libp11-kit-dev libpfm4 libssl3 libtasn1-6-dev libtasn1-doc libtinfo-dev
+  libunbound8 libxmlsec1 libxmlsec1-gcrypt libxmlsec1-gnutls libxmlsec1-nss
+  libxslt1-dev libz3-4 libz3-dev llvm-14 llvm-14-dev llvm-14-linker-tools
+  llvm-14-runtime llvm-14-tools nettle-dev
+Suggested packages:
+  clang-14-doc git-daemon-run | git-daemon-sysvinit git-doc git-email git-gui
+  gitk gitweb git-cvs git-mediawiki git-svn libcurl4-doc libidn11-dev
+  libkrb5-dev libldap2-dev librtmp-dev libssh2-1-dev rng-tools libgcrypt20-doc
+  gmp-doc libgmp10-doc libmpfr-dev gnutls-bin gnutls-doc icu-doc ncurses-doc
+  p11-kit-doc libssl-doc llvm-14-doc
+The following packages will be REMOVED:
+  pkgconf
+The following NEW packages will be installed:
+  binfmt-support clang clang-14 icu-devtools lib32gcc-s1 lib32stdc++6
+  libclang-common-14-dev libclang-cpp14 libclang1-14 libcurl4-openssl-dev
+  libevent-2.1-7 libffi-dev libgc1 libgcrypt20-dev libgmp-dev libgmpxx4ldbl
+  libgnutls-dane0 libgnutls-openssl27 libgnutls28-dev libgnutlsxx28
+  libgpg-error-dev libicu-dev libidn2-dev libllvm14 libncurses-dev
+  libnspr4-dev libnss3-dev libobjc-11-dev libobjc4 libp11-kit-dev libpfm4
+  libssl-dev libtasn1-6-dev libtasn1-doc libtinfo-dev libunbound8 libxml2-dev
+  libxmlsec1 libxmlsec1-dev libxmlsec1-gcrypt libxmlsec1-gnutls libxmlsec1-nss
+  libxmlsec1-openssl libxslt1-dev libz3-4 libz3-dev llvm-14 llvm-14-dev
+  llvm-14-linker-tools llvm-14-runtime llvm-14-tools nettle-dev pkg-config
+The following packages will be upgraded:
+  curl git libcurl4 libgcrypt20 libgnutls30 libnss3 libssl3
+7 upgraded, 53 newly installed, 1 to remove and 128 not upgraded.
+Need to get 139 MB of archives.
+After this operation, 727 MB of additional disk space will be used.
+Get:1 http://archive.ubuntu.com/ubuntu jammy/main amd64 pkg-config amd64 0.29.2-1ubuntu3 [48.2 kB]
+Get:2 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgcrypt20 amd64 1.9.4-3ubuntu3.2 [516 kB]
+Get:3 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libssl3 amd64 3.0.2-0ubuntu1.25 [1906 kB]
+Get:4 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgnutls30 amd64 3.7.3-4ubuntu1.9 [971 kB]
+Get:5 http://archive.ubuntu.com/ubuntu jammy/main amd64 binfmt-support amd64 2.2.1-2 [55.8 kB]
+Get:6 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libllvm14 amd64 1:14.0.0-1ubuntu1.1 [24.0 MB]
+Get:7 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 libclang-cpp14 amd64 1:14.0.0-1ubuntu1.1 [12.1 MB]
+Get:8 http://archive.ubuntu.com/ubuntu jammy/main amd64 libgc1 amd64 1:8.0.6-1.1build1 [96.8 kB]
+Get:9 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 libobjc4 amd64 12.3.0-1ubuntu1~22.04.3 [48.7 kB]
+Get:10 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 libobjc-11-dev amd64 11.4.0-1ubuntu1~22.04.3 [196 kB]
+Get:11 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 lib32gcc-s1 amd64 12.3.0-1ubuntu1~22.04.3 [63.9 kB]
+Get:12 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 lib32stdc++6 amd64 12.3.0-1ubuntu1~22.04.3 [739 kB]
+Get:13 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 libclang-common-14-dev amd64 1:14.0.0-1ubuntu1.1 [5975 kB]
+Get:14 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 llvm-14-linker-tools amd64 1:14.0.0-1ubuntu1.1 [1355 kB]
+Get:15 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 libclang1-14 amd64 1:14.0.0-1ubuntu1.1 [6792 kB]
+Get:16 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 clang-14 amd64 1:14.0.0-1ubuntu1.1 [81.2 kB]
+Get:17 http://archive.ubuntu.com/ubuntu jammy/universe amd64 clang amd64 1:14.0-55~exp2 [3558 B]
+Get:18 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 curl amd64 7.81.0-1ubuntu1.24 [194 kB]
+Get:19 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libcurl4 amd64 7.81.0-1ubuntu1.24 [291 kB]
+Get:20 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 git amd64 1:2.34.1-1ubuntu1.17 [3174 kB]
+Get:21 http://archive.ubuntu.com/ubuntu jammy/main amd64 icu-devtools amd64 70.1-2 [197 kB]
+Get:22 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libcurl4-openssl-dev amd64 7.81.0-1ubuntu1.24 [387 kB]
+Get:23 http://archive.ubuntu.com/ubuntu jammy/main amd64 libevent-2.1-7 amd64 2.1.12-stable-1build3 [148 kB]
+Get:24 http://archive.ubuntu.com/ubuntu jammy/main amd64 libgpg-error-dev amd64 1.43-3 [129 kB]
+Get:25 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgcrypt20-dev amd64 1.9.4-3ubuntu3.2 [572 kB]
+Get:26 http://archive.ubuntu.com/ubuntu jammy/main amd64 libgmpxx4ldbl amd64 2:6.2.1+dfsg-3ubuntu1 [9580 B]
+Get:27 http://archive.ubuntu.com/ubuntu jammy/main amd64 libgmp-dev amd64 2:6.2.1+dfsg-3ubuntu1 [337 kB]
+Get:28 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgnutls-openssl27 amd64 3.7.3-4ubuntu1.9 [22.8 kB]
+Get:29 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libunbound8 amd64 1.13.1-1ubuntu5.15 [401 kB]
+Get:30 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgnutls-dane0 amd64 3.7.3-4ubuntu1.9 [22.6 kB]
+Get:31 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgnutlsxx28 amd64 3.7.3-4ubuntu1.9 [16.4 kB]
+Get:32 http://archive.ubuntu.com/ubuntu jammy/main amd64 libidn2-dev amd64 2.3.2-2build1 [86.7 kB]
+Get:33 http://archive.ubuntu.com/ubuntu jammy/main amd64 libp11-kit-dev amd64 0.24.0-6build1 [20.2 kB]
+Get:34 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libtasn1-6-dev amd64 4.18.0-4ubuntu0.2 [91.8 kB]
+Get:35 http://archive.ubuntu.com/ubuntu jammy/main amd64 nettle-dev amd64 3.7.3-1build2 [1135 kB]
+Get:36 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgnutls28-dev amd64 3.7.3-4ubuntu1.9 [1047 kB]
+Get:37 http://archive.ubuntu.com/ubuntu jammy/main amd64 libicu-dev amd64 70.1-2 [11.6 MB]
+Get:38 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libncurses-dev amd64 6.3-2ubuntu0.1 [381 kB]
+Get:39 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libnspr4-dev amd64 2:4.35-0ubuntu0.22.04.1 [219 kB]
+Get:40 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libnss3 amd64 2:3.98-0ubuntu0.22.04.3 [1347 kB]
+Get:41 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libnss3-dev amd64 2:3.98-0ubuntu0.22.04.3 [246 kB]
+Get:42 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libssl-dev amd64 3.0.2-0ubuntu1.25 [2377 kB]
+Get:43 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libtinfo-dev amd64 6.3-2ubuntu0.1 [780 B]
+Get:44 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libxml2-dev amd64 2.9.13+dfsg-1ubuntu0.11 [805 kB]
+Get:45 http://archive.ubuntu.com/ubuntu jammy/main amd64 libxmlsec1 amd64 1.2.33-1build2 [139 kB]
+Get:46 http://archive.ubuntu.com/ubuntu jammy/main amd64 libxmlsec1-gcrypt amd64 1.2.33-1build2 [45.2 kB]
+Get:47 http://archive.ubuntu.com/ubuntu jammy/main amd64 libxmlsec1-gnutls amd64 1.2.33-1build2 [36.9 kB]
+Get:48 http://archive.ubuntu.com/ubuntu jammy/main amd64 libxmlsec1-nss amd64 1.2.33-1build2 [67.7 kB]
+Get:49 http://archive.ubuntu.com/ubuntu jammy/main amd64 libxmlsec1-openssl amd64 1.2.33-1build2 [85.5 kB]
+Get:50 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libxslt1-dev amd64 1.1.34-4ubuntu0.22.04.5 [219 kB]
+Get:51 http://archive.ubuntu.com/ubuntu jammy/main amd64 libxmlsec1-dev amd64 1.2.33-1build2 [428 kB]
+Get:52 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 llvm-14-runtime amd64 1:14.0.0-1ubuntu1.1 [484 kB]
+Get:53 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libpfm4 amd64 4.11.1+git32-gd0b85fb-1ubuntu0.1 [345 kB]
+Get:54 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 llvm-14 amd64 1:14.0.0-1ubuntu1.1 [12.7 MB]
+Get:55 http://archive.ubuntu.com/ubuntu jammy/main amd64 libffi-dev amd64 3.4.2-4 [63.7 kB]
+Get:56 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 llvm-14-tools amd64 1:14.0.0-1ubuntu1.1 [404 kB]
+Get:57 http://archive.ubuntu.com/ubuntu jammy/universe amd64 libz3-4 amd64 4.8.12-1 [5766 kB]
+Get:58 http://archive.ubuntu.com/ubuntu jammy/universe amd64 libz3-dev amd64 4.8.12-1 [72.2 kB]
+Get:59 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 llvm-14-dev amd64 1:14.0.0-1ubuntu1.1 [37.8 MB]
+Get:60 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libtasn1-doc all 4.18.0-4ubuntu0.2 [305 kB]
+debconf: unable to initialize frontend: Dialog
+debconf: (Dialog frontend will not work on a dumb terminal, an emacs shell buffer, or without a controlling terminal.)
+debconf: falling back to frontend: Readline
+debconf: unable to initialize frontend: Readline
+debconf: (This frontend requires a controlling tty.)
+debconf: falling back to frontend: Teletype
+dpkg-preconfigure: unable to re-open stdin: 
+Fetched 139 MB in 1s (117 MB/s)
+dpkg: pkgconf: dependency problems, but removing anyway as you requested:
+ knem-dkms depends on pkg-config; however:
+  Package pkg-config is not installed.
+  Package pkgconf which provides pkg-config is to be removed.
+ knem depends on pkg-config; however:
+  Package pkg-config is not installed.
+  Package pkgconf which provides pkg-config is to be removed.
+
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 213781 files and directories currently installed.)
+Removing pkgconf (1.8.0-1) ...
+Removing 'diversion of /usr/bin/pkg-config to /usr/bin/pkg-config.real by pkgconf'
+Removing 'diversion of /usr/share/aclocal/pkg.m4 to /usr/share/aclocal/pkg.real.m4 by pkgconf'
+Removing 'diversion of /usr/share/man/man1/pkg-config.1.gz to /usr/share/man/man1/pkg-config.real.1.gz by pkgconf'
+Removing 'diversion of /usr/share/pkg-config-crosswrapper to /usr/share/pkg-config-crosswrapper.real by pkgconf'
+Selecting previously unselected package pkg-config.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 213761 files and directories currently installed.)
+Preparing to unpack .../pkg-config_0.29.2-1ubuntu3_amd64.deb ...
+Unpacking pkg-config (0.29.2-1ubuntu3) ...
+Preparing to unpack .../libgcrypt20_1.9.4-3ubuntu3.2_amd64.deb ...
+Unpacking libgcrypt20:amd64 (1.9.4-3ubuntu3.2) over (1.9.4-3ubuntu3) ...
+Setting up libgcrypt20:amd64 (1.9.4-3ubuntu3.2) ...
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 213776 files and directories currently installed.)
+Preparing to unpack .../libssl3_3.0.2-0ubuntu1.25_amd64.deb ...
+Unpacking libssl3:amd64 (3.0.2-0ubuntu1.25) over (3.0.2-0ubuntu1.21) ...
+Setting up libssl3:amd64 (3.0.2-0ubuntu1.25) ...
+debconf: unable to initialize frontend: Dialog
+debconf: (Dialog frontend will not work on a dumb terminal, an emacs shell buffer, or without a controlling terminal.)
+debconf: falling back to frontend: Readline
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 213776 files and directories currently installed.)
+Preparing to unpack .../libgnutls30_3.7.3-4ubuntu1.9_amd64.deb ...
+Unpacking libgnutls30:amd64 (3.7.3-4ubuntu1.9) over (3.7.3-4ubuntu1.8) ...
+Setting up libgnutls30:amd64 (3.7.3-4ubuntu1.9) ...
+Selecting previously unselected package binfmt-support.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 213776 files and directories currently installed.)
+Preparing to unpack .../00-binfmt-support_2.2.1-2_amd64.deb ...
+Unpacking binfmt-support (2.2.1-2) ...
+Selecting previously unselected package libllvm14:amd64.
+Preparing to unpack .../01-libllvm14_1%3a14.0.0-1ubuntu1.1_amd64.deb ...
+Unpacking libllvm14:amd64 (1:14.0.0-1ubuntu1.1) ...
+Selecting previously unselected package libclang-cpp14.
+Preparing to unpack .../02-libclang-cpp14_1%3a14.0.0-1ubuntu1.1_amd64.deb ...
+Unpacking libclang-cpp14 (1:14.0.0-1ubuntu1.1) ...
+Selecting previously unselected package libgc1:amd64.
+Preparing to unpack .../03-libgc1_1%3a8.0.6-1.1build1_amd64.deb ...
+Unpacking libgc1:amd64 (1:8.0.6-1.1build1) ...
+Selecting previously unselected package libobjc4:amd64.
+Preparing to unpack .../04-libobjc4_12.3.0-1ubuntu1~22.04.3_amd64.deb ...
+Unpacking libobjc4:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+Selecting previously unselected package libobjc-11-dev:amd64.
+Preparing to unpack .../05-libobjc-11-dev_11.4.0-1ubuntu1~22.04.3_amd64.deb ...
+Unpacking libobjc-11-dev:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+Selecting previously unselected package lib32gcc-s1.
+Preparing to unpack .../06-lib32gcc-s1_12.3.0-1ubuntu1~22.04.3_amd64.deb ...
+Unpacking lib32gcc-s1 (12.3.0-1ubuntu1~22.04.3) ...
+Selecting previously unselected package lib32stdc++6.
+Preparing to unpack .../07-lib32stdc++6_12.3.0-1ubuntu1~22.04.3_amd64.deb ...
+Unpacking lib32stdc++6 (12.3.0-1ubuntu1~22.04.3) ...
+Selecting previously unselected package libclang-common-14-dev.
+Preparing to unpack .../08-libclang-common-14-dev_1%3a14.0.0-1ubuntu1.1_amd64.deb ...
+Unpacking libclang-common-14-dev (1:14.0.0-1ubuntu1.1) ...
+Selecting previously unselected package llvm-14-linker-tools.
+Preparing to unpack .../09-llvm-14-linker-tools_1%3a14.0.0-1ubuntu1.1_amd64.deb ...
+Unpacking llvm-14-linker-tools (1:14.0.0-1ubuntu1.1) ...
+Selecting previously unselected package libclang1-14.
+Preparing to unpack .../10-libclang1-14_1%3a14.0.0-1ubuntu1.1_amd64.deb ...
+Unpacking libclang1-14 (1:14.0.0-1ubuntu1.1) ...
+Selecting previously unselected package clang-14.
+Preparing to unpack .../11-clang-14_1%3a14.0.0-1ubuntu1.1_amd64.deb ...
+Unpacking clang-14 (1:14.0.0-1ubuntu1.1) ...
+Selecting previously unselected package clang.
+Preparing to unpack .../12-clang_1%3a14.0-55~exp2_amd64.deb ...
+Unpacking clang (1:14.0-55~exp2) ...
+Preparing to unpack .../13-curl_7.81.0-1ubuntu1.24_amd64.deb ...
+Unpacking curl (7.81.0-1ubuntu1.24) over (7.81.0-1ubuntu1.22) ...
+Preparing to unpack .../14-libcurl4_7.81.0-1ubuntu1.24_amd64.deb ...
+Unpacking libcurl4:amd64 (7.81.0-1ubuntu1.24) over (7.81.0-1ubuntu1.22) ...
+Preparing to unpack .../15-git_1%3a2.34.1-1ubuntu1.17_amd64.deb ...
+Unpacking git (1:2.34.1-1ubuntu1.17) over (1:2.34.1-1ubuntu1.16) ...
+Selecting previously unselected package icu-devtools.
+Preparing to unpack .../16-icu-devtools_70.1-2_amd64.deb ...
+Unpacking icu-devtools (70.1-2) ...
+Selecting previously unselected package libcurl4-openssl-dev:amd64.
+Preparing to unpack .../17-libcurl4-openssl-dev_7.81.0-1ubuntu1.24_amd64.deb ...
+Unpacking libcurl4-openssl-dev:amd64 (7.81.0-1ubuntu1.24) ...
+Selecting previously unselected package libevent-2.1-7:amd64.
+Preparing to unpack .../18-libevent-2.1-7_2.1.12-stable-1build3_amd64.deb ...
+Unpacking libevent-2.1-7:amd64 (2.1.12-stable-1build3) ...
+Selecting previously unselected package libgpg-error-dev.
+Preparing to unpack .../19-libgpg-error-dev_1.43-3_amd64.deb ...
+Unpacking libgpg-error-dev (1.43-3) ...
+Selecting previously unselected package libgcrypt20-dev.
+Preparing to unpack .../20-libgcrypt20-dev_1.9.4-3ubuntu3.2_amd64.deb ...
+Unpacking libgcrypt20-dev (1.9.4-3ubuntu3.2) ...
+Selecting previously unselected package libgmpxx4ldbl:amd64.
+Preparing to unpack .../21-libgmpxx4ldbl_2%3a6.2.1+dfsg-3ubuntu1_amd64.deb ...
+Unpacking libgmpxx4ldbl:amd64 (2:6.2.1+dfsg-3ubuntu1) ...
+Selecting previously unselected package libgmp-dev:amd64.
+Preparing to unpack .../22-libgmp-dev_2%3a6.2.1+dfsg-3ubuntu1_amd64.deb ...
+Unpacking libgmp-dev:amd64 (2:6.2.1+dfsg-3ubuntu1) ...
+Selecting previously unselected package libgnutls-openssl27:amd64.
+Preparing to unpack .../23-libgnutls-openssl27_3.7.3-4ubuntu1.9_amd64.deb ...
+Unpacking libgnutls-openssl27:amd64 (3.7.3-4ubuntu1.9) ...
+Selecting previously unselected package libunbound8:amd64.
+Preparing to unpack .../24-libunbound8_1.13.1-1ubuntu5.15_amd64.deb ...
+Unpacking libunbound8:amd64 (1.13.1-1ubuntu5.15) ...
+Selecting previously unselected package libgnutls-dane0:amd64.
+Preparing to unpack .../25-libgnutls-dane0_3.7.3-4ubuntu1.9_amd64.deb ...
+Unpacking libgnutls-dane0:amd64 (3.7.3-4ubuntu1.9) ...
+Selecting previously unselected package libgnutlsxx28:amd64.
+Preparing to unpack .../26-libgnutlsxx28_3.7.3-4ubuntu1.9_amd64.deb ...
+Unpacking libgnutlsxx28:amd64 (3.7.3-4ubuntu1.9) ...
+Selecting previously unselected package libidn2-dev:amd64.
+Preparing to unpack .../27-libidn2-dev_2.3.2-2build1_amd64.deb ...
+Unpacking libidn2-dev:amd64 (2.3.2-2build1) ...
+Selecting previously unselected package libp11-kit-dev:amd64.
+Preparing to unpack .../28-libp11-kit-dev_0.24.0-6build1_amd64.deb ...
+Unpacking libp11-kit-dev:amd64 (0.24.0-6build1) ...
+Selecting previously unselected package libtasn1-6-dev:amd64.
+Preparing to unpack .../29-libtasn1-6-dev_4.18.0-4ubuntu0.2_amd64.deb ...
+Unpacking libtasn1-6-dev:amd64 (4.18.0-4ubuntu0.2) ...
+Selecting previously unselected package nettle-dev:amd64.
+Preparing to unpack .../30-nettle-dev_3.7.3-1build2_amd64.deb ...
+Unpacking nettle-dev:amd64 (3.7.3-1build2) ...
+Selecting previously unselected package libgnutls28-dev:amd64.
+Preparing to unpack .../31-libgnutls28-dev_3.7.3-4ubuntu1.9_amd64.deb ...
+Unpacking libgnutls28-dev:amd64 (3.7.3-4ubuntu1.9) ...
+Selecting previously unselected package libicu-dev:amd64.
+Preparing to unpack .../32-libicu-dev_70.1-2_amd64.deb ...
+Unpacking libicu-dev:amd64 (70.1-2) ...
+Selecting previously unselected package libncurses-dev:amd64.
+Preparing to unpack .../33-libncurses-dev_6.3-2ubuntu0.1_amd64.deb ...
+Unpacking libncurses-dev:amd64 (6.3-2ubuntu0.1) ...
+Selecting previously unselected package libnspr4-dev.
+Preparing to unpack .../34-libnspr4-dev_2%3a4.35-0ubuntu0.22.04.1_amd64.deb ...
+Unpacking libnspr4-dev (2:4.35-0ubuntu0.22.04.1) ...
+Preparing to unpack .../35-libnss3_2%3a3.98-0ubuntu0.22.04.3_amd64.deb ...
+Unpacking libnss3:amd64 (2:3.98-0ubuntu0.22.04.3) over (2:3.98-0ubuntu0.22.04.2) ...
+Selecting previously unselected package libnss3-dev:amd64.
+Preparing to unpack .../36-libnss3-dev_2%3a3.98-0ubuntu0.22.04.3_amd64.deb ...
+Unpacking libnss3-dev:amd64 (2:3.98-0ubuntu0.22.04.3) ...
+Selecting previously unselected package libssl-dev:amd64.
+Preparing to unpack .../37-libssl-dev_3.0.2-0ubuntu1.25_amd64.deb ...
+Unpacking libssl-dev:amd64 (3.0.2-0ubuntu1.25) ...
+Selecting previously unselected package libtinfo-dev:amd64.
+Preparing to unpack .../38-libtinfo-dev_6.3-2ubuntu0.1_amd64.deb ...
+Unpacking libtinfo-dev:amd64 (6.3-2ubuntu0.1) ...
+Selecting previously unselected package libxml2-dev:amd64.
+Preparing to unpack .../39-libxml2-dev_2.9.13+dfsg-1ubuntu0.11_amd64.deb ...
+Unpacking libxml2-dev:amd64 (2.9.13+dfsg-1ubuntu0.11) ...
+Selecting previously unselected package libxmlsec1:amd64.
+Preparing to unpack .../40-libxmlsec1_1.2.33-1build2_amd64.deb ...
+Unpacking libxmlsec1:amd64 (1.2.33-1build2) ...
+Selecting previously unselected package libxmlsec1-gcrypt:amd64.
+Preparing to unpack .../41-libxmlsec1-gcrypt_1.2.33-1build2_amd64.deb ...
+Unpacking libxmlsec1-gcrypt:amd64 (1.2.33-1build2) ...
+Selecting previously unselected package libxmlsec1-gnutls:amd64.
+Preparing to unpack .../42-libxmlsec1-gnutls_1.2.33-1build2_amd64.deb ...
+Unpacking libxmlsec1-gnutls:amd64 (1.2.33-1build2) ...
+Selecting previously unselected package libxmlsec1-nss:amd64.
+Preparing to unpack .../43-libxmlsec1-nss_1.2.33-1build2_amd64.deb ...
+Unpacking libxmlsec1-nss:amd64 (1.2.33-1build2) ...
+Selecting previously unselected package libxmlsec1-openssl:amd64.
+Preparing to unpack .../44-libxmlsec1-openssl_1.2.33-1build2_amd64.deb ...
+Unpacking libxmlsec1-openssl:amd64 (1.2.33-1build2) ...
+Selecting previously unselected package libxslt1-dev:amd64.
+Preparing to unpack .../45-libxslt1-dev_1.1.34-4ubuntu0.22.04.5_amd64.deb ...
+Unpacking libxslt1-dev:amd64 (1.1.34-4ubuntu0.22.04.5) ...
+Selecting previously unselected package libxmlsec1-dev.
+Preparing to unpack .../46-libxmlsec1-dev_1.2.33-1build2_amd64.deb ...
+Unpacking libxmlsec1-dev (1.2.33-1build2) ...
+Selecting previously unselected package llvm-14-runtime.
+Preparing to unpack .../47-llvm-14-runtime_1%3a14.0.0-1ubuntu1.1_amd64.deb ...
+Unpacking llvm-14-runtime (1:14.0.0-1ubuntu1.1) ...
+Selecting previously unselected package libpfm4:amd64.
+Preparing to unpack .../48-libpfm4_4.11.1+git32-gd0b85fb-1ubuntu0.1_amd64.deb ...
+Unpacking libpfm4:amd64 (4.11.1+git32-gd0b85fb-1ubuntu0.1) ...
+Selecting previously unselected package llvm-14.
+Preparing to unpack .../49-llvm-14_1%3a14.0.0-1ubuntu1.1_amd64.deb ...
+Unpacking llvm-14 (1:14.0.0-1ubuntu1.1) ...
+Selecting previously unselected package libffi-dev:amd64.
+Preparing to unpack .../50-libffi-dev_3.4.2-4_amd64.deb ...
+Unpacking libffi-dev:amd64 (3.4.2-4) ...
+Selecting previously unselected package llvm-14-tools.
+Preparing to unpack .../51-llvm-14-tools_1%3a14.0.0-1ubuntu1.1_amd64.deb ...
+Unpacking llvm-14-tools (1:14.0.0-1ubuntu1.1) ...
+Selecting previously unselected package libz3-4:amd64.
+Preparing to unpack .../52-libz3-4_4.8.12-1_amd64.deb ...
+Unpacking libz3-4:amd64 (4.8.12-1) ...
+Selecting previously unselected package libz3-dev:amd64.
+Preparing to unpack .../53-libz3-dev_4.8.12-1_amd64.deb ...
+Unpacking libz3-dev:amd64 (4.8.12-1) ...
+Selecting previously unselected package llvm-14-dev.
+Preparing to unpack .../54-llvm-14-dev_1%3a14.0.0-1ubuntu1.1_amd64.deb ...
+Unpacking llvm-14-dev (1:14.0.0-1ubuntu1.1) ...
+Selecting previously unselected package libtasn1-doc.
+Preparing to unpack .../55-libtasn1-doc_4.18.0-4ubuntu0.2_all.deb ...
+Unpacking libtasn1-doc (4.18.0-4ubuntu0.2) ...
+Setting up libnspr4-dev (2:4.35-0ubuntu0.22.04.1) ...
+Setting up libncurses-dev:amd64 (6.3-2ubuntu0.1) ...
+Setting up libgnutls-openssl27:amd64 (3.7.3-4ubuntu1.9) ...
+Setting up libtasn1-doc (4.18.0-4ubuntu0.2) ...
+Setting up libnss3:amd64 (2:3.98-0ubuntu0.22.04.3) ...
+Setting up libffi-dev:amd64 (3.4.2-4) ...
+Setting up libz3-4:amd64 (4.8.12-1) ...
+Setting up libgmpxx4ldbl:amd64 (2:6.2.1+dfsg-3ubuntu1) ...
+Setting up libpfm4:amd64 (4.11.1+git32-gd0b85fb-1ubuntu0.1) ...
+Setting up libgpg-error-dev (1.43-3) ...
+Setting up lib32gcc-s1 (12.3.0-1ubuntu1~22.04.3) ...
+Setting up lib32stdc++6 (12.3.0-1ubuntu1~22.04.3) ...
+Setting up libssl-dev:amd64 (3.0.2-0ubuntu1.25) ...
+Setting up libevent-2.1-7:amd64 (2.1.12-stable-1build3) ...
+Setting up binfmt-support (2.2.1-2) ...
+update-binfmts: warning: python3.10 already enabled in kernel.
+Created symlink /etc/systemd/system/multi-user.target.wants/binfmt-support.service → /lib/systemd/system/binfmt-support.service.
+Setting up icu-devtools (70.1-2) ...
+Setting up pkg-config (0.29.2-1ubuntu3) ...
+Setting up libgnutlsxx28:amd64 (3.7.3-4ubuntu1.9) ...
+Setting up git (1:2.34.1-1ubuntu1.17) ...
+Setting up libgc1:amd64 (1:8.0.6-1.1build1) ...
+Setting up libidn2-dev:amd64 (2.3.2-2build1) ...
+Setting up libllvm14:amd64 (1:14.0.0-1ubuntu1.1) ...
+Setting up libnss3-dev:amd64 (2:3.98-0ubuntu0.22.04.3) ...
+Setting up libcurl4:amd64 (7.81.0-1ubuntu1.24) ...
+Setting up curl (7.81.0-1ubuntu1.24) ...
+Setting up libxmlsec1:amd64 (1.2.33-1build2) ...
+Setting up llvm-14-linker-tools (1:14.0.0-1ubuntu1.1) ...
+Setting up libtasn1-6-dev:amd64 (4.18.0-4ubuntu0.2) ...
+Setting up libicu-dev:amd64 (70.1-2) ...
+Setting up libp11-kit-dev:amd64 (0.24.0-6build1) ...
+Setting up llvm-14-tools (1:14.0.0-1ubuntu1.1) ...
+Setting up libtinfo-dev:amd64 (6.3-2ubuntu0.1) ...
+Setting up libz3-dev:amd64 (4.8.12-1) ...
+Setting up libgmp-dev:amd64 (2:6.2.1+dfsg-3ubuntu1) ...
+Setting up nettle-dev:amd64 (3.7.3-1build2) ...
+Setting up libxmlsec1-openssl:amd64 (1.2.33-1build2) ...
+Setting up libclang1-14 (1:14.0.0-1ubuntu1.1) ...
+Setting up libobjc4:amd64 (12.3.0-1ubuntu1~22.04.3) ...
+Setting up libxml2-dev:amd64 (2.9.13+dfsg-1ubuntu0.11) ...
+Setting up libunbound8:amd64 (1.13.1-1ubuntu5.15) ...
+Setting up libgcrypt20-dev (1.9.4-3ubuntu3.2) ...
+Setting up llvm-14-runtime (1:14.0.0-1ubuntu1.1) ...
+Setting up libcurl4-openssl-dev:amd64 (7.81.0-1ubuntu1.24) ...
+Setting up libxmlsec1-gcrypt:amd64 (1.2.33-1build2) ...
+Setting up libclang-common-14-dev (1:14.0.0-1ubuntu1.1) ...
+Setting up libclang-cpp14 (1:14.0.0-1ubuntu1.1) ...
+Setting up libxmlsec1-nss:amd64 (1.2.33-1build2) ...
+Setting up libxmlsec1-gnutls:amd64 (1.2.33-1build2) ...
+Setting up llvm-14 (1:14.0.0-1ubuntu1.1) ...
+Setting up libgnutls-dane0:amd64 (3.7.3-4ubuntu1.9) ...
+Setting up libxslt1-dev:amd64 (1.1.34-4ubuntu0.22.04.5) ...
+Setting up libobjc-11-dev:amd64 (11.4.0-1ubuntu1~22.04.3) ...
+Setting up llvm-14-dev (1:14.0.0-1ubuntu1.1) ...
+Setting up libgnutls28-dev:amd64 (3.7.3-4ubuntu1.9) ...
+Setting up clang-14 (1:14.0.0-1ubuntu1.1) ...
+Setting up clang (1:14.0-55~exp2) ...
+Setting up libxmlsec1-dev (1.2.33-1build2) ...
+Processing triggers for libc-bin (2.35-0ubuntu3.13) ...
+Processing triggers for man-db (2.10.2-1) ...
+Processing triggers for install-info (6.8-4build1) ...
+
+Running kernel seems to be up-to-date.
+
+Services to be restarted:
+ systemctl restart chrony.service
+ systemctl restart glances.service
+ systemctl restart irqbalance.service
+ systemctl restart lambda-jupyter.service
+ systemctl restart multipathd.service
+ systemctl restart packagekit.service
+ systemctl restart polkit.service
+ systemctl restart rdma-ndd.service
+ systemctl restart rpcbind.service
+ systemctl restart rsyslog.service
+ systemctl restart rtkit-daemon.service
+ systemctl restart ssh.service
+ systemctl restart systemd-journald.service
+ /etc/needrestart/restart.d/systemd-manager
+ systemctl restart systemd-networkd.service
+ systemctl restart systemd-resolved.service
+ systemctl restart systemd-udevd.service
+
+Service restarts being deferred:
+ /etc/needrestart/restart.d/dbus.service
+ systemctl restart docker.service
+ systemctl restart networkd-dispatcher.service
+ systemctl restart systemd-logind.service
+ systemctl restart unattended-upgrades.service
+ systemctl restart user@1000.service
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+Installing Rust...
+info: downloading installer
+warn: It looks like you have an existing rustup settings file at:
+warn: /home/ubuntu/.rustup/settings.toml
+warn: Rustup will install the default toolchain as specified in the settings file,
+warn: instead of the one inferred from the default host triple.
+info: profile set to default
+info: default host triple is x86_64-unknown-linux-gnu
+info: syncing channel updates for stable-x86_64-unknown-linux-gnu
+info: latest update on 2026-05-28 for version 1.96.0 (ac68faa20 2026-05-25)
+info: downloading 6 components
+info: default toolchain set to stable-x86_64-unknown-linux-gnu
+
+  stable-x86_64-unknown-linux-gnu installed - rustc 1.96.0 (ac68faa20 2026-05-25)
+
+
+Rust is installed now. Great!
+
+To get started you may need to restart your current shell.
+This would reload your PATH environment variable to include
+Cargo's bin directory ($HOME/.cargo/bin).
+
+To configure your current shell, you need to source
+the corresponding env file under $HOME/.cargo.
+
+This is usually done by running one of the following (note the leading DOT):
+. "$HOME/.cargo/env"            # For sh/bash/zsh/ash/dash/pdksh
+source "$HOME/.cargo/env.fish"  # For fish
+source "~/.cargo/env.nu"  # For nushell
+source "$HOME/.cargo/env.tcsh"  # For tcsh
+. "$HOME/.cargo/env.ps1"        # For pwsh
+source "$HOME/.cargo/env.xsh"   # For xonsh
+Building nvattest...
+Cloning into '/tmp/attestation-sdk'...
+-- The C compiler identification is GNU 11.4.0
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Using the multi-header code from /tmp/attestation-sdk/nv-attestation-cli/build/_deps/json-src/include/
+-- Rust Toolchain: stable-x86_64-unknown-linux-gnu
+-- Rust Target: x86_64-unknown-linux-gnu
+-- Determining required link libraries for target x86_64-unknown-linux-gnu
+-- Required static libs for target x86_64-unknown-linux-gnu: gcc_s;util;rt;pthread;m;dl;c
+-- Required link flags for target x86_64-unknown-linux-gnu: 
+-- Found Rust: /home/ubuntu/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc (found version "1.96.0") 
+-- Version: 10.2.1
+-- Build type: Release
+-- Build spdlog: 1.14.1
+-- Looking for pthread.h
+-- Looking for pthread.h - found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Build type: Release
+-- Found LibXml2: /usr/lib/x86_64-linux-gnu/libxml2.so (found version "2.9.13") 
+-- Found xmlsec: /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib/libxmlsec1.a  
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /tmp/attestation-sdk/nv-attestation-cli/build
+[  1%] Building CXX object _deps/fmt-build/CMakeFiles/fmt.dir/src/format.cc.o
+[  2%] Building CXX object _deps/fmt-build/CMakeFiles/fmt.dir/src/os.cc.o
+[  4%] Linking CXX static library libfmt.a
+[  4%] Built target fmt
+[  5%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/spdlog.cpp.o
+[  6%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/stdout_sinks.cpp.o
+[  8%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/color_sinks.cpp.o
+[  9%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/file_sinks.cpp.o
+[ 11%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/async.cpp.o
+[ 12%] Building CXX object _deps/spdlog-build/CMakeFiles/spdlog.dir/src/cfg.cpp.o
+[ 13%] Linking CXX static library libspdlog.a
+[ 13%] Built target spdlog
+[ 13%] Built target cargo-prebuild_regorus_ffi
+    Updating crates.io index
+     Locking 209 packages to latest compatible versions
+      Adding cbindgen v0.28.0 (available: v0.29.4)
+      Adding csbindgen v1.9.3 (available: v1.9.8)
+      Adding generic-array v0.14.7 (available: v0.14.9)
+ Downloading crates ...
+  Downloaded ref-cast-impl v1.0.25
+  Downloaded tinystr v0.8.3
+  Downloaded iana-time-zone v0.1.65
+  Downloaded num-bigint v0.4.6
+  Downloaded serde v1.0.228
+  Downloaded url v2.5.8
+  Downloaded rand v0.10.1
+  Downloaded md-5 v0.10.6
+  Downloaded icu_normalizer v2.2.0
+  Downloaded getrandom v0.3.4
+  Downloaded serde_derive v1.0.228
+  Downloaded synstructure v0.13.2
+  Downloaded getrandom v0.4.2
+  Downloaded zerovec-derive v0.11.3
+  Downloaded yoke v0.8.3
+  Downloaded konst v0.2.20
+  Downloaded zmij v1.0.21
+  Downloaded uuid v1.23.3
+  Downloaded hex v0.4.3
+  Downloaded yoke-derive v0.8.2
+  Downloaded toml_datetime v0.6.11
+  Downloaded writeable v0.6.3
+  Downloaded either v1.16.0
+  Downloaded wax v0.6.0
+  Downloaded proc-macro2 v1.0.106
+  Downloaded rand_chacha v0.9.0
+  Downloaded percent-encoding v2.3.2
+  Downloaded pori v0.0.0
+  Downloaded chacha20 v0.10.0
+  Downloaded scientific v0.5.3
+  Downloaded semver v1.0.28
+  Downloaded outref v0.5.2
+  Downloaded num-rational v0.4.2
+  Downloaded num-cmp v0.1.0
+  Downloaded lock_api v0.4.14
+  Downloaded num-iter v0.1.45
+  Downloaded minimal-lexical v0.2.1
+  Downloaded cpufeatures v0.3.0
+  Downloaded bytecount v0.6.9
+  Downloaded serde_json v1.0.150
+  Downloaded zerocopy v0.8.52
+  Downloaded zerofrom v0.1.8
+  Downloaded utf8_iter v1.0.4
+  Downloaded typenum v1.20.1
+  Downloaded zerovec v0.11.6
+  Downloaded uuid-simd v0.8.0
+  Downloaded unicode-ident v1.0.24
+  Downloaded utf8parse v0.2.2
+  Downloaded thiserror-impl v1.0.69
+  Downloaded icu_properties v2.2.0
+  Downloaded parking_lot v0.12.5
+  Downloaded serde_yaml v0.9.34+deprecated
+  Downloaded zerofrom-derive v0.1.7
+  Downloaded zerotrie v0.2.4
+  Downloaded stable_deref_trait v1.2.1
+  Downloaded rustix v1.1.4
+  Downloaded tempfile v3.27.0
+  Downloaded unicode-xid v0.2.6
+  Downloaded ryu v1.0.23
+  Downloaded potential_utf v0.1.5
+  Downloaded toml_edit v0.22.27
+  Downloaded cpufeatures v0.2.17
+  Downloaded form_urlencoded v1.2.2
+  Downloaded digest v0.10.7
+  Downloaded syn v2.0.117
+  Downloaded once_cell v1.21.4
+  Downloaded fluent-uri v0.3.2
+  Downloaded vsimd v0.8.0
+  Downloaded quote v1.0.45
+  Downloaded phf_shared v0.12.1
+  Downloaded cbindgen v0.28.0
+  Downloaded memchr v2.8.1
+  Downloaded litemap v0.8.2
+  Downloaded cfg-if v1.0.4
+  Downloaded regex-automata v0.4.14
+  Downloaded num v0.4.3
+  Downloaded const_format v0.2.36
+  Downloaded unsafe-libyaml v0.2.11
+  Downloaded borrow-or-share v0.2.4
+  Downloaded bit-set v0.8.0
+  Downloaded chrono v0.4.45
+  Downloaded anyhow v1.0.102
+  Downloaded displaydoc v0.2.6
+  Downloaded chrono-tz v0.10.4
+  Downloaded anstyle-parse v1.0.0
+  Downloaded colorchoice v1.0.5
+  Downloaded num-integer v0.1.46
+  Downloaded nom v7.1.3
+  Downloaded hashbrown v0.17.1
+  Downloaded errno v0.3.14
+  Downloaded ppv-lite86 v0.2.21
+  Downloaded parking_lot_core v0.9.12
+  Downloaded itertools v0.11.0
+  Downloaded crypto-common v0.1.7
+  Downloaded clap v4.6.1
+  Downloaded aho-corasick v1.1.4
+  Downloaded jsonschema v0.29.1
+  Downloaded icu_provider v2.2.0
+  Downloaded fastrand v2.4.1
+  Downloaded email_address v0.2.9
+  Downloaded const_format_proc_macros v0.2.34
+  Downloaded base64 v0.22.1
+  Downloaded konst_macro_rules v0.2.19
+  Downloaded idna_adapter v1.2.2
+  Downloaded libc v0.2.186
+  Downloaded heck v0.4.1
+  Downloaded clap_builder v4.6.0
+  Downloaded siphasher v1.0.3
+  Downloaded icu_properties_data v2.2.0
+  Downloaded csbindgen v1.9.3
+  Downloaded hmac v0.12.1
+  Downloaded rand v0.9.4
+  Downloaded icu_collections v2.2.0
+  Downloaded generic-array v0.14.7
+  Downloaded referencing v0.29.1
+  Downloaded bitflags v2.13.0
+  Downloaded log v0.4.32
+  Downloaded linux-raw-sys v0.12.1
+  Downloaded num-traits v0.2.19
+  Downloaded lazy_static v1.5.0
+  Downloaded is_terminal_polyfill v1.70.2
+  Downloaded phf v0.12.1
+  Downloaded num-complex v0.4.6
+  Downloaded icu_normalizer_data v2.2.0
+  Downloaded serde_core v1.0.228
+  Downloaded anstyle v1.0.14
+  Downloaded smallvec v1.15.1
+  Downloaded scopeguard v1.2.0
+  Downloaded rand_core v0.9.5
+  Downloaded fancy-regex v0.14.0
+  Downloaded winnow v0.7.15
+  Downloaded strsim v0.11.1
+  Downloaded regex v1.12.4
+  Downloaded rand_core v0.10.1
+  Downloaded toml v0.8.23
+  Downloaded subtle v2.6.1
+  Downloaded version_check v0.9.5
+  Downloaded icu_locale_core v2.2.0
+  Downloaded serde_spanned v0.6.9
+  Downloaded fraction v0.15.4
+  Downloaded regex-syntax v0.8.11
+  Downloaded equivalent v1.0.2
+  Downloaded bit-vec v0.8.0
+  Downloaded constant_time_eq v0.4.2
+  Downloaded clap_lex v1.1.0
+  Downloaded anstyle-query v1.1.5
+  Downloaded sha2 v0.10.9
+  Downloaded autocfg v1.5.1
+  Downloaded toml_write v0.1.2
+  Downloaded data-encoding v2.11.0
+  Downloaded block-buffer v0.10.4
+  Downloaded indexmap v2.14.0
+  Downloaded anstream v1.0.0
+  Downloaded ahash v0.8.12
+  Downloaded scientific-macro v0.5.2
+  Downloaded idna v1.1.0
+  Downloaded thiserror v1.0.69
+  Downloaded itoa v1.0.18
+  Downloaded ref-cast v1.0.25
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+   Compiling cfg-if v1.0.4
+   Compiling libc v0.2.186
+   Compiling stable_deref_trait v1.2.1
+   Compiling version_check v0.9.5
+   Compiling autocfg v1.5.1
+   Compiling zmij v1.0.21
+   Compiling serde_core v1.0.228
+   Compiling memchr v2.8.1
+   Compiling serde v1.0.228
+   Compiling writeable v0.6.3
+   Compiling smallvec v1.15.1
+   Compiling litemap v0.8.2
+   Compiling zerocopy v0.8.52
+   Compiling getrandom v0.3.4
+   Compiling icu_normalizer_data v2.2.0
+   Compiling typenum v1.20.1
+   Compiling utf8_iter v1.0.4
+   Compiling icu_properties_data v2.2.0
+   Compiling utf8parse v0.2.2
+   Compiling anyhow v1.0.102
+   Compiling getrandom v0.4.2
+   Compiling rand_core v0.10.1
+   Compiling anstyle-parse v1.0.0
+   Compiling ref-cast v1.0.25
+   Compiling hashbrown v0.17.1
+   Compiling rustix v1.1.4
+   Compiling anstyle-query v1.1.5
+   Compiling anstyle v1.0.14
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling regex-syntax v0.8.11
+   Compiling cpufeatures v0.3.0
+   Compiling equivalent v1.0.2
+   Compiling parking_lot_core v0.9.12
+   Compiling colorchoice v1.0.5
+   Compiling linux-raw-sys v0.12.1
+   Compiling chacha20 v0.10.0
+   Compiling strsim v0.11.1
+   Compiling serde_json v1.0.150
+   Compiling itoa v1.0.18
+   Compiling bitflags v2.13.0
+   Compiling toml_write v0.1.2
+   Compiling generic-array v0.14.7
+   Compiling ahash v0.8.12
+   Compiling anstream v1.0.0
+   Compiling num-traits v0.2.19
+   Compiling clap_lex v1.1.0
+   Compiling subtle v2.6.1
+   Compiling scopeguard v1.2.0
+   Compiling percent-encoding v2.3.2
+   Compiling winnow v0.7.15
+   Compiling lock_api v0.4.14
+   Compiling fastrand v2.4.1
+   Compiling aho-corasick v1.1.4
+   Compiling minimal-lexical v0.2.1
+   Compiling once_cell v1.21.4
+   Compiling cbindgen v0.28.0
+   Compiling clap_builder v4.6.0
+   Compiling thiserror v1.0.69
+   Compiling borrow-or-share v0.2.4
+   Compiling siphasher v1.0.3
+   Compiling bit-vec v0.8.0
+   Compiling konst_macro_rules v0.2.19
+   Compiling indexmap v2.14.0
+   Compiling unicode-xid v0.2.6
+   Compiling phf_shared v0.12.1
+   Compiling konst v0.2.20
+   Compiling nom v7.1.3
+   Compiling syn v2.0.117
+   Compiling either v1.16.0
+   Compiling bit-set v0.8.0
+   Compiling lazy_static v1.5.0
+   Compiling const_format_proc_macros v0.2.34
+   Compiling vsimd v0.8.0
+   Compiling log v0.4.32
+   Compiling iana-time-zone v0.1.65
+   Compiling outref v0.5.2
+   Compiling chrono-tz v0.10.4
+   Compiling heck v0.4.1
+   Compiling regorus v0.4.0 (/tmp/attestation-sdk/nv-attestation-cli/build/_deps/regorus-src)
+   Compiling itertools v0.11.0
+   Compiling phf v0.12.1
+   Compiling num-integer v0.1.46
+   Compiling num-complex v0.4.6
+   Compiling chrono v0.4.45
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling rand v0.10.1
+   Compiling num-bigint v0.4.6
+   Compiling num-iter v0.1.45
+   Compiling rand_core v0.9.5
+   Compiling form_urlencoded v1.2.2
+   Compiling digest v0.10.7
+   Compiling parking_lot v0.12.5
+   Compiling base64 v0.22.1
+   Compiling ryu v1.0.23
+   Compiling const_format v0.2.36
+   Compiling num-cmp v0.1.0
+   Compiling cpufeatures v0.2.17
+   Compiling bytecount v0.6.9
+   Compiling unsafe-libyaml v0.2.11
+   Compiling sha2 v0.10.9
+   Compiling md-5 v0.10.6
+   Compiling hmac v0.12.1
+   Compiling hex v0.4.3
+   Compiling constant_time_eq v0.4.2
+   Compiling data-encoding v2.11.0
+   Compiling semver v1.0.28
+   Compiling uuid v1.23.3
+   Compiling regex-automata v0.4.14
+   Compiling tempfile v3.27.0
+   Compiling clap v4.6.1
+   Compiling uuid-simd v0.8.0
+   Compiling pori v0.0.0
+   Compiling num-rational v0.4.2
+   Compiling num v0.4.3
+   Compiling fraction v0.15.4
+   Compiling ppv-lite86 v0.2.21
+   Compiling synstructure v0.13.2
+   Compiling regex v1.12.4
+   Compiling rand_chacha v0.9.0
+   Compiling csbindgen v1.9.3
+   Compiling zerofrom-derive v0.1.7
+   Compiling serde_derive v1.0.228
+   Compiling yoke-derive v0.8.2
+   Compiling zerovec-derive v0.11.3
+   Compiling displaydoc v0.2.6
+   Compiling ref-cast-impl v1.0.25
+   Compiling thiserror-impl v1.0.69
+   Compiling scientific-macro v0.5.2
+   Compiling rand v0.9.4
+   Compiling scientific v0.5.3
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling zerovec v0.11.6
+   Compiling zerotrie v0.2.4
+   Compiling fancy-regex v0.14.0
+   Compiling tinystr v0.8.3
+   Compiling potential_utf v0.1.5
+   Compiling icu_collections v2.2.0
+   Compiling icu_locale_core v2.2.0
+   Compiling wax v0.6.0
+   Compiling icu_provider v2.2.0
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling fluent-uri v0.3.2
+   Compiling email_address v0.2.9
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling toml_edit v0.22.27
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling referencing v0.29.1
+   Compiling idna_adapter v1.2.2
+   Compiling idna v1.1.0
+   Compiling url v2.5.8
+   Compiling jsonschema v0.29.1
+   Compiling toml v0.8.23
+   Compiling regorus-ffi v0.2.2 (/tmp/attestation-sdk/nv-attestation-cli/build/_deps/regorus-src/bindings/ffi)
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> /tmp/attestation-sdk/nv-attestation-cli/build/_deps/regorus-src/src/builtins/time/compat.rs:270:24
+    |
+270 |     fn parse(reminder: &str) -> GoTimeFormatItems {
+    |                        ^^^^     ^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                        |
+    |                        the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+270 |     fn parse(reminder: &str) -> GoTimeFormatItems<'_> {
+    |                                                  ++++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> /tmp/attestation-sdk/nv-attestation-cli/build/_deps/regorus-src/src/builtins/time/compat.rs:278:25
+    |
+278 |     fn format(reminder: &str) -> GoTimeFormatItems {
+    |                         ^^^^     ^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                         |
+    |                         the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+278 |     fn format(reminder: &str) -> GoTimeFormatItems<'_> {
+    |                                                   ++++
+
+warning: `regorus` (lib) generated 2 warnings (run `cargo fix --lib -p regorus` to apply 2 suggestions)
+    Finished `release` profile [optimized] target(s) in 14.84s
+Copying byproducts `libregorus_ffi.a` to /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build
+[ 13%] Built target _cargo-build_regorus_ffi
+[ 13%] Built target cargo-build_regorus_ffi
+[ 15%] Creating directories for 'openssl_external'
+[ 16%] Performing download step (download, verify and extract) for 'openssl_external'
+-- Downloading...
+   dst='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl-3.6.1.tar.gz'
+   timeout='none'
+   inactivity timeout='none'
+-- Using src='https://github.com/openssl/openssl/releases/download/openssl-3.6.1/openssl-3.6.1.tar.gz'
+-- [download 0% complete]
+-- [download 1% complete]
+-- [download 2% complete]
+-- [download 3% complete]
+-- [download 4% complete]
+-- [download 5% complete]
+-- [download 6% complete]
+-- [download 7% complete]
+-- [download 8% complete]
+-- [download 9% complete]
+-- [download 10% complete]
+-- [download 11% complete]
+-- [download 12% complete]
+-- [download 13% complete]
+-- [download 14% complete]
+-- [download 15% complete]
+-- [download 16% complete]
+-- [download 17% complete]
+-- [download 18% complete]
+-- [download 19% complete]
+-- [download 20% complete]
+-- [download 21% complete]
+-- [download 22% complete]
+-- [download 23% complete]
+-- [download 24% complete]
+-- [download 25% complete]
+-- [download 26% complete]
+-- [download 27% complete]
+-- [download 28% complete]
+-- [download 29% complete]
+-- [download 30% complete]
+-- [download 31% complete]
+-- [download 32% complete]
+-- [download 33% complete]
+-- [download 34% complete]
+-- [download 35% complete]
+-- [download 36% complete]
+-- [download 37% complete]
+-- [download 38% complete]
+-- [download 39% complete]
+-- [download 40% complete]
+-- [download 41% complete]
+-- [download 42% complete]
+-- [download 43% complete]
+-- [download 44% complete]
+-- [download 45% complete]
+-- [download 46% complete]
+-- [download 47% complete]
+-- [download 48% complete]
+-- [download 49% complete]
+-- [download 50% complete]
+-- [download 51% complete]
+-- [download 52% complete]
+-- [download 53% complete]
+-- [download 54% complete]
+-- [download 55% complete]
+-- [download 56% complete]
+-- [download 57% complete]
+-- [download 58% complete]
+-- [download 59% complete]
+-- [download 60% complete]
+-- [download 61% complete]
+-- [download 62% complete]
+-- [download 63% complete]
+-- [download 64% complete]
+-- [download 65% complete]
+-- [download 66% complete]
+-- [download 67% complete]
+-- [download 68% complete]
+-- [download 69% complete]
+-- [download 70% complete]
+-- [download 71% complete]
+-- [download 72% complete]
+-- [download 73% complete]
+-- [download 74% complete]
+-- [download 75% complete]
+-- [download 76% complete]
+-- [download 77% complete]
+-- [download 78% complete]
+-- [download 79% complete]
+-- [download 80% complete]
+-- [download 81% complete]
+-- [download 82% complete]
+-- [download 83% complete]
+-- [download 84% complete]
+-- [download 85% complete]
+-- [download 86% complete]
+-- [download 87% complete]
+-- [download 88% complete]
+-- [download 89% complete]
+-- [download 90% complete]
+-- [download 91% complete]
+-- [download 92% complete]
+-- [download 93% complete]
+-- [download 94% complete]
+-- [download 95% complete]
+-- [download 96% complete]
+-- [download 97% complete]
+-- [download 98% complete]
+-- [download 99% complete]
+-- [download 100% complete]
+-- verifying file...
+       file='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl-3.6.1.tar.gz'
+-- Downloading... done
+-- extracting...
+     src='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl-3.6.1.tar.gz'
+     dst='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl_external'
+-- extracting... [tar xfz]
+-- extracting... [analysis]
+-- extracting... [rename]
+-- extracting... [clean up]
+-- extracting... done
+[ 18%] No update step for 'openssl_external'
+[ 19%] No patch step for 'openssl_external'
+[ 20%] Performing configure step for 'openssl_external'
+Configuring OpenSSL version 3.6.1 for target linux-x86_64
+Using os-specific seed configuration
+Created configdata.pm
+Running configdata.pm
+Created Makefile.in
+Created Makefile
+Created include/openssl/configuration.h
+
+**********************************************************************
+***                                                                ***
+***   OpenSSL has been successfully configured                     ***
+***                                                                ***
+***   If you encounter a problem while building, please open an    ***
+***   issue on GitHub <https://github.com/openssl/openssl/issues>  ***
+***   and include the output from the following command:           ***
+***                                                                ***
+***       perl configdata.pm --dump                                ***
+***                                                                ***
+***   (If you are new to OpenSSL, you might want to consult the    ***
+***   'Troubleshooting' section in the INSTALL.md file first)      ***
+***                                                                ***
+**********************************************************************
+[ 22%] Performing build step for 'openssl_external'
+DEBUG: all keys: APPLINKDIR, BINDIR, CMAKECONFIGDIR, ENGINESDIR, INCLUDEDIR, LDLIBS, LIBDIR, MODULESDIR, PKGCONFIGDIR, PREFIX, VERSION, libdir
+Use of uninitialized value in concatenation (.) or string at util/mkinstallvars.pl line 55.
+DEBUG: LIBDIR = , libdir =  => Use of uninitialized value in concatenation (.) or string at util/mkinstallvars.pl line 57.
+LIBDIR = 
+No value given for CMAKECONFIGDIR
+No value given for PKGCONFIGDIR
+No value given for libdir
+DEBUG: PREFIX = . => PREFIX = /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl_external
+Use of uninitialized value in concatenation (.) or string at util/mkinstallvars.pl line 72.
+DEBUG: libdir =  => Use of uninitialized value in concatenation (.) or string at util/mkinstallvars.pl line 75.
+libdir = 
+DEBUG: BINDIR = apps => BINDIR = /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl_external/apps, BINDIR_REL_PREFIX = apps
+DEBUG: LIBDIR = Use of uninitialized value in print at util/mkinstallvars.pl line 91.
+ => Use of uninitialized value in concatenation (.) or string at util/mkinstallvars.pl line 108.
+LIBDIR = /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl_external, LIBDIR_REL_PREFIX = 
+DEBUG: INCLUDEDIR = [ include, ./include ] => INCLUDEDIR = [ /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl_external/include, /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl_external/include ], INCLUDEDIR_REL_PREFIX = [ include, ./include ]
+DEBUG: APPLINKDIR = ms => APPLINKDIR = /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl_external/ms, APPLINKDIR_REL_PREFIX = ms
+DEBUG: ENGINESDIR = engines => ENGINESDIR = /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl_external/engines, ENGINESDIR_REL_LIBDIR = engines
+DEBUG: MODULESDIR = providers => MODULESDIR = /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl_external/providers, MODULESDIR_REL_LIBDIR = providers
+DEBUG: PKGCONFIGDIR = . => PKGCONFIGDIR = /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl_external, PKGCONFIGDIR_REL_LIBDIR = .
+DEBUG: CMAKECONFIGDIR = . => CMAKECONFIGDIR = /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/openssl_external-prefix/src/openssl_external, CMAKECONFIGDIR_REL_LIBDIR = .
+Use of uninitialized value in join or string at util/mkinstallvars.pl line 156.
+DEBUG: all keys: APPLINKDIR, BINDIR, CMAKECONFIGDIR, ENGINESDIR, INCLUDEDIR, LDLIBS, LIBDIR, MODULESDIR, PKGCONFIGDIR, PREFIX, VERSION, libdir
+DEBUG: LIBDIR = lib, libdir = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib => LIBDIR = lib
+DEBUG: PREFIX = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install => PREFIX = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install
+DEBUG: libdir = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib => libdir = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib
+DEBUG: BINDIR = bin => BINDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/bin, BINDIR_REL_PREFIX = bin
+DEBUG: LIBDIR = lib => LIBDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib, LIBDIR_REL_PREFIX = lib
+DEBUG: INCLUDEDIR = include => INCLUDEDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include, INCLUDEDIR_REL_PREFIX = include
+DEBUG: APPLINKDIR = include/openssl => APPLINKDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl, APPLINKDIR_REL_PREFIX = include/openssl
+DEBUG: ENGINESDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/engines-3 => ENGINESDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/engines-3, ENGINESDIR_REL_LIBDIR = engines-3
+DEBUG: MODULESDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/ossl-modules => MODULESDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/ossl-modules, MODULESDIR_REL_LIBDIR = ossl-modules
+DEBUG: PKGCONFIGDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/pkgconfig => PKGCONFIGDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/pkgconfig, PKGCONFIGDIR_REL_LIBDIR = pkgconfig
+DEBUG: CMAKECONFIGDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/cmake/OpenSSL => CMAKECONFIGDIR = /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/cmake/OpenSSL, CMAKECONFIGDIR_REL_LIBDIR = cmake/OpenSSL
+[ 23%] Performing install step for 'openssl_external'
+created directory `/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib'
+*** Installing runtime libraries
+*** Installing development files
+created directory `/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl'
+install ./include/openssl/aes.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/aes.h
+install ./include/openssl/asn1.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/asn1.h
+install ./include/openssl/asn1err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/asn1err.h
+install ./include/openssl/asn1t.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/asn1t.h
+install ./include/openssl/async.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/async.h
+install ./include/openssl/asyncerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/asyncerr.h
+install ./include/openssl/bio.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/bio.h
+install ./include/openssl/bioerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/bioerr.h
+install ./include/openssl/blowfish.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/blowfish.h
+install ./include/openssl/bn.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/bn.h
+install ./include/openssl/bnerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/bnerr.h
+install ./include/openssl/buffer.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/buffer.h
+install ./include/openssl/buffererr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/buffererr.h
+install ./include/openssl/byteorder.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/byteorder.h
+install ./include/openssl/camellia.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/camellia.h
+install ./include/openssl/cast.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cast.h
+install ./include/openssl/cmac.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cmac.h
+install ./include/openssl/cmp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cmp.h
+install ./include/openssl/cmp_util.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cmp_util.h
+install ./include/openssl/cmperr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cmperr.h
+install ./include/openssl/cms.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cms.h
+install ./include/openssl/cmserr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cmserr.h
+install ./include/openssl/comp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/comp.h
+install ./include/openssl/comperr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/comperr.h
+install ./include/openssl/conf.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/conf.h
+install ./include/openssl/conf_api.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/conf_api.h
+install ./include/openssl/conferr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/conferr.h
+install ./include/openssl/configuration.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/configuration.h
+install ./include/openssl/conftypes.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/conftypes.h
+install ./include/openssl/core.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/core.h
+install ./include/openssl/core_dispatch.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/core_dispatch.h
+install ./include/openssl/core_names.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/core_names.h
+install ./include/openssl/core_object.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/core_object.h
+install ./include/openssl/crmf.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/crmf.h
+install ./include/openssl/crmferr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/crmferr.h
+install ./include/openssl/crypto.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/crypto.h
+install ./include/openssl/cryptoerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cryptoerr.h
+install ./include/openssl/cryptoerr_legacy.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cryptoerr_legacy.h
+install ./include/openssl/ct.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ct.h
+install ./include/openssl/cterr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cterr.h
+install ./include/openssl/decoder.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/decoder.h
+install ./include/openssl/decodererr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/decodererr.h
+install ./include/openssl/des.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/des.h
+install ./include/openssl/dh.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/dh.h
+install ./include/openssl/dherr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/dherr.h
+install ./include/openssl/dsa.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/dsa.h
+install ./include/openssl/dsaerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/dsaerr.h
+install ./include/openssl/dtls1.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/dtls1.h
+install ./include/openssl/e_os2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/e_os2.h
+install ./include/openssl/e_ostime.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/e_ostime.h
+install ./include/openssl/ebcdic.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ebcdic.h
+install ./include/openssl/ec.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ec.h
+install ./include/openssl/ecdh.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ecdh.h
+install ./include/openssl/ecdsa.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ecdsa.h
+install ./include/openssl/ecerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ecerr.h
+install ./include/openssl/encoder.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/encoder.h
+install ./include/openssl/encodererr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/encodererr.h
+install ./include/openssl/engine.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/engine.h
+install ./include/openssl/engineerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/engineerr.h
+install ./include/openssl/err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/err.h
+install ./include/openssl/ess.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ess.h
+install ./include/openssl/esserr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/esserr.h
+install ./include/openssl/evp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/evp.h
+install ./include/openssl/evperr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/evperr.h
+install ./include/openssl/fips_names.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/fips_names.h
+install ./include/openssl/fipskey.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/fipskey.h
+install ./include/openssl/hmac.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/hmac.h
+install ./include/openssl/hpke.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/hpke.h
+install ./include/openssl/http.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/http.h
+install ./include/openssl/httperr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/httperr.h
+install ./include/openssl/idea.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/idea.h
+install ./include/openssl/indicator.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/indicator.h
+install ./include/openssl/kdf.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/kdf.h
+install ./include/openssl/kdferr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/kdferr.h
+install ./include/openssl/lhash.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/lhash.h
+install ./include/openssl/macros.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/macros.h
+install ./include/openssl/md2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/md2.h
+install ./include/openssl/md4.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/md4.h
+install ./include/openssl/md5.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/md5.h
+install ./include/openssl/mdc2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/mdc2.h
+install ./include/openssl/ml_kem.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ml_kem.h
+install ./include/openssl/modes.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/modes.h
+install ./include/openssl/obj_mac.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/obj_mac.h
+install ./include/openssl/objects.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/objects.h
+install ./include/openssl/objectserr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/objectserr.h
+install ./include/openssl/ocsp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ocsp.h
+install ./include/openssl/ocsperr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ocsperr.h
+install ./include/openssl/opensslconf.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/opensslconf.h
+install ./include/openssl/opensslv.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/opensslv.h
+install ./include/openssl/ossl_typ.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ossl_typ.h
+install ./include/openssl/param_build.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/param_build.h
+install ./include/openssl/params.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/params.h
+install ./include/openssl/pem.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pem.h
+install ./include/openssl/pem2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pem2.h
+install ./include/openssl/pemerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pemerr.h
+install ./include/openssl/pkcs12.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pkcs12.h
+install ./include/openssl/pkcs12err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pkcs12err.h
+install ./include/openssl/pkcs7.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pkcs7.h
+install ./include/openssl/pkcs7err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pkcs7err.h
+install ./include/openssl/prov_ssl.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/prov_ssl.h
+install ./include/openssl/proverr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/proverr.h
+install ./include/openssl/provider.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/provider.h
+install ./include/openssl/quic.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/quic.h
+install ./include/openssl/rand.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rand.h
+install ./include/openssl/randerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/randerr.h
+install ./include/openssl/rc2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rc2.h
+install ./include/openssl/rc4.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rc4.h
+install ./include/openssl/rc5.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rc5.h
+install ./include/openssl/ripemd.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ripemd.h
+install ./include/openssl/rsa.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rsa.h
+install ./include/openssl/rsaerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rsaerr.h
+install ./include/openssl/safestack.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/safestack.h
+install ./include/openssl/seed.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/seed.h
+install ./include/openssl/self_test.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/self_test.h
+install ./include/openssl/sha.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/sha.h
+install ./include/openssl/srp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/srp.h
+install ./include/openssl/srtp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/srtp.h
+install ./include/openssl/ssl.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ssl.h
+install ./include/openssl/ssl2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ssl2.h
+install ./include/openssl/ssl3.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ssl3.h
+install ./include/openssl/sslerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/sslerr.h
+install ./include/openssl/sslerr_legacy.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/sslerr_legacy.h
+install ./include/openssl/stack.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/stack.h
+install ./include/openssl/store.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/store.h
+install ./include/openssl/storeerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/storeerr.h
+install ./include/openssl/symhacks.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/symhacks.h
+install ./include/openssl/thread.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/thread.h
+install ./include/openssl/tls1.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/tls1.h
+install ./include/openssl/trace.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/trace.h
+install ./include/openssl/ts.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ts.h
+install ./include/openssl/tserr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/tserr.h
+install ./include/openssl/txt_db.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/txt_db.h
+install ./include/openssl/types.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/types.h
+install ./include/openssl/ui.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ui.h
+install ./include/openssl/uierr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/uierr.h
+install ./include/openssl/whrlpool.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/whrlpool.h
+install ./include/openssl/x509.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509.h
+install ./include/openssl/x509_acert.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509_acert.h
+install ./include/openssl/x509_vfy.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509_vfy.h
+install ./include/openssl/x509err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509err.h
+install ./include/openssl/x509v3.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509v3.h
+install ./include/openssl/x509v3err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509v3err.h
+install ./include/openssl/aes.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/aes.h
+install ./include/openssl/asn1.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/asn1.h
+install ./include/openssl/asn1err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/asn1err.h
+install ./include/openssl/asn1t.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/asn1t.h
+install ./include/openssl/async.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/async.h
+install ./include/openssl/asyncerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/asyncerr.h
+install ./include/openssl/bio.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/bio.h
+install ./include/openssl/bioerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/bioerr.h
+install ./include/openssl/blowfish.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/blowfish.h
+install ./include/openssl/bn.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/bn.h
+install ./include/openssl/bnerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/bnerr.h
+install ./include/openssl/buffer.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/buffer.h
+install ./include/openssl/buffererr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/buffererr.h
+install ./include/openssl/byteorder.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/byteorder.h
+install ./include/openssl/camellia.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/camellia.h
+install ./include/openssl/cast.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cast.h
+install ./include/openssl/cmac.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cmac.h
+install ./include/openssl/cmp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cmp.h
+install ./include/openssl/cmp_util.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cmp_util.h
+install ./include/openssl/cmperr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cmperr.h
+install ./include/openssl/cms.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cms.h
+install ./include/openssl/cmserr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cmserr.h
+install ./include/openssl/comp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/comp.h
+install ./include/openssl/comperr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/comperr.h
+install ./include/openssl/conf.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/conf.h
+install ./include/openssl/conf_api.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/conf_api.h
+install ./include/openssl/conferr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/conferr.h
+install ./include/openssl/configuration.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/configuration.h
+install ./include/openssl/conftypes.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/conftypes.h
+install ./include/openssl/core.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/core.h
+install ./include/openssl/core_dispatch.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/core_dispatch.h
+install ./include/openssl/core_names.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/core_names.h
+install ./include/openssl/core_object.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/core_object.h
+install ./include/openssl/crmf.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/crmf.h
+install ./include/openssl/crmferr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/crmferr.h
+install ./include/openssl/crypto.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/crypto.h
+install ./include/openssl/cryptoerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cryptoerr.h
+install ./include/openssl/cryptoerr_legacy.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cryptoerr_legacy.h
+install ./include/openssl/ct.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ct.h
+install ./include/openssl/cterr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/cterr.h
+install ./include/openssl/decoder.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/decoder.h
+install ./include/openssl/decodererr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/decodererr.h
+install ./include/openssl/des.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/des.h
+install ./include/openssl/dh.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/dh.h
+install ./include/openssl/dherr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/dherr.h
+install ./include/openssl/dsa.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/dsa.h
+install ./include/openssl/dsaerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/dsaerr.h
+install ./include/openssl/dtls1.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/dtls1.h
+install ./include/openssl/e_os2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/e_os2.h
+install ./include/openssl/e_ostime.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/e_ostime.h
+install ./include/openssl/ebcdic.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ebcdic.h
+install ./include/openssl/ec.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ec.h
+install ./include/openssl/ecdh.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ecdh.h
+install ./include/openssl/ecdsa.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ecdsa.h
+install ./include/openssl/ecerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ecerr.h
+install ./include/openssl/encoder.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/encoder.h
+install ./include/openssl/encodererr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/encodererr.h
+install ./include/openssl/engine.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/engine.h
+install ./include/openssl/engineerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/engineerr.h
+install ./include/openssl/err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/err.h
+install ./include/openssl/ess.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ess.h
+install ./include/openssl/esserr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/esserr.h
+install ./include/openssl/evp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/evp.h
+install ./include/openssl/evperr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/evperr.h
+install ./include/openssl/fips_names.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/fips_names.h
+install ./include/openssl/fipskey.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/fipskey.h
+install ./include/openssl/hmac.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/hmac.h
+install ./include/openssl/hpke.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/hpke.h
+install ./include/openssl/http.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/http.h
+install ./include/openssl/httperr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/httperr.h
+install ./include/openssl/idea.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/idea.h
+install ./include/openssl/indicator.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/indicator.h
+install ./include/openssl/kdf.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/kdf.h
+install ./include/openssl/kdferr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/kdferr.h
+install ./include/openssl/lhash.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/lhash.h
+install ./include/openssl/macros.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/macros.h
+install ./include/openssl/md2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/md2.h
+install ./include/openssl/md4.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/md4.h
+install ./include/openssl/md5.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/md5.h
+install ./include/openssl/mdc2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/mdc2.h
+install ./include/openssl/ml_kem.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ml_kem.h
+install ./include/openssl/modes.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/modes.h
+install ./include/openssl/obj_mac.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/obj_mac.h
+install ./include/openssl/objects.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/objects.h
+install ./include/openssl/objectserr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/objectserr.h
+install ./include/openssl/ocsp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ocsp.h
+install ./include/openssl/ocsperr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ocsperr.h
+install ./include/openssl/opensslconf.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/opensslconf.h
+install ./include/openssl/opensslv.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/opensslv.h
+install ./include/openssl/ossl_typ.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ossl_typ.h
+install ./include/openssl/param_build.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/param_build.h
+install ./include/openssl/params.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/params.h
+install ./include/openssl/pem.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pem.h
+install ./include/openssl/pem2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pem2.h
+install ./include/openssl/pemerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pemerr.h
+install ./include/openssl/pkcs12.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pkcs12.h
+install ./include/openssl/pkcs12err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pkcs12err.h
+install ./include/openssl/pkcs7.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pkcs7.h
+install ./include/openssl/pkcs7err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/pkcs7err.h
+install ./include/openssl/prov_ssl.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/prov_ssl.h
+install ./include/openssl/proverr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/proverr.h
+install ./include/openssl/provider.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/provider.h
+install ./include/openssl/quic.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/quic.h
+install ./include/openssl/rand.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rand.h
+install ./include/openssl/randerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/randerr.h
+install ./include/openssl/rc2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rc2.h
+install ./include/openssl/rc4.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rc4.h
+install ./include/openssl/rc5.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rc5.h
+install ./include/openssl/ripemd.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ripemd.h
+install ./include/openssl/rsa.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rsa.h
+install ./include/openssl/rsaerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/rsaerr.h
+install ./include/openssl/safestack.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/safestack.h
+install ./include/openssl/seed.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/seed.h
+install ./include/openssl/self_test.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/self_test.h
+install ./include/openssl/sha.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/sha.h
+install ./include/openssl/srp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/srp.h
+install ./include/openssl/srtp.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/srtp.h
+install ./include/openssl/ssl.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ssl.h
+install ./include/openssl/ssl2.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ssl2.h
+install ./include/openssl/ssl3.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ssl3.h
+install ./include/openssl/sslerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/sslerr.h
+install ./include/openssl/sslerr_legacy.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/sslerr_legacy.h
+install ./include/openssl/stack.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/stack.h
+install ./include/openssl/store.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/store.h
+install ./include/openssl/storeerr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/storeerr.h
+install ./include/openssl/symhacks.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/symhacks.h
+install ./include/openssl/thread.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/thread.h
+install ./include/openssl/tls1.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/tls1.h
+install ./include/openssl/trace.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/trace.h
+install ./include/openssl/ts.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ts.h
+install ./include/openssl/tserr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/tserr.h
+install ./include/openssl/txt_db.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/txt_db.h
+install ./include/openssl/types.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/types.h
+install ./include/openssl/ui.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/ui.h
+install ./include/openssl/uierr.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/uierr.h
+install ./include/openssl/whrlpool.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/whrlpool.h
+install ./include/openssl/x509.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509.h
+install ./include/openssl/x509_acert.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509_acert.h
+install ./include/openssl/x509_vfy.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509_vfy.h
+install ./include/openssl/x509err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509err.h
+install ./include/openssl/x509v3.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509v3.h
+install ./include/openssl/x509v3err.h -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include/openssl/x509v3err.h
+install libcrypto.a -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/libcrypto.a
+install libssl.a -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/libssl.a
+created directory `/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/pkgconfig'
+install exporters/libcrypto.pc -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/pkgconfig/libcrypto.pc
+install exporters/libssl.pc -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/pkgconfig/libssl.pc
+install exporters/openssl.pc -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/pkgconfig/openssl.pc
+created directory `/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/cmake'
+created directory `/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/cmake/OpenSSL'
+install exporters/OpenSSLConfig.cmake -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/cmake/OpenSSL/OpenSSLConfig.cmake
+install exporters/OpenSSLConfigVersion.cmake -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/cmake/OpenSSL/OpenSSLConfigVersion.cmake
+created directory `/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/engines-3'
+*** Installing engines
+created directory `/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/ossl-modules'
+*** Installing modules
+created directory `/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/bin'
+*** Installing runtime programs
+created directory `/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/certs'
+created directory `/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/private'
+created directory `/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/misc'
+install ./apps/openssl.cnf -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/openssl.cnf.dist
+install ./apps/openssl.cnf -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/openssl.cnf
+install ./apps/ct_log_list.cnf -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/ct_log_list.cnf.dist
+install ./apps/ct_log_list.cnf -> /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/ct_log_list.cnf
+[ 25%] Completed 'openssl_external'
+[ 25%] Built target openssl_external
+[ 26%] Creating directories for 'xmlsec_external'
+[ 27%] Performing download step (download, verify and extract) for 'xmlsec_external'
+-- Downloading...
+   dst='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/xmlsec_external-prefix/src/xmlsec1-1.2.39.tar.gz'
+   timeout='none'
+   inactivity timeout='none'
+-- Using src='https://github.com/lsh123/xmlsec/releases/download/xmlsec-1_2_39/xmlsec1-1.2.39.tar.gz'
+-- [download 0% complete]
+-- [download 2% complete]
+-- [download 3% complete]
+-- [download 5% complete]
+-- [download 6% complete]
+-- [download 7% complete]
+-- [download 10% complete]
+-- [download 11% complete]
+-- [download 15% complete]
+-- [download 16% complete]
+-- [download 18% complete]
+-- [download 22% complete]
+-- [download 24% complete]
+-- [download 26% complete]
+-- [download 29% complete]
+-- [download 32% complete]
+-- [download 35% complete]
+-- [download 40% complete]
+-- [download 42% complete]
+-- [download 44% complete]
+-- [download 45% complete]
+-- [download 52% complete]
+-- [download 63% complete]
+-- [download 72% complete]
+-- [download 75% complete]
+-- [download 76% complete]
+-- [download 95% complete]
+-- [download 100% complete]
+-- verifying file...
+       file='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/xmlsec_external-prefix/src/xmlsec1-1.2.39.tar.gz'
+-- Downloading... done
+-- extracting...
+     src='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/xmlsec_external-prefix/src/xmlsec1-1.2.39.tar.gz'
+     dst='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/xmlsec_external-prefix/src/xmlsec_external'
+-- extracting... [tar xfz]
+-- extracting... [analysis]
+-- extracting... [rename]
+-- extracting... [clean up]
+-- extracting... done
+[ 29%] No update step for 'xmlsec_external'
+[ 30%] No patch step for 'xmlsec_external'
+[ 31%] Performing configure step for 'xmlsec_external'
+checking build system type... x86_64-pc-linux-gnu
+checking host system type... x86_64-pc-linux-gnu
+checking for a BSD-compatible install... /usr/bin/install -c
+checking whether build environment is sane... yes
+checking for a race-free mkdir -p... /usr/bin/mkdir -p
+checking for gawk... gawk
+checking whether make sets $(MAKE)... yes
+checking whether make supports nested variables... yes
+checking whether UID '1000' is supported by ustar format... yes
+checking whether GID '1000' is supported by ustar format... yes
+checking how to create a ustar tar archive... gnutar
+checking whether to enable maintainer-specific portions of Makefiles... no
+checking whether make supports nested variables... (cached) yes
+checking for gcc... /usr/bin/cc
+checking whether the C compiler works... yes
+checking for C compiler default output file name... a.out
+checking for suffix of executables... 
+checking whether we are cross compiling... no
+checking for suffix of object files... o
+checking whether the compiler supports GNU C... yes
+checking whether /usr/bin/cc accepts -g... yes
+checking for /usr/bin/cc option to enable C11 features... none needed
+checking whether /usr/bin/cc understands -c and -o together... yes
+checking whether make supports the include directive... yes (GNU style)
+checking dependency style of /usr/bin/cc... gcc3
+checking how to print strings... printf
+checking for a sed that does not truncate output... /usr/bin/sed
+checking for grep that handles long lines and -e... /usr/bin/grep
+checking for egrep... /usr/bin/grep -E
+checking for fgrep... /usr/bin/grep -F
+checking for ld used by /usr/bin/cc... /usr/bin/ld
+checking if the linker (/usr/bin/ld) is GNU ld... yes
+checking for BSD- or MS-compatible name lister (nm)... /usr/bin/nm -B
+checking the name lister (/usr/bin/nm -B) interface... BSD nm
+checking whether ln -s works... yes
+checking the maximum length of command line arguments... 1572864
+checking how to convert x86_64-pc-linux-gnu file names to x86_64-pc-linux-gnu format... func_convert_file_noop
+checking how to convert x86_64-pc-linux-gnu file names to toolchain format... func_convert_file_noop
+checking for /usr/bin/ld option to reload object files... -r
+checking for file... file
+checking for objdump... objdump
+checking how to recognize dependent libraries... pass_all
+checking for dlltool... no
+checking how to associate runtime and link libraries... printf %s\n
+checking for ar... ar
+checking for archiver @FILE support... @
+checking for strip... strip
+checking for ranlib... ranlib
+checking command to parse /usr/bin/nm -B output from /usr/bin/cc object... ok
+checking for sysroot... no
+checking for a working dd... /usr/bin/dd
+checking how to truncate binary pipes... /usr/bin/dd bs=4096 count=1
+checking for mt... mt
+checking if mt is a manifest tool... no
+checking for stdio.h... yes
+checking for stdlib.h... yes
+checking for string.h... yes
+checking for inttypes.h... yes
+checking for stdint.h... yes
+checking for strings.h... yes
+checking for sys/stat.h... yes
+checking for sys/types.h... yes
+checking for unistd.h... yes
+checking for dlfcn.h... yes
+checking for objdir... .libs
+checking if /usr/bin/cc supports -fno-rtti -fno-exceptions... no
+checking for /usr/bin/cc option to produce PIC... -fPIC -DPIC
+checking if /usr/bin/cc PIC flag -fPIC -DPIC works... yes
+checking if /usr/bin/cc static flag -static works... yes
+checking if /usr/bin/cc supports -c -o file.o... yes
+checking if /usr/bin/cc supports -c -o file.o... (cached) yes
+checking whether the /usr/bin/cc linker (/usr/bin/ld -m elf_x86_64) supports shared libraries... yes
+checking dynamic linker characteristics... GNU/Linux ld.so
+checking how to hardcode library paths into programs... immediate
+checking whether stripping libraries is possible... yes
+checking if libtool supports shared libraries... yes
+checking whether to build shared libraries... no
+checking whether to build static libraries... yes
+checking for egrep... (cached) /usr/bin/grep -E
+checking for cp... /usr/bin/cp
+checking for mv... /usr/bin/mv
+checking for tar... /usr/bin/tar
+checking for perl... /usr/bin/perl
+checking for help2man... no
+checking for xsltproc... no
+checking for man2html... no
+checking for gtkdoc-mkhtml... no
+checking for gtkdoc-mkdb... no
+checking for gtkdoc-scan... no
+checking for dirent.h that defines DIR... yes
+checking for library containing opendir... none required
+checking for build OS... "Linux"
+checking for development environment... disabled
+checking for man pages build... disabled
+checking for docs build... disabled
+checking for shared library suffix... .so
+checking for __FUNCTION__ or __func__... __func__
+checking for pkg-config... /usr/bin/pkg-config
+checking pkg-config is at least version 0.9.0... yes
+checking size of size_t... 8
+checking for using size_t... no
+checking for libxml-2.0 >= 2.8.0... yes
+checking for libxml2 library >= 2.8.0... checking how to run the C preprocessor... /usr/bin/cc -E
+yes
+checking for libxslt library >= 1.0.20... disabled
+checking for openssl library installation in "/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install" folder... yes
+checking for openssl library >= 1.0.0... yes (openssl version '3.0.0')
+checking for OpenSSL 3+ engines support... disabled
+checking for nspr library >= 4.25.0... disabled
+checking for nss library >= 3.49... disabled
+checking for libgcrypt library >= 1.4.0... disabled
+checking for libgnutls library >= 2.8.0... disabled
+checking for mscrypto... disabled
+checking for mscng... disabled
+checking for default crypto library... yes ("openssl")
+checking for files support... yes
+checking for FTP support... disabled
+checking for HTTP support... yes
+checking for MD5 support... yes
+checking for RIPEMD-160 support... yes
+checking for SHA1 support... yes
+checking for SHA224 support... yes
+checking for SHA256 support... yes
+checking for SHA384 support... yes
+checking for SHA512 support... yes
+checking for HMAC support... yes
+checking for DSA support... yes
+checking for MD5 support... disabled
+checking for RSA support... yes
+checking for x509 support... yes
+checking for DES support... yes
+checking for AES support... yes
+checking for GOST support... disabled
+checking for EXPERMIENTAL GOST2012 support... disabled
+checking for XMLDSig support... yes
+checking for XMLEnc support... yes
+checking for soap support... disabled
+checking for mans... yes
+checking for docs... disabled
+checking for apps... disabled
+checking for static linking... disabled
+checking for xmlsec-crypto dynamic loading support... disabled
+checking for xmlsec-crypto dynamic loading support in command line tool... disabled
+checking for docs folder... $(htmldir)
+checking for Simple Keys Manager testing... yes
+checking for templates testing... yes
+checking for debugging... disabled
+checking for warnings as errors... disabled
+checking for profiling... disabled
+checking for pedantic... disabled
+checking for secure memset... yes
+checking that generated files are newer than configure... done
+configure: creating ./config.status
+config.status: creating include/xmlsec/openssl/Makefile
+config.status: creating src/openssl/Makefile
+config.status: creating include/xmlsec/version.h
+config.status: creating Makefile
+config.status: creating include/Makefile
+config.status: creating include/xmlsec/Makefile
+config.status: creating src/Makefile
+config.status: creating apps/Makefile
+config.status: creating docs/Makefile
+config.status: creating docs/api/Makefile
+config.status: creating man/Makefile
+config.status: creating xmlsec1-openssl.pc
+config.status: creating xmlsec1-gnutls.pc
+config.status: creating xmlsec1-gcrypt.pc
+config.status: creating xmlsec1-nss.pc
+config.status: creating xmlsec1.spec
+config.status: creating xmlsec1Conf.sh
+config.status: creating xmlsec1-config
+config.status: creating config.h
+config.status: executing depfiles commands
+config.status: executing libtool commands
+[ 33%] Performing build step for 'xmlsec_external'
+Making all in include
+Making all in xmlsec
+Making all in openssl
+Making all in src
+Making all in .
+  CC       app.lo
+  CC       base64.lo
+  CC       bn.lo
+  CC       buffer.lo
+  CC       c14n.lo
+  CC       dl.lo
+  CC       enveloped.lo
+  CC       io.lo
+  CC       errors.lo
+  CC       keyinfo.lo
+  CC       keys.lo
+  CC       keysdata.lo
+  CC       keysmngr.lo
+  CC       kw_aes_des.lo
+  CC       list.lo
+  CC       membuf.lo
+  CC       nodeset.lo
+  CC       parser.lo
+  CC       relationship.lo
+  CC       strings.lo
+  CC       templates.lo
+  CC       transforms.lo
+  CC       x509.lo
+  CC       xmldsig.lo
+  CC       xmlenc.lo
+  CC       xmlsec.lo
+  CC       xmltree.lo
+  CC       xpath.lo
+  CC       xslt.lo
+  CCLD     libxmlsec1.la
+Making all in openssl
+  CC       libxmlsec1_openssl_la-app.lo
+  CC       libxmlsec1_openssl_la-bn.lo
+  CC       libxmlsec1_openssl_la-ciphers.lo
+  CC       libxmlsec1_openssl_la-crypto.lo
+  CC       libxmlsec1_openssl_la-digests.lo
+  CC       libxmlsec1_openssl_la-evp.lo
+  CC       libxmlsec1_openssl_la-evp_signatures.lo
+  CC       libxmlsec1_openssl_la-hmac.lo
+  CC       libxmlsec1_openssl_la-kw_aes.lo
+  CC       libxmlsec1_openssl_la-kw_des.lo
+  CC       libxmlsec1_openssl_la-kt_rsa.lo
+  CC       libxmlsec1_openssl_la-signatures.lo
+  CC       libxmlsec1_openssl_la-symkeys.lo
+  CC       libxmlsec1_openssl_la-x509.lo
+  CC       libxmlsec1_openssl_la-x509vfy.lo
+  CCLD     libxmlsec1-openssl.la
+Making all in man
+[ 34%] Performing install step for 'xmlsec_external'
+Making install in include
+Making install in xmlsec
+Making install in openssl
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/include/xmlsec1/xmlsec/openssl'
+ /usr/bin/install -c -m 644 app.h bn.h crypto.h evp.h symbols.h x509.h '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/include/xmlsec1/xmlsec/openssl'
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/include/xmlsec1/xmlsec'
+ /usr/bin/install -c -m 644 app.h base64.h bn.h buffer.h crypto.h dl.h errors.h exports.h io.h keyinfo.h keysdata.h keys.h keysmngr.h list.h membuf.h nodeset.h parser.h private.h strings.h templates.h transforms.h version.h x509.h xmldsig.h xmlenc.h xmlsec.h xmltree.h '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/include/xmlsec1/xmlsec'
+Making install in src
+Making install in .
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib'
+ /bin/bash ../libtool   --mode=install /usr/bin/install -c   libxmlsec1.la '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib'
+libtool: install: /usr/bin/install -c .libs/libxmlsec1.lai /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib/libxmlsec1.la
+libtool: install: /usr/bin/install -c .libs/libxmlsec1.a /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib/libxmlsec1.a
+libtool: install: chmod 644 /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib/libxmlsec1.a
+libtool: install: ranlib /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib/libxmlsec1.a
+libtool: finish: PATH="/home/ubuntu/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/sbin" ldconfig -n /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib
+----------------------------------------------------------------------
+Libraries have been installed in:
+   /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib
+
+If you ever happen to want to link against installed libraries
+in a given directory, LIBDIR, you must either use libtool, and
+specify the full pathname of the library, or use the '-LLIBDIR'
+flag during linking and do at least one of the following:
+   - add LIBDIR to the 'LD_LIBRARY_PATH' environment variable
+     during execution
+   - add LIBDIR to the 'LD_RUN_PATH' environment variable
+     during linking
+   - use the '-Wl,-rpath -Wl,LIBDIR' linker flag
+   - have your system administrator add LIBDIR to '/etc/ld.so.conf'
+
+See any operating system documentation about shared libraries for
+more information, such as the ld(1) and ld.so(8) manual pages.
+----------------------------------------------------------------------
+Making install in openssl
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib'
+ /bin/bash ../../libtool   --mode=install /usr/bin/install -c   libxmlsec1-openssl.la '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib'
+libtool: install: /usr/bin/install -c .libs/libxmlsec1-openssl.lai /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib/libxmlsec1-openssl.la
+libtool: install: /usr/bin/install -c .libs/libxmlsec1-openssl.a /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib/libxmlsec1-openssl.a
+libtool: install: chmod 644 /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib/libxmlsec1-openssl.a
+libtool: install: ranlib /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib/libxmlsec1-openssl.a
+libtool: finish: PATH="/home/ubuntu/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/sbin" ldconfig -n /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib
+----------------------------------------------------------------------
+Libraries have been installed in:
+   /tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib
+
+If you ever happen to want to link against installed libraries
+in a given directory, LIBDIR, you must either use libtool, and
+specify the full pathname of the library, or use the '-LLIBDIR'
+flag during linking and do at least one of the following:
+   - add LIBDIR to the 'LD_LIBRARY_PATH' environment variable
+     during execution
+   - add LIBDIR to the 'LD_RUN_PATH' environment variable
+     during linking
+   - use the '-Wl,-rpath -Wl,LIBDIR' linker flag
+   - have your system administrator add LIBDIR to '/etc/ld.so.conf'
+
+See any operating system documentation about shared libraries for
+more information, such as the ld(1) and ld.so(8) manual pages.
+----------------------------------------------------------------------
+Making install in man
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/share/man/man1'
+ /usr/bin/install -c -m 644 ./xmlsec1.1 ./xmlsec1-config.1 '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/share/man/man1'
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/bin'
+ /usr/bin/install -c xmlsec1-config '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/bin'
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib'
+ /usr/bin/install -c -m 644 xmlsec1Conf.sh '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib'
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/share/aclocal'
+ /usr/bin/install -c -m 644 xmlsec1.m4 '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/share/aclocal'
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib/pkgconfig'
+ /usr/bin/install -c -m 644 xmlsec1.pc xmlsec1-openssl.pc '/tmp/attestation-sdk/nv-attestation-cli/build/xmlsec-install/lib/pkgconfig'
+[ 36%] Completed 'xmlsec_external'
+[ 36%] Built target xmlsec_external
+[ 37%] Creating directories for 'curl_external'
+[ 38%] Performing download step (download, verify and extract) for 'curl_external'
+-- Downloading...
+   dst='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/curl_external-prefix/src/curl-7.88.1.tar.gz'
+   timeout='none'
+   inactivity timeout='none'
+-- Using src='https://github.com/curl/curl/releases/download/curl-7_88_1/curl-7.88.1.tar.gz'
+-- [download 0% complete]
+-- [download 1% complete]
+-- [download 2% complete]
+-- [download 3% complete]
+-- [download 4% complete]
+-- [download 5% complete]
+-- [download 6% complete]
+-- [download 7% complete]
+-- [download 8% complete]
+-- [download 9% complete]
+-- [download 10% complete]
+-- [download 11% complete]
+-- [download 13% complete]
+-- [download 14% complete]
+-- [download 15% complete]
+-- [download 17% complete]
+-- [download 18% complete]
+-- [download 19% complete]
+-- [download 20% complete]
+-- [download 22% complete]
+-- [download 24% complete]
+-- [download 25% complete]
+-- [download 26% complete]
+-- [download 27% complete]
+-- [download 28% complete]
+-- [download 30% complete]
+-- [download 34% complete]
+-- [download 36% complete]
+-- [download 37% complete]
+-- [download 38% complete]
+-- [download 41% complete]
+-- [download 42% complete]
+-- [download 44% complete]
+-- [download 46% complete]
+-- [download 47% complete]
+-- [download 48% complete]
+-- [download 50% complete]
+-- [download 51% complete]
+-- [download 52% complete]
+-- [download 54% complete]
+-- [download 56% complete]
+-- [download 57% complete]
+-- [download 60% complete]
+-- [download 62% complete]
+-- [download 63% complete]
+-- [download 64% complete]
+-- [download 66% complete]
+-- [download 69% complete]
+-- [download 71% complete]
+-- [download 74% complete]
+-- [download 75% complete]
+-- [download 78% complete]
+-- [download 80% complete]
+-- [download 81% complete]
+-- [download 83% complete]
+-- [download 84% complete]
+-- [download 86% complete]
+-- [download 87% complete]
+-- [download 89% complete]
+-- [download 91% complete]
+-- [download 92% complete]
+-- [download 93% complete]
+-- [download 94% complete]
+-- [download 97% complete]
+-- [download 98% complete]
+-- [download 99% complete]
+-- [download 100% complete]
+-- verifying file...
+       file='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/curl_external-prefix/src/curl-7.88.1.tar.gz'
+-- Downloading... done
+-- extracting...
+     src='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/curl_external-prefix/src/curl-7.88.1.tar.gz'
+     dst='/tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/curl_external-prefix/src/curl_external'
+-- extracting... [tar xfz]
+-- extracting... [analysis]
+-- extracting... [rename]
+-- extracting... [clean up]
+-- extracting... done
+[ 40%] No update step for 'curl_external'
+[ 41%] No patch step for 'curl_external'
+[ 43%] Performing configure step for 'curl_external'
+checking whether to enable maintainer-specific portions of Makefiles... no
+checking whether make supports nested variables... yes
+checking whether to enable debug build options... no
+checking whether to enable compiler optimizer... (assumed) yes
+checking whether to enable strict compiler warnings... no
+checking whether to enable compiler warnings as errors... no
+checking whether to enable curl debug memory tracking... no
+checking whether to enable hiding of library internal symbols... yes
+checking whether to enable c-ares for DNS lookups... no
+checking whether to disable dependency on -lrt... (assumed no)
+checking whether to enable ECH support... no
+checking for path separator... :
+checking for sed... /usr/bin/sed
+checking for grep... /usr/bin/grep
+checking that grep -E works... yes
+checking for ar... /usr/bin/ar
+checking for a BSD-compatible install... /usr/bin/install -c
+checking for gcc... /usr/bin/cc
+checking whether the C compiler works... yes
+checking for C compiler default output file name... a.out
+checking for suffix of executables... 
+checking whether we are cross compiling... no
+checking for suffix of object files... o
+checking whether the compiler supports GNU C... yes
+checking whether /usr/bin/cc accepts -g... yes
+checking for /usr/bin/cc option to enable C11 features... none needed
+checking whether /usr/bin/cc understands -c and -o together... yes
+checking how to run the C preprocessor... /usr/bin/cc -E
+checking for stdio.h... yes
+checking for stdlib.h... yes
+checking for string.h... yes
+checking for inttypes.h... yes
+checking for stdint.h... yes
+checking for strings.h... yes
+checking for sys/stat.h... yes
+checking for sys/types.h... yes
+checking for unistd.h... yes
+checking for stdatomic.h... yes
+checking if _Atomic is available... yes
+checking for a sed that does not truncate output... (cached) /usr/bin/sed
+checking for code coverage support... no
+checking whether build environment is sane... yes
+checking for a race-free mkdir -p... /usr/bin/mkdir -p
+checking for gawk... gawk
+checking whether make sets $(MAKE)... yes
+checking whether make supports the include directive... yes (GNU style)
+checking dependency style of /usr/bin/cc... gcc3
+checking curl version... 7.88.1
+checking for httpd... no
+checking for apache2... no
+checking for apachectl... no
+checking for apxs... no
+configure: httpd/apache2 not in PATH, httpd tests disabled
+configure: apxs not in PATH, httpd tests disabled
+checking for apxs... no
+checking for caddy... no
+checking build system type... x86_64-pc-linux-gnu
+checking host system type... x86_64-pc-linux-gnu
+checking for grep that handles long lines and -e... (cached) /usr/bin/grep
+checking for egrep... /usr/bin/grep -E
+checking if OS is AIX (to define _ALL_SOURCE)... no
+checking if _THREAD_SAFE is already defined... no
+checking if _THREAD_SAFE is actually needed... no
+checking if _THREAD_SAFE is onwards defined... no
+checking if _REENTRANT is already defined... no
+checking if _REENTRANT is actually needed... no
+checking if _REENTRANT is onwards defined... no
+checking for special C compiler options needed for large files... no
+checking for _FILE_OFFSET_BITS value needed for large files... no
+checking how to print strings... printf
+checking for a sed that does not truncate output... (cached) /usr/bin/sed
+checking for fgrep... /usr/bin/grep -F
+checking for ld used by /usr/bin/cc... /usr/bin/ld
+checking if the linker (/usr/bin/ld) is GNU ld... yes
+checking for BSD- or MS-compatible name lister (nm)... /usr/bin/nm -B
+checking the name lister (/usr/bin/nm -B) interface... BSD nm
+checking whether ln -s works... yes
+checking the maximum length of command line arguments... 1572864
+checking how to convert x86_64-pc-linux-gnu file names to x86_64-pc-linux-gnu format... func_convert_file_noop
+checking how to convert x86_64-pc-linux-gnu file names to toolchain format... func_convert_file_noop
+checking for /usr/bin/ld option to reload object files... -r
+checking for file... file
+checking for objdump... objdump
+checking how to recognize dependent libraries... pass_all
+checking for dlltool... no
+checking how to associate runtime and link libraries... printf %s\n
+checking for archiver @FILE support... @
+checking for strip... strip
+checking for ranlib... ranlib
+checking command to parse /usr/bin/nm -B output from /usr/bin/cc object... ok
+checking for sysroot... no
+checking for a working dd... /usr/bin/dd
+checking how to truncate binary pipes... /usr/bin/dd bs=4096 count=1
+checking for mt... mt
+checking if mt is a manifest tool... no
+checking for dlfcn.h... yes
+checking for objdir... .libs
+checking if /usr/bin/cc supports -fno-rtti -fno-exceptions... no
+checking for /usr/bin/cc option to produce PIC... -fPIC -DPIC
+checking if /usr/bin/cc PIC flag -fPIC -DPIC works... yes
+checking if /usr/bin/cc static flag -static works... yes
+checking if /usr/bin/cc supports -c -o file.o... yes
+checking if /usr/bin/cc supports -c -o file.o... (cached) yes
+checking whether the /usr/bin/cc linker (/usr/bin/ld -m elf_x86_64) supports shared libraries... yes
+checking dynamic linker characteristics... GNU/Linux ld.so
+checking how to hardcode library paths into programs... immediate
+checking whether stripping libraries is possible... yes
+checking if libtool supports shared libraries... yes
+checking whether to build shared libraries... no
+checking whether to build static libraries... yes
+checking whether to build shared libraries with -version-info... yes
+checking whether to build shared libraries with -no-undefined... no
+checking whether to build shared libraries with -mimpure-text... no
+checking whether to build shared libraries with PIC... yes
+checking whether to build static libraries with PIC... yes
+checking whether to build shared libraries only... no
+checking whether to build static libraries only... yes
+checking for windres... no
+checking for inline... inline
+checking if cpp -P is needed... yes
+checking if cpp -P works... yes
+checking if compiler is DEC/Compaq/HP C... no
+checking if compiler is HP-UX C... no
+checking if compiler is IBM C... no
+checking if compiler is Intel C... no
+checking if compiler is clang... no
+checking if compiler is GNU C... yes
+checking if compiler is LCC... no
+checking if compiler is SGI MIPSpro C... no
+checking if compiler is SGI MIPS C... no
+checking if compiler is SunPro C... no
+checking if compiler is Tiny C... no
+checking if compiler accepts some basic options... yes
+configure: compiler options added: -Werror-implicit-function-declaration 
+checking if compiler optimizer assumed setting might be used... yes
+checking if compiler accepts optimizer enabling options... yes
+configure: compiler options added: -O2
+checking if compiler accepts strict warning options... yes
+configure: compiler options added: -Wno-system-headers 
+checking if compiler halts on compilation errors... yes
+checking if compiler halts on negative sized arrays... yes
+checking if compiler halts on function prototype mismatch... yes
+checking if compiler supports hiding library internal symbols... yes
+checking for windows.h... no
+checking whether build target is a native Windows one... no
+checking whether build target supports WIN32 file API... no
+checking whether build target supports WIN32 crypto API... no
+checking for good-to-use Darwin CFLAGS... no
+checking whether to link macOS CoreFoundation and SystemConfiguration framework... no
+checking to see if the compiler supports __builtin_available()... no
+checking whether to support http... yes
+checking whether to support ftp... yes
+checking whether to support file... yes
+checking whether to support ldap... no
+checking whether to support ldaps... no
+checking whether to support rtsp... yes
+checking whether to support proxies... yes
+checking whether to support dict... yes
+checking whether to support telnet... yes
+checking whether to support tftp... yes
+checking whether to support pop3... yes
+checking whether to support imap... yes
+checking whether to support smb... yes
+checking whether to support smtp... yes
+checking whether to support gopher... yes
+checking whether to support mqtt... no
+checking whether to provide built-in manual... yes
+checking whether to enable generation of C code... yes
+checking whether to use libgcc... no
+checking if X/Open network library is required... no
+checking for gethostbyname... yes
+checking for windows.h... (cached) no
+checking for winsock2.h... (cached) no
+checking for proto/bsdsocket.h... no
+checking for connect in libraries... yes
+checking for sys/types.h... (cached) yes
+checking for sys/time.h... yes
+checking for monotonic clock_gettime... yes
+checking for clock_gettime in libraries... no additional lib required
+checking if monotonic clock_gettime works... yes
+checking for pkg-config... /usr/bin/pkg-config
+checking for zlib options with pkg-config... found
+checking for zlib.h... yes
+configure: found both libz and libz.h header
+checking whether to enable IPv6... yes
+checking if struct sockaddr_in6 has sin6_scope_id member... yes
+checking if argv can be written to... yes
+checking if GSS-API support is requested... no
+checking whether to enable Windows native SSL/TLS... no
+checking whether to enable Secure Transport... no
+checking whether to enable Amiga native SSL/TLS (AmiSSL v5)... no
+configure: PKG_CONFIG_LIBDIR will be set to "/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib/pkgconfig"
+checking for pkg-config... (cached) /usr/bin/pkg-config
+checking for openssl options with pkg-config... found
+configure: pkg-config: SSL_LIBS: "-lssl -lcrypto"
+configure: pkg-config: SSL_LDFLAGS: "-L/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib"
+configure: pkg-config: SSL_CPPFLAGS: "-I/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include"
+checking for HMAC_Update in -lcrypto... yes
+checking for SSL_connect in -lssl... yes
+checking for openssl/x509.h... yes
+checking for openssl/rsa.h... yes
+checking for openssl/crypto.h... yes
+checking for openssl/pem.h... yes
+checking for openssl/ssl.h... yes
+checking for openssl/err.h... yes
+checking for RAND_egd... no
+checking for BoringSSL... no
+checking for libressl... no
+checking for OpenSSL >= v3... yes
+configure: Added /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib to CURL_LIBRARY_PATH
+checking for "/dev/urandom"... yes
+checking for SRP support in OpenSSL... yes
+configure: built with one SSL backend
+checking default CA cert bundle/path... /etc/ssl/certs/ca-certificates.crt
+checking whether to use builtin CA store of SSL library... no
+checking for library containing gsasl_init... no
+configure: WARNING: libgsasl was not found
+checking whether versioned symbols are wanted... no
+checking whether to enable Windows native IDN (Windows native builds only)... no
+checking whether to build with libidn2... no
+checking for pkg-config... (cached) /usr/bin/pkg-config
+checking for fish options with pkg-config... no
+checking for sys/types.h... (cached) yes
+checking for sys/time.h... (cached) yes
+checking for sys/select.h... yes
+checking for sys/socket.h... yes
+checking for sys/ioctl.h... yes
+checking for sys/uio.h... yes
+checking for unistd.h... (cached) yes
+checking for stdlib.h... (cached) yes
+checking for arpa/inet.h... yes
+checking for net/if.h... yes
+checking for netinet/in.h... yes
+checking for netinet/in6.h... no
+checking for sys/un.h... yes
+checking for linux/tcp.h... yes
+checking for netinet/tcp.h... yes
+checking for netinet/udp.h... yes
+checking for netdb.h... yes
+checking for sys/sockio.h... no
+checking for sys/stat.h... (cached) yes
+checking for sys/param.h... yes
+checking for termios.h... yes
+checking for termio.h... yes
+checking for fcntl.h... yes
+checking for io.h... no
+checking for pwd.h... yes
+checking for utime.h... yes
+checking for sys/utime.h... no
+checking for sys/poll.h... yes
+checking for poll.h... yes
+checking for socket.h... no
+checking for sys/resource.h... yes
+checking for libgen.h... yes
+checking for locale.h... yes
+checking for stdbool.h... yes
+checking for arpa/tftp.h... yes
+checking for sys/filio.h... no
+checking for sys/wait.h... yes
+checking for setjmp.h... yes
+checking for an ANSI C-conforming const... yes
+checking for compiler support of C99 variadic macro style... yes
+checking for compiler support of old gcc variadic macro style... yes
+checking for size_t... yes
+checking for sys/types.h... (cached) yes
+checking for sys/time.h... (cached) yes
+checking for sys/socket.h... (cached) yes
+checking for struct timeval... yes
+checking run-time libs availability... fine
+checking size of size_t... 8
+checking size of long... 8
+checking size of int... 4
+checking size of time_t... 8
+checking size of off_t... 8
+checking size of curl_off_t... 8
+checking for long long... yes
+checking for ssize_t... yes
+checking for bool... yes
+checking for sa_family_t... yes
+checking for suseconds_t... yes
+checking if time_t is unsigned... no
+checking for sys/types.h... (cached) yes
+checking for poll.h... (cached) yes
+checking for sys/poll.h... (cached) yes
+checking for in_addr_t... yes
+checking for struct sockaddr_storage... yes
+checking for sys/select.h... (cached) yes
+checking for sys/socket.h... (cached) yes
+checking for select... yes
+checking for sys/types.h... (cached) yes
+checking for sys/socket.h... (cached) yes
+checking for recv... yes
+checking for sys/types.h... (cached) yes
+checking for sys/socket.h... (cached) yes
+checking for send... yes
+checking for sys/types.h... (cached) yes
+checking for sys/socket.h... (cached) yes
+checking for MSG_NOSIGNAL... yes
+checking for sys/types.h... (cached) yes
+checking for unistd.h... (cached) yes
+checking if alarm can be linked... yes
+checking if alarm is prototyped... yes
+checking if alarm is compilable... yes
+checking if alarm usage allowed... yes
+checking if alarm might be used... yes
+checking for sys/types.h... (cached) yes
+checking for string.h... (cached) yes
+checking for strings.h... (cached) yes
+checking for sys/types.h... (cached) yes
+checking for libgen.h... (cached) yes
+checking if basename can be linked... yes
+checking if basename is prototyped... yes
+checking if basename is compilable... yes
+checking if basename usage allowed... yes
+checking if basename might be used... yes
+checking for sys/types.h... (cached) yes
+checking for socket.h... (cached) no
+checking if closesocket can be linked... no
+checking if closesocket might be used... no
+checking for sys/types.h... (cached) yes
+checking for sys/socket.h... (cached) yes
+checking if CloseSocket can be linked... no
+checking if CloseSocket might be used... no
+checking if connect can be linked... yes
+checking if connect is prototyped... yes
+checking if connect is compilable... yes
+checking if connect usage allowed... yes
+checking if connect might be used... yes
+checking for sys/types.h... (cached) yes
+checking for unistd.h... (cached) yes
+checking for fcntl.h... (cached) yes
+checking if fcntl can be linked... yes
+checking if fcntl is prototyped... yes
+checking if fcntl is compilable... yes
+checking if fcntl usage allowed... yes
+checking if fcntl might be used... yes
+checking if fcntl O_NONBLOCK is compilable... yes
+checking if fcntl O_NONBLOCK usage allowed... yes
+checking if fcntl O_NONBLOCK might be used... yes
+checking for windows.h... (cached) no
+checking for winsock2.h... (cached) no
+checking for ws2tcpip.h... (cached) no
+checking for sys/types.h... (cached) yes
+checking for netdb.h... (cached) yes
+checking if freeaddrinfo can be linked... yes
+checking if freeaddrinfo is prototyped... yes
+checking if freeaddrinfo is compilable... yes
+checking if freeaddrinfo usage allowed... yes
+checking if freeaddrinfo might be used... yes
+checking for sys/types.h... (cached) yes
+checking for sys/xattr.h... yes
+checking if fsetxattr can be linked... yes
+checking if fsetxattr is prototyped... yes
+checking if fsetxattr takes 5 args.... yes
+checking if fsetxattr is compilable... yes
+checking if fsetxattr usage allowed... yes
+checking if fsetxattr might be used... yes
+checking if ftruncate can be linked... yes
+checking if ftruncate is prototyped... yes
+checking if ftruncate is compilable... yes
+checking if ftruncate usage allowed... yes
+checking if ftruncate might be used... yes
+checking for sys/types.h... (cached) yes
+checking for stdlib.h... (cached) yes
+checking if getaddrinfo can be linked... yes
+checking if getaddrinfo is prototyped... yes
+checking if getaddrinfo is compilable... yes
+checking if getaddrinfo seems to work... yes
+checking if getaddrinfo usage allowed... yes
+checking if getaddrinfo might be used... yes
+checking if getaddrinfo is threadsafe... yes
+checking if gethostbyname can be linked... yes
+checking if gethostbyname is prototyped... yes
+checking if gethostbyname is compilable... yes
+checking if gethostbyname usage allowed... yes
+checking if gethostbyname might be used... yes
+checking if gethostbyname_r can be linked... yes
+checking if gethostbyname_r is prototyped... yes
+checking if gethostbyname_r takes 3 args.... no
+checking if gethostbyname_r takes 5 args.... no
+checking if gethostbyname_r takes 6 args.... yes
+checking if gethostbyname_r is compilable... yes
+checking if gethostbyname_r usage allowed... yes
+checking if gethostbyname_r might be used... yes
+checking if gethostname can be linked... yes
+checking if gethostname is prototyped... yes
+checking if gethostname is compilable... yes
+checking for gethostname arg 2 data type... size_t
+checking if gethostname usage allowed... yes
+checking if gethostname might be used... yes
+checking if getpeername can be linked... yes
+checking if getpeername is prototyped... yes
+checking if getpeername is compilable... yes
+checking if getpeername usage allowed... yes
+checking if getpeername might be used... yes
+checking if getsockname can be linked... yes
+checking if getsockname is prototyped... yes
+checking if getsockname is compilable... yes
+checking if getsockname usage allowed... yes
+checking if getsockname might be used... yes
+checking for net/if.h... (cached) yes
+checking if if_nametoindex can be linked... yes
+checking if if_nametoindex is prototyped... yes
+checking if if_nametoindex is compilable... yes
+checking if if_nametoindex usage allowed... yes
+checking if if_nametoindex might be used... yes
+checking for sys/types.h... (cached) yes
+checking for sys/socket.h... (cached) yes
+checking for netinet/in.h... (cached) yes
+checking for ifaddrs.h... yes
+checking if getifaddrs can be linked... yes
+checking if getifaddrs is prototyped... yes
+checking if getifaddrs is compilable... yes
+checking if getifaddrs seems to work... yes
+checking if getifaddrs usage allowed... yes
+checking if getifaddrs might be used... yes
+checking for sys/types.h... (cached) yes
+checking for sys/time.h... (cached) yes
+checking if gmtime_r can be linked... yes
+checking if gmtime_r is prototyped... yes
+checking if gmtime_r is compilable... yes
+checking if gmtime_r seems to work... yes
+checking if gmtime_r usage allowed... yes
+checking if gmtime_r might be used... yes
+checking for sys/types.h... (cached) yes
+checking for sys/socket.h... (cached) yes
+checking for netinet/in.h... (cached) yes
+checking for arpa/inet.h... (cached) yes
+checking if inet_ntop can be linked... yes
+checking if inet_ntop is prototyped... yes
+checking if inet_ntop is compilable... yes
+checking if inet_ntop seems to work... yes
+checking if inet_ntop usage allowed... yes
+checking if inet_ntop might be used... yes
+checking if inet_pton can be linked... yes
+checking if inet_pton is prototyped... yes
+checking if inet_pton is compilable... yes
+checking if inet_pton seems to work... yes
+checking if inet_pton usage allowed... yes
+checking if inet_pton might be used... yes
+checking if ioctlsocket can be linked... no
+checking if ioctlsocket might be used... no
+checking if IoctlSocket can be linked... no
+checking if IoctlSocket might be used... no
+checking if memrchr can be linked... yes
+checking if memrchr is prototyped... no
+checking if memrchr might be used... no
+checking if poll can be linked... yes
+checking if poll is prototyped... yes
+checking if poll is compilable... yes
+checking if poll seems to work... yes
+checking if poll usage allowed... yes
+checking if poll might be used... yes
+checking for sys/types.h... (cached) yes
+checking for signal.h... yes
+checking if sigaction can be linked... yes
+checking if sigaction is prototyped... yes
+checking if sigaction is compilable... yes
+checking if sigaction usage allowed... yes
+checking if sigaction might be used... yes
+checking if siginterrupt can be linked... yes
+checking if siginterrupt is prototyped... yes
+checking if siginterrupt is compilable... yes
+checking if siginterrupt usage allowed... yes
+checking if siginterrupt might be used... yes
+checking if signal can be linked... yes
+checking if signal is prototyped... yes
+checking if signal is compilable... yes
+checking if signal usage allowed... yes
+checking if signal might be used... yes
+checking for sys/types.h... (cached) yes
+checking for setjmp.h... (cached) yes
+checking if sigsetjmp can be linked... no
+checking if sigsetjmp seems a macro... yes
+checking if sigsetjmp is compilable... yes
+checking if sigsetjmp usage allowed... yes
+checking if sigsetjmp might be used... yes
+checking if socket can be linked... yes
+checking if socket is prototyped... yes
+checking if socket is compilable... yes
+checking if socket usage allowed... yes
+checking if socket might be used... yes
+checking if socketpair can be linked... yes
+checking if socketpair is prototyped... yes
+checking if socketpair is compilable... yes
+checking if socketpair usage allowed... yes
+checking if socketpair might be used... yes
+checking if strcasecmp can be linked... yes
+checking if strcasecmp is prototyped... yes
+checking if strcasecmp is compilable... yes
+checking if strcasecmp usage allowed... yes
+checking if strcasecmp might be used... yes
+checking if strcmpi can be linked... no
+checking if strcmpi might be used... no
+checking if strdup can be linked... yes
+checking if strdup is prototyped... yes
+checking if strdup is compilable... yes
+checking if strdup usage allowed... yes
+checking if strdup might be used... yes
+checking if strerror_r can be linked... yes
+checking if strerror_r is prototyped... yes
+checking if strerror_r is compilable... yes
+checking if strerror_r is glibc like... no
+checking if strerror_r is POSIX like... yes
+checking if strerror_r seems to work... yes
+checking if strerror_r usage allowed... yes
+checking if strerror_r might be used... yes
+checking if stricmp can be linked... no
+checking if stricmp might be used... no
+checking if strtok_r can be linked... yes
+checking if strtok_r is prototyped... yes
+checking if strtok_r is compilable... yes
+checking if strtok_r usage allowed... yes
+checking if strtok_r might be used... yes
+checking if strtoll can be linked... yes
+checking if strtoll is prototyped... yes
+checking if strtoll is compilable... yes
+checking if strtoll usage allowed... yes
+checking if strtoll might be used... yes
+checking for /usr/bin/cc options needed to detect all undeclared functions... none needed
+checking whether getpwuid_r is declared... yes
+checking for fnmatch... yes
+checking for fchmod... yes
+checking for fork... yes
+checking for geteuid... yes
+checking for getpass_r... no
+checking deeper for getpass_r... but still no
+checking for getppid... yes
+checking for getpwuid... yes
+checking for getpwuid_r... yes
+checking for getrlimit... yes
+checking for gettimeofday... yes
+checking for if_nametoindex... yes
+checking for mach_absolute_time... no
+checking deeper for mach_absolute_time... but still no
+checking for pipe... yes
+checking for sched_yield... yes
+checking for sendmsg... yes
+checking for setlocale... yes
+checking for setmode... no
+checking deeper for setmode... but still no
+checking for setrlimit... yes
+checking for snprintf... yes
+checking for utime... yes
+checking for utimes... yes
+checking how to set a socket into non-blocking mode... fcntl O_NONBLOCK
+checking for perl... /usr/bin/perl
+checking for gnroff... no
+checking for nroff... /usr/bin/nroff
+checking how to use *nroff to get plain text from man pages... -man
+checking whether to enable the threaded resolver... yes
+checking whether to use POSIX threads for threaded resolver... auto
+checking for pthread.h... yes
+checking for pthread_create... yes
+checking convert -I options to -isystem... yes
+checking whether to enable verbose strings... yes
+checking whether to enable SSPI support (Windows native builds only)... no
+checking whether to enable cryptographic authentication methods... yes
+checking whether to support NTLM... yes
+checking whether to enable NTLM delegation to winbind's helper... yes
+checking whether to enable TLS-SRP authentication... yes
+checking whether to enable Unix domain sockets... auto
+checking for struct sockaddr_un.sun_path... yes
+checking whether to support cookies... yes
+checking whether to support socketpair... yes
+checking whether to support HTTP authentication... yes
+checking whether to support DoH... yes
+checking whether to support the MIME API... yes
+checking whether to support date parsing... yes
+checking whether to support netrc parsing... yes
+checking whether to support progress-meter... yes
+checking whether to support DNS shuffling... yes
+checking whether to support curl_easy_option*... yes
+checking whether to support alt-svc... yes
+checking whether to support headers-api... yes
+checking whether to support HSTS... yes
+checking for SSL_set0_wbio... yes
+checking whether to support WebSockets... no
+checking whether hiding of library internal symbols will actually happen... yes
+checking that generated files are newer than configure... done
+configure: creating ./config.status
+config.status: creating Makefile
+config.status: creating docs/Makefile
+config.status: creating docs/examples/Makefile
+config.status: creating docs/libcurl/Makefile
+config.status: creating docs/libcurl/opts/Makefile
+config.status: creating docs/cmdline-opts/Makefile
+config.status: creating include/Makefile
+config.status: creating include/curl/Makefile
+config.status: creating src/Makefile
+config.status: creating lib/Makefile
+config.status: creating scripts/Makefile
+config.status: creating lib/libcurl.vers
+config.status: creating lib/libcurl.plist
+config.status: creating tests/Makefile
+config.status: creating tests/config
+config.status: creating tests/certs/Makefile
+config.status: creating tests/certs/scripts/Makefile
+config.status: creating tests/data/Makefile
+config.status: creating tests/server/Makefile
+config.status: creating tests/libtest/Makefile
+config.status: creating tests/unit/Makefile
+config.status: creating tests/tests-httpd/config.ini
+config.status: creating tests/tests-httpd/Makefile
+config.status: creating packages/Makefile
+config.status: creating packages/vms/Makefile
+config.status: creating curl-config
+config.status: creating libcurl.pc
+config.status: creating lib/curl_config.h
+config.status: executing depfiles commands
+config.status: executing libtool commands
+configure: amending lib/Makefile
+configure: amending src/Makefile
+configure: amending tests/unit/Makefile
+configure: amending tests/server/Makefile
+configure: amending tests/libtest/Makefile
+configure: amending docs/examples/Makefile
+configure: Configured to build curl/libcurl:
+
+  Host setup:       x86_64-pc-linux-gnu
+  Install prefix:   /tmp/attestation-sdk/nv-attestation-cli/build/curl-install
+  Compiler:         /usr/bin/cc
+   CFLAGS:          -fPIC -Werror-implicit-function-declaration -O2 -Wno-system-headers
+   CPPFLAGS:        -isystem /tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/include
+   LDFLAGS:         -L/tmp/attestation-sdk/nv-attestation-cli/build/openssl-install/lib
+   LIBS:            -lssl -lcrypto -lssl -lcrypto -lz
+
+  curl version:     7.88.1
+  SSL:              enabled (OpenSSL v3+)
+  SSH:              no      (--with-{libssh,libssh2})
+  zlib:             enabled
+  brotli:           no      (--with-brotli)
+  zstd:             no      (--with-zstd)
+  GSS-API:          no      (--with-gssapi)
+  GSASL:            no      (libgsasl not found)
+  TLS-SRP:          enabled
+  resolver:         POSIX threaded
+  IPv6:             enabled
+  Unix sockets:     enabled
+  IDN:              no      (--with-{libidn2,winidn})
+  Build libcurl:    Shared=no, Static=yes
+  Built-in manual:  enabled
+  --libcurl option: enabled (--disable-libcurl-option)
+  Verbose errors:   enabled (--disable-verbose)
+  Code coverage:    disabled
+  SSPI:             no      (--enable-sspi)
+  ca cert bundle:   /etc/ssl/certs/ca-certificates.crt
+  ca cert path:     no
+  ca fallback:      no
+  LDAP:             no      (--enable-ldap / --with-ldap-lib / --with-lber-lib)
+  LDAPS:            no      (--enable-ldaps)
+  RTSP:             enabled
+  RTMP:             no      (--with-librtmp)
+  PSL:              no      (--with-libpsl)
+  Alt-svc:          enabled (--disable-alt-svc)
+  Headers API:      enabled (--disable-headers-api)
+  HSTS:             enabled (--disable-hsts)
+  HTTP1:            enabled (internal)
+  HTTP2:            no      (--with-nghttp2, --with-hyper)
+  HTTP3:            no      (--with-ngtcp2, --with-quiche --with-msh3)
+  ECH:              no      (--enable-ech)
+  WebSockets:       no      (--enable-websockets)
+  Protocols:        DICT FILE FTP FTPS GOPHER GOPHERS HTTP HTTPS IMAP IMAPS MQTT POP3 POP3S RTSP SMB SMBS SMTP SMTPS TELNET TFTP
+  Features:         AsynchDNS HSTS HTTPS-proxy IPv6 Largefile NTLM NTLM_WB SSL TLS-SRP UnixSockets alt-svc libz threadsafe
+
+[ 44%] Performing build step for 'curl_external'
+Making all in lib
+  CC       libcurl_la-altsvc.lo
+  CC       libcurl_la-amigaos.lo
+  CC       libcurl_la-asyn-ares.lo
+  CC       libcurl_la-asyn-thread.lo
+  CC       libcurl_la-base64.lo
+  CC       libcurl_la-bufref.lo
+  CC       libcurl_la-c-hyper.lo
+  CC       libcurl_la-cf-http.lo
+  CC       libcurl_la-cf-socket.lo
+  CC       libcurl_la-cfilters.lo
+  CC       libcurl_la-conncache.lo
+  CC       libcurl_la-connect.lo
+  CC       libcurl_la-content_encoding.lo
+  CC       libcurl_la-cookie.lo
+  CC       libcurl_la-curl_addrinfo.lo
+  CC       libcurl_la-curl_des.lo
+  CC       libcurl_la-curl_endian.lo
+  CC       libcurl_la-curl_fnmatch.lo
+  CC       libcurl_la-curl_get_line.lo
+  CC       libcurl_la-curl_gethostname.lo
+  CC       libcurl_la-curl_gssapi.lo
+  CC       libcurl_la-curl_log.lo
+  CC       libcurl_la-curl_memrchr.lo
+  CC       libcurl_la-curl_multibyte.lo
+  CC       libcurl_la-curl_ntlm_core.lo
+  CC       libcurl_la-curl_ntlm_wb.lo
+  CC       libcurl_la-curl_path.lo
+  CC       libcurl_la-curl_range.lo
+  CC       libcurl_la-curl_rtmp.lo
+  CC       libcurl_la-curl_sasl.lo
+  CC       libcurl_la-curl_sspi.lo
+  CC       libcurl_la-curl_threads.lo
+  CC       libcurl_la-dict.lo
+  CC       libcurl_la-doh.lo
+  CC       libcurl_la-dynbuf.lo
+  CC       libcurl_la-easy.lo
+  CC       libcurl_la-easygetopt.lo
+  CC       libcurl_la-easyoptions.lo
+  CC       libcurl_la-escape.lo
+  CC       libcurl_la-file.lo
+  CC       libcurl_la-fileinfo.lo
+  CC       libcurl_la-fopen.lo
+  CC       libcurl_la-formdata.lo
+  CC       libcurl_la-ftp.lo
+  CC       libcurl_la-ftplistparser.lo
+  CC       libcurl_la-getenv.lo
+  CC       libcurl_la-getinfo.lo
+  CC       libcurl_la-gopher.lo
+  CC       libcurl_la-h2h3.lo
+  CC       libcurl_la-hash.lo
+  CC       libcurl_la-headers.lo
+  CC       libcurl_la-hmac.lo
+  CC       libcurl_la-hostasyn.lo
+  CC       libcurl_la-hostip.lo
+  CC       libcurl_la-hostip4.lo
+  CC       libcurl_la-hostip6.lo
+  CC       libcurl_la-hostsyn.lo
+  CC       libcurl_la-hsts.lo
+  CC       libcurl_la-http.lo
+  CC       libcurl_la-http2.lo
+  CC       libcurl_la-http_chunks.lo
+  CC       libcurl_la-http_digest.lo
+  CC       libcurl_la-http_negotiate.lo
+  CC       libcurl_la-http_ntlm.lo
+  CC       libcurl_la-http_proxy.lo
+  CC       libcurl_la-http_aws_sigv4.lo
+  CC       libcurl_la-idn.lo
+  CC       libcurl_la-imap.lo
+  CC       libcurl_la-inet_ntop.lo
+  CC       libcurl_la-if2ip.lo
+  CC       libcurl_la-inet_pton.lo
+  CC       libcurl_la-krb5.lo
+  CC       libcurl_la-ldap.lo
+  CC       libcurl_la-llist.lo
+  CC       libcurl_la-md4.lo
+  CC       libcurl_la-md5.lo
+  CC       libcurl_la-memdebug.lo
+  CC       libcurl_la-mime.lo
+  CC       libcurl_la-mqtt.lo
+  CC       libcurl_la-mprintf.lo
+  CC       libcurl_la-multi.lo
+  CC       libcurl_la-nonblock.lo
+  CC       libcurl_la-noproxy.lo
+  CC       libcurl_la-netrc.lo
+  CC       libcurl_la-openldap.lo
+  CC       libcurl_la-parsedate.lo
+  CC       libcurl_la-pingpong.lo
+  CC       libcurl_la-pop3.lo
+  CC       libcurl_la-psl.lo
+  CC       libcurl_la-progress.lo
+  CC       libcurl_la-rand.lo
+  CC       libcurl_la-rename.lo
+  CC       libcurl_la-rtsp.lo
+  CC       libcurl_la-select.lo
+  CC       libcurl_la-sendf.lo
+  CC       libcurl_la-setopt.lo
+  CC       libcurl_la-sha256.lo
+  CC       libcurl_la-share.lo
+  CC       libcurl_la-slist.lo
+  CC       libcurl_la-smb.lo
+  CC       libcurl_la-smtp.lo
+  CC       libcurl_la-socks.lo
+  CC       libcurl_la-socks_gssapi.lo
+  CC       libcurl_la-socketpair.lo
+  CC       libcurl_la-speedcheck.lo
+  CC       libcurl_la-splay.lo
+  CC       libcurl_la-socks_sspi.lo
+  CC       libcurl_la-strcase.lo
+  CC       libcurl_la-strdup.lo
+  CC       libcurl_la-strerror.lo
+  CC       libcurl_la-strtok.lo
+  CC       libcurl_la-strtoofft.lo
+  CC       libcurl_la-system_win32.lo
+  CC       libcurl_la-telnet.lo
+  CC       libcurl_la-tftp.lo
+  CC       libcurl_la-timediff.lo
+  CC       libcurl_la-timeval.lo
+  CC       libcurl_la-transfer.lo
+  CC       libcurl_la-url.lo
+  CC       libcurl_la-version.lo
+  CC       libcurl_la-urlapi.lo
+  CC       libcurl_la-version_win32.lo
+  CC       libcurl_la-warnless.lo
+  CC       libcurl_la-wildcard.lo
+  CC       libcurl_la-ws.lo
+  CC       vauth/libcurl_la-cleartext.lo
+  CC       vauth/libcurl_la-cram.lo
+  CC       vauth/libcurl_la-digest.lo
+  CC       vauth/libcurl_la-digest_sspi.lo
+  CC       vauth/libcurl_la-gsasl.lo
+  CC       vauth/libcurl_la-krb5_gssapi.lo
+  CC       vauth/libcurl_la-krb5_sspi.lo
+  CC       vauth/libcurl_la-ntlm.lo
+  CC       vauth/libcurl_la-ntlm_sspi.lo
+  CC       vauth/libcurl_la-oauth2.lo
+  CC       vauth/libcurl_la-spnego_gssapi.lo
+  CC       vauth/libcurl_la-spnego_sspi.lo
+  CC       vauth/libcurl_la-vauth.lo
+  CC       vtls/libcurl_la-bearssl.lo
+  CC       vtls/libcurl_la-gskit.lo
+  CC       vtls/libcurl_la-gtls.lo
+  CC       vtls/libcurl_la-hostcheck.lo
+  CC       vtls/libcurl_la-keylog.lo
+  CC       vtls/libcurl_la-mbedtls.lo
+  CC       vtls/libcurl_la-mbedtls_threadlock.lo
+  CC       vtls/libcurl_la-nss.lo
+  CC       vtls/libcurl_la-openssl.lo
+  CC       vtls/libcurl_la-rustls.lo
+  CC       vtls/libcurl_la-schannel.lo
+  CC       vtls/libcurl_la-schannel_verify.lo
+  CC       vtls/libcurl_la-sectransp.lo
+  CC       vtls/libcurl_la-vtls.lo
+  CC       vtls/libcurl_la-wolfssl.lo
+  CC       vtls/libcurl_la-x509asn1.lo
+  CC       vquic/libcurl_la-curl_msh3.lo
+  CC       vquic/libcurl_la-curl_ngtcp2.lo
+  CC       vquic/libcurl_la-curl_quiche.lo
+  CC       vquic/libcurl_la-vquic.lo
+  CC       vssh/libcurl_la-libssh.lo
+  CC       vssh/libcurl_la-libssh2.lo
+  CC       vssh/libcurl_la-wolfssh.lo
+  CCLD     libcurl.la
+Making all in src
+Making all in ../docs
+Making all in .
+Making all in cmdline-opts
+  CC       slist_wc.o
+  CC       tool_binmode.o
+  CC       tool_bname.o
+  CC       tool_cb_dbg.o
+  CC       tool_cb_hdr.o
+  CC       tool_cb_prg.o
+  CC       tool_cb_rea.o
+  CC       tool_cb_see.o
+  CC       tool_cb_wrt.o
+  CC       tool_cfgable.o
+  CC       tool_dirhie.o
+  CC       tool_easysrc.o
+  CC       tool_doswin.o
+  CC       tool_filetime.o
+  CC       tool_findfile.o
+  CC       tool_formparse.o
+  CC       tool_getparam.o
+  CC       tool_getpass.o
+  CC       tool_help.o
+  CC       tool_helpers.o
+  CC       tool_hugehelp.o
+  CC       tool_libinfo.o
+  CC       tool_listhelp.o
+  CC       tool_main.o
+  CC       tool_msgs.o
+  CC       tool_operate.o
+  CC       tool_operhlp.o
+  CC       tool_paramhlp.o
+  CC       tool_progress.o
+  CC       tool_parsecfg.o
+  CC       tool_strdup.o
+  CC       tool_setopt.o
+  CC       tool_sleep.o
+  CC       tool_urlglob.o
+  CC       tool_util.o
+  CC       tool_vms.o
+  CC       tool_writeout.o
+  CC       tool_writeout_json.o
+  CC       tool_xattr.o
+  CC       ../lib/strtoofft.o
+  CC       ../lib/timediff.o
+  CC       ../lib/nonblock.o
+  CC       ../lib/warnless.o
+  CC       ../lib/curl_multibyte.o
+  CC       ../lib/version_win32.o
+  CC       ../lib/dynbuf.o
+  CCLD     curl
+[ 45%] Performing install step for 'curl_external'
+Making install in lib
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/lib'
+ /bin/bash ../libtool   --mode=install /usr/bin/install -c   libcurl.la '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/lib'
+libtool: install: /usr/bin/install -c .libs/libcurl.lai /tmp/attestation-sdk/nv-attestation-cli/build/curl-install/lib/libcurl.la
+libtool: install: /usr/bin/install -c .libs/libcurl.a /tmp/attestation-sdk/nv-attestation-cli/build/curl-install/lib/libcurl.a
+libtool: install: chmod 644 /tmp/attestation-sdk/nv-attestation-cli/build/curl-install/lib/libcurl.a
+libtool: install: ranlib /tmp/attestation-sdk/nv-attestation-cli/build/curl-install/lib/libcurl.a
+libtool: finish: PATH="/home/ubuntu/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/sbin" ldconfig -n /tmp/attestation-sdk/nv-attestation-cli/build/curl-install/lib
+----------------------------------------------------------------------
+Libraries have been installed in:
+   /tmp/attestation-sdk/nv-attestation-cli/build/curl-install/lib
+
+If you ever happen to want to link against installed libraries
+in a given directory, LIBDIR, you must either use libtool, and
+specify the full pathname of the library, or use the '-LLIBDIR'
+flag during linking and do at least one of the following:
+   - add LIBDIR to the 'LD_LIBRARY_PATH' environment variable
+     during execution
+   - add LIBDIR to the 'LD_RUN_PATH' environment variable
+     during linking
+   - use the '-Wl,-rpath -Wl,LIBDIR' linker flag
+   - have your system administrator add LIBDIR to '/etc/ld.so.conf'
+
+See any operating system documentation about shared libraries for
+more information, such as the ld(1) and ld.so(8) manual pages.
+----------------------------------------------------------------------
+Making install in src
+Making install in ../docs
+Making install in .
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man1'
+ /usr/bin/install -c -m 644 curl-config.1 /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/curl_external-prefix/src/curl_external/docs/curl.1 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man1'
+Making install in cmdline-opts
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/bin'
+  /bin/bash ../libtool   --mode=install /usr/bin/install -c curl '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/bin'
+libtool: install: /usr/bin/install -c curl /tmp/attestation-sdk/nv-attestation-cli/build/curl-install/bin/curl
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/bin'
+ /usr/bin/install -c curl-config '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/bin'
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/lib/pkgconfig'
+ /usr/bin/install -c -m 644 libcurl.pc '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/lib/pkgconfig'
+Making install in curl
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/include/curl'
+ /usr/bin/install -c -m 644 curl.h curlver.h easy.h mprintf.h stdcheaders.h multi.h typecheck-gcc.h system.h urlapi.h options.h header.h websockets.h '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/include/curl'
+Making install in .
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man1'
+ /usr/bin/install -c -m 644 curl-config.1 /tmp/attestation-sdk/nv-attestation-cli/build/nv-attestation-sdk-build/curl_external-prefix/src/curl_external/docs/curl.1 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man1'
+Making install in cmdline-opts
+Making install in opts
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 CURLINFO_ACTIVESOCKET.3 CURLINFO_APPCONNECT_TIME.3 CURLINFO_APPCONNECT_TIME_T.3 CURLINFO_CAINFO.3 CURLINFO_CAPATH.3 CURLINFO_CERTINFO.3 CURLINFO_CONDITION_UNMET.3 CURLINFO_CONNECT_TIME.3 CURLINFO_CONNECT_TIME_T.3 CURLINFO_CONTENT_LENGTH_DOWNLOAD.3 CURLINFO_CONTENT_LENGTH_DOWNLOAD_T.3 CURLINFO_CONTENT_LENGTH_UPLOAD.3 CURLINFO_CONTENT_LENGTH_UPLOAD_T.3 CURLINFO_CONTENT_TYPE.3 CURLINFO_COOKIELIST.3 CURLINFO_EFFECTIVE_METHOD.3 CURLINFO_EFFECTIVE_URL.3 CURLINFO_FILETIME.3 CURLINFO_FILETIME_T.3 CURLINFO_FTP_ENTRY_PATH.3 CURLINFO_HEADER_SIZE.3 CURLINFO_HTTP_CONNECTCODE.3 CURLINFO_HTTP_VERSION.3 CURLINFO_HTTPAUTH_AVAIL.3 CURLINFO_LASTSOCKET.3 CURLINFO_LOCAL_IP.3 CURLINFO_LOCAL_PORT.3 CURLINFO_NAMELOOKUP_TIME.3 CURLINFO_NAMELOOKUP_TIME_T.3 CURLINFO_NUM_CONNECTS.3 CURLINFO_OS_ERRNO.3 CURLINFO_PRETRANSFER_TIME.3 CURLINFO_PRETRANSFER_TIME_T.3 CURLINFO_PRIMARY_IP.3 CURLINFO_PRIMARY_PORT.3 CURLINFO_PRIVATE.3 CURLINFO_PROTOCOL.3 CURLINFO_PROXY_ERROR.3 CURLINFO_PROXY_SSL_VERIFYRESULT.3 CURLINFO_PROXYAUTH_AVAIL.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 CURLINFO_REDIRECT_COUNT.3 CURLINFO_REDIRECT_TIME.3 CURLINFO_REDIRECT_TIME_T.3 CURLINFO_REDIRECT_URL.3 CURLINFO_REFERER.3 CURLINFO_REQUEST_SIZE.3 CURLINFO_RESPONSE_CODE.3 CURLINFO_RETRY_AFTER.3 CURLINFO_RTSP_CLIENT_CSEQ.3 CURLINFO_RTSP_CSEQ_RECV.3 CURLINFO_RTSP_SERVER_CSEQ.3 CURLINFO_RTSP_SESSION_ID.3 CURLINFO_SCHEME.3 CURLINFO_SIZE_DOWNLOAD.3 CURLINFO_SIZE_DOWNLOAD_T.3 CURLINFO_SIZE_UPLOAD.3 CURLINFO_SIZE_UPLOAD_T.3 CURLINFO_SPEED_DOWNLOAD.3 CURLINFO_SPEED_DOWNLOAD_T.3 CURLINFO_SPEED_UPLOAD.3 CURLINFO_SPEED_UPLOAD_T.3 CURLINFO_SSL_ENGINES.3 CURLINFO_SSL_VERIFYRESULT.3 CURLINFO_STARTTRANSFER_TIME.3 CURLINFO_STARTTRANSFER_TIME_T.3 CURLINFO_TLS_SESSION.3 CURLINFO_TLS_SSL_PTR.3 CURLINFO_TOTAL_TIME.3 CURLINFO_TOTAL_TIME_T.3 CURLMOPT_CHUNK_LENGTH_PENALTY_SIZE.3 CURLMOPT_CONTENT_LENGTH_PENALTY_SIZE.3 CURLMOPT_MAX_CONCURRENT_STREAMS.3 CURLMOPT_MAX_HOST_CONNECTIONS.3 CURLMOPT_MAX_PIPELINE_LENGTH.3 CURLMOPT_MAX_TOTAL_CONNECTIONS.3 CURLMOPT_MAXCONNECTS.3 CURLMOPT_PIPELINING.3 CURLMOPT_PIPELINING_SERVER_BL.3 CURLMOPT_PIPELINING_SITE_BL.3 CURLMOPT_PUSHDATA.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 CURLMOPT_PUSHFUNCTION.3 CURLMOPT_SOCKETDATA.3 CURLMOPT_SOCKETFUNCTION.3 CURLMOPT_TIMERDATA.3 CURLMOPT_TIMERFUNCTION.3 CURLOPT_ABSTRACT_UNIX_SOCKET.3 CURLOPT_ACCEPT_ENCODING.3 CURLOPT_ACCEPTTIMEOUT_MS.3 CURLOPT_ADDRESS_SCOPE.3 CURLOPT_ALTSVC.3 CURLOPT_ALTSVC_CTRL.3 CURLOPT_APPEND.3 CURLOPT_AUTOREFERER.3 CURLOPT_AWS_SIGV4.3 CURLOPT_BUFFERSIZE.3 CURLOPT_CAINFO.3 CURLOPT_CAINFO_BLOB.3 CURLOPT_CAPATH.3 CURLOPT_CA_CACHE_TIMEOUT.3 CURLOPT_CERTINFO.3 CURLOPT_CHUNK_BGN_FUNCTION.3 CURLOPT_CHUNK_DATA.3 CURLOPT_CHUNK_END_FUNCTION.3 CURLOPT_CLOSESOCKETDATA.3 CURLOPT_CLOSESOCKETFUNCTION.3 CURLOPT_CONNECT_ONLY.3 CURLOPT_CONNECT_TO.3 CURLOPT_CONNECTTIMEOUT.3 CURLOPT_CONNECTTIMEOUT_MS.3 CURLOPT_CONV_FROM_NETWORK_FUNCTION.3 CURLOPT_CONV_FROM_UTF8_FUNCTION.3 CURLOPT_CONV_TO_NETWORK_FUNCTION.3 CURLOPT_COOKIE.3 CURLOPT_COOKIEFILE.3 CURLOPT_COOKIEJAR.3 CURLOPT_COOKIELIST.3 CURLOPT_COOKIESESSION.3 CURLOPT_COPYPOSTFIELDS.3 CURLOPT_CRLF.3 CURLOPT_CRLFILE.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 CURLOPT_CURLU.3 CURLOPT_CUSTOMREQUEST.3 CURLOPT_DEBUGDATA.3 CURLOPT_DEBUGFUNCTION.3 CURLOPT_DEFAULT_PROTOCOL.3 CURLOPT_DIRLISTONLY.3 CURLOPT_DISALLOW_USERNAME_IN_URL.3 CURLOPT_DNS_CACHE_TIMEOUT.3 CURLOPT_DNS_INTERFACE.3 CURLOPT_DNS_LOCAL_IP4.3 CURLOPT_DNS_LOCAL_IP6.3 CURLOPT_DNS_SERVERS.3 CURLOPT_DNS_SHUFFLE_ADDRESSES.3 CURLOPT_DNS_USE_GLOBAL_CACHE.3 CURLOPT_DOH_SSL_VERIFYHOST.3 CURLOPT_DOH_SSL_VERIFYPEER.3 CURLOPT_DOH_SSL_VERIFYSTATUS.3 CURLOPT_DOH_URL.3 CURLOPT_EGDSOCKET.3 CURLOPT_ERRORBUFFER.3 CURLOPT_EXPECT_100_TIMEOUT_MS.3 CURLOPT_FAILONERROR.3 CURLOPT_FILETIME.3 CURLOPT_FNMATCH_DATA.3 CURLOPT_FNMATCH_FUNCTION.3 CURLOPT_FOLLOWLOCATION.3 CURLOPT_FORBID_REUSE.3 CURLOPT_FRESH_CONNECT.3 CURLOPT_FTP_ACCOUNT.3 CURLOPT_FTP_ALTERNATIVE_TO_USER.3 CURLOPT_FTP_CREATE_MISSING_DIRS.3 CURLOPT_FTP_FILEMETHOD.3 CURLOPT_FTP_SKIP_PASV_IP.3 CURLOPT_FTP_SSL_CCC.3 CURLOPT_FTP_USE_EPRT.3 CURLOPT_FTP_USE_EPSV.3 CURLOPT_FTP_USE_PRET.3 CURLOPT_FTPPORT.3 CURLOPT_FTPSSLAUTH.3 CURLOPT_GSSAPI_DELEGATION.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 CURLOPT_HAPPY_EYEBALLS_TIMEOUT_MS.3 CURLOPT_HAPROXYPROTOCOL.3 CURLOPT_HEADER.3 CURLOPT_HEADERDATA.3 CURLOPT_HEADERFUNCTION.3 CURLOPT_HEADEROPT.3 CURLOPT_HSTS.3 CURLOPT_HSTS_CTRL.3 CURLOPT_HSTSREADDATA.3 CURLOPT_HSTSREADFUNCTION.3 CURLOPT_HSTSWRITEDATA.3 CURLOPT_HSTSWRITEFUNCTION.3 CURLOPT_HTTP09_ALLOWED.3 CURLOPT_HTTP200ALIASES.3 CURLOPT_HTTP_CONTENT_DECODING.3 CURLOPT_HTTP_TRANSFER_DECODING.3 CURLOPT_HTTP_VERSION.3 CURLOPT_HTTPAUTH.3 CURLOPT_HTTPGET.3 CURLOPT_HTTPHEADER.3 CURLOPT_HTTPPOST.3 CURLOPT_HTTPPROXYTUNNEL.3 CURLOPT_IGNORE_CONTENT_LENGTH.3 CURLOPT_INFILESIZE.3 CURLOPT_INFILESIZE_LARGE.3 CURLOPT_INTERFACE.3 CURLOPT_INTERLEAVEDATA.3 CURLOPT_INTERLEAVEFUNCTION.3 CURLOPT_IOCTLDATA.3 CURLOPT_IOCTLFUNCTION.3 CURLOPT_IPRESOLVE.3 CURLOPT_ISSUERCERT.3 CURLOPT_ISSUERCERT_BLOB.3 CURLOPT_KEEP_SENDING_ON_ERROR.3 CURLOPT_KEYPASSWD.3 CURLOPT_KRBLEVEL.3 CURLOPT_LOCALPORT.3 CURLOPT_LOCALPORTRANGE.3 CURLOPT_LOGIN_OPTIONS.3 CURLOPT_LOW_SPEED_LIMIT.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 CURLOPT_LOW_SPEED_TIME.3 CURLOPT_MAIL_AUTH.3 CURLOPT_MAIL_FROM.3 CURLOPT_MAIL_RCPT.3 CURLOPT_MAIL_RCPT_ALLLOWFAILS.3 CURLOPT_MAX_RECV_SPEED_LARGE.3 CURLOPT_MAX_SEND_SPEED_LARGE.3 CURLOPT_MAXAGE_CONN.3 CURLOPT_MAXCONNECTS.3 CURLOPT_MAXFILESIZE.3 CURLOPT_MAXFILESIZE_LARGE.3 CURLOPT_MAXLIFETIME_CONN.3 CURLOPT_MAXREDIRS.3 CURLOPT_MIME_OPTIONS.3 CURLOPT_MIMEPOST.3 CURLOPT_NETRC.3 CURLOPT_NETRC_FILE.3 CURLOPT_NEW_DIRECTORY_PERMS.3 CURLOPT_NEW_FILE_PERMS.3 CURLOPT_NOBODY.3 CURLOPT_NOPROGRESS.3 CURLOPT_NOPROXY.3 CURLOPT_NOSIGNAL.3 CURLOPT_OPENSOCKETDATA.3 CURLOPT_OPENSOCKETFUNCTION.3 CURLOPT_PASSWORD.3 CURLOPT_PATH_AS_IS.3 CURLOPT_PINNEDPUBLICKEY.3 CURLOPT_PIPEWAIT.3 CURLOPT_PORT.3 CURLOPT_POST.3 CURLOPT_POSTFIELDS.3 CURLOPT_POSTFIELDSIZE.3 CURLOPT_POSTFIELDSIZE_LARGE.3 CURLOPT_POSTQUOTE.3 CURLOPT_POSTREDIR.3 CURLOPT_PRE_PROXY.3 CURLOPT_PREQUOTE.3 CURLOPT_PREREQDATA.3 CURLOPT_PREREQFUNCTION.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 CURLOPT_PRIVATE.3 CURLOPT_PROGRESSDATA.3 CURLOPT_PROGRESSFUNCTION.3 CURLOPT_PROTOCOLS.3 CURLOPT_PROTOCOLS_STR.3 CURLOPT_PROXY.3 CURLOPT_PROXY_CAINFO.3 CURLOPT_PROXY_CAINFO_BLOB.3 CURLOPT_PROXY_CAPATH.3 CURLOPT_PROXY_CRLFILE.3 CURLOPT_PROXY_ISSUERCERT.3 CURLOPT_PROXY_ISSUERCERT_BLOB.3 CURLOPT_PROXY_KEYPASSWD.3 CURLOPT_PROXY_PINNEDPUBLICKEY.3 CURLOPT_PROXY_SERVICE_NAME.3 CURLOPT_PROXY_SSL_CIPHER_LIST.3 CURLOPT_PROXY_SSL_OPTIONS.3 CURLOPT_PROXY_SSL_VERIFYHOST.3 CURLOPT_PROXY_SSL_VERIFYPEER.3 CURLOPT_PROXY_SSLCERT.3 CURLOPT_PROXY_SSLCERT_BLOB.3 CURLOPT_PROXY_SSLCERTTYPE.3 CURLOPT_PROXY_SSLKEY.3 CURLOPT_PROXY_SSLKEY_BLOB.3 CURLOPT_PROXY_SSLKEYTYPE.3 CURLOPT_PROXY_SSLVERSION.3 CURLOPT_PROXY_TLS13_CIPHERS.3 CURLOPT_PROXY_TLSAUTH_PASSWORD.3 CURLOPT_PROXY_TLSAUTH_TYPE.3 CURLOPT_PROXY_TLSAUTH_USERNAME.3 CURLOPT_PROXY_TRANSFER_MODE.3 CURLOPT_PROXYAUTH.3 CURLOPT_PROXYHEADER.3 CURLOPT_PROXYPASSWORD.3 CURLOPT_PROXYPORT.3 CURLOPT_PROXYTYPE.3 CURLOPT_PROXYUSERNAME.3 CURLOPT_PROXYUSERPWD.3 CURLOPT_PUT.3 CURLOPT_QUOTE.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 CURLOPT_RANDOM_FILE.3 CURLOPT_RANGE.3 CURLOPT_READDATA.3 CURLOPT_READFUNCTION.3 CURLOPT_REDIR_PROTOCOLS.3 CURLOPT_REDIR_PROTOCOLS_STR.3 CURLOPT_REFERER.3 CURLOPT_REQUEST_TARGET.3 CURLOPT_RESOLVE.3 CURLOPT_RESOLVER_START_DATA.3 CURLOPT_RESOLVER_START_FUNCTION.3 CURLOPT_RESUME_FROM.3 CURLOPT_RESUME_FROM_LARGE.3 CURLOPT_RTSP_CLIENT_CSEQ.3 CURLOPT_RTSP_REQUEST.3 CURLOPT_RTSP_SERVER_CSEQ.3 CURLOPT_RTSP_SESSION_ID.3 CURLOPT_RTSP_STREAM_URI.3 CURLOPT_RTSP_TRANSPORT.3 CURLOPT_SASL_AUTHZID.3 CURLOPT_SASL_IR.3 CURLOPT_SEEKDATA.3 CURLOPT_SEEKFUNCTION.3 CURLOPT_SERVER_RESPONSE_TIMEOUT.3 CURLOPT_SERVICE_NAME.3 CURLOPT_SHARE.3 CURLOPT_SOCKOPTDATA.3 CURLOPT_SOCKOPTFUNCTION.3 CURLOPT_SOCKS5_AUTH.3 CURLOPT_SOCKS5_GSSAPI_NEC.3 CURLOPT_SOCKS5_GSSAPI_SERVICE.3 CURLOPT_SSH_AUTH_TYPES.3 CURLOPT_SSH_COMPRESSION.3 CURLOPT_SSH_HOST_PUBLIC_KEY_MD5.3 CURLOPT_SSH_HOST_PUBLIC_KEY_SHA256.3 CURLOPT_SSH_KEYDATA.3 CURLOPT_SSH_KEYFUNCTION.3 CURLOPT_SSH_KNOWNHOSTS.3 CURLOPT_SSH_PRIVATE_KEYFILE.3 CURLOPT_SSH_PUBLIC_KEYFILE.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 CURLOPT_SSL_CIPHER_LIST.3 CURLOPT_SSL_CTX_DATA.3 CURLOPT_SSL_CTX_FUNCTION.3 CURLOPT_SSL_EC_CURVES.3 CURLOPT_SSL_ENABLE_ALPN.3 CURLOPT_SSL_ENABLE_NPN.3 CURLOPT_SSL_FALSESTART.3 CURLOPT_SSL_OPTIONS.3 CURLOPT_SSL_SESSIONID_CACHE.3 CURLOPT_SSL_VERIFYHOST.3 CURLOPT_SSL_VERIFYPEER.3 CURLOPT_SSL_VERIFYSTATUS.3 CURLOPT_SSLCERT.3 CURLOPT_SSLCERT_BLOB.3 CURLOPT_SSLCERTTYPE.3 CURLOPT_SSLENGINE.3 CURLOPT_SSLENGINE_DEFAULT.3 CURLOPT_SSLKEY.3 CURLOPT_SSLKEY_BLOB.3 CURLOPT_SSLKEYTYPE.3 CURLOPT_SSLVERSION.3 CURLOPT_STDERR.3 CURLOPT_STREAM_DEPENDS.3 CURLOPT_STREAM_DEPENDS_E.3 CURLOPT_STREAM_WEIGHT.3 CURLOPT_SUPPRESS_CONNECT_HEADERS.3 CURLOPT_TCP_FASTOPEN.3 CURLOPT_TCP_KEEPALIVE.3 CURLOPT_TCP_KEEPIDLE.3 CURLOPT_TCP_KEEPINTVL.3 CURLOPT_TCP_NODELAY.3 CURLOPT_TELNETOPTIONS.3 CURLOPT_TFTP_BLKSIZE.3 CURLOPT_TFTP_NO_OPTIONS.3 CURLOPT_TIMECONDITION.3 CURLOPT_TIMEOUT.3 CURLOPT_TIMEOUT_MS.3 CURLOPT_TIMEVALUE.3 CURLOPT_TIMEVALUE_LARGE.3 CURLOPT_TLS13_CIPHERS.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 CURLOPT_TLSAUTH_PASSWORD.3 CURLOPT_TLSAUTH_TYPE.3 CURLOPT_TLSAUTH_USERNAME.3 CURLOPT_TRAILERDATA.3 CURLOPT_TRAILERFUNCTION.3 CURLOPT_TRANSFER_ENCODING.3 CURLOPT_TRANSFERTEXT.3 CURLOPT_UNIX_SOCKET_PATH.3 CURLOPT_UNRESTRICTED_AUTH.3 CURLOPT_UPKEEP_INTERVAL_MS.3 CURLOPT_UPLOAD.3 CURLOPT_UPLOAD_BUFFERSIZE.3 CURLOPT_URL.3 CURLOPT_USE_SSL.3 CURLOPT_USERAGENT.3 CURLOPT_USERNAME.3 CURLOPT_USERPWD.3 CURLOPT_VERBOSE.3 CURLOPT_WILDCARDMATCH.3 CURLOPT_WRITEDATA.3 CURLOPT_WRITEFUNCTION.3 CURLOPT_WS_OPTIONS.3 CURLOPT_XFERINFODATA.3 CURLOPT_XFERINFOFUNCTION.3 CURLOPT_XOAUTH2_BEARER.3 CURLSHOPT_LOCKFUNC.3 CURLSHOPT_SHARE.3 CURLSHOPT_UNLOCKFUNC.3 CURLSHOPT_UNSHARE.3 CURLSHOPT_USERDATA.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/aclocal'
+ /usr/bin/install -c -m 644 libcurl.m4 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/aclocal'
+ /usr/bin/mkdir -p '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 curl_easy_cleanup.3 curl_easy_duphandle.3 curl_easy_escape.3 curl_easy_getinfo.3 curl_easy_header.3 curl_easy_init.3 curl_easy_nextheader.3 curl_easy_option_by_id.3 curl_easy_option_by_name.3 curl_easy_option_next.3 curl_easy_pause.3 curl_easy_perform.3 curl_easy_recv.3 curl_easy_reset.3 curl_easy_send.3 curl_easy_setopt.3 curl_easy_strerror.3 curl_easy_unescape.3 curl_easy_upkeep.3 curl_escape.3 curl_formadd.3 curl_formfree.3 curl_formget.3 curl_free.3 curl_getdate.3 curl_getenv.3 curl_global_cleanup.3 curl_global_init.3 curl_global_init_mem.3 curl_global_sslset.3 curl_mime_addpart.3 curl_mime_data.3 curl_mime_data_cb.3 curl_mime_encoder.3 curl_mime_filedata.3 curl_mime_filename.3 curl_mime_free.3 curl_mime_headers.3 curl_mime_init.3 curl_mime_name.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 curl_mime_subparts.3 curl_mime_type.3 curl_mprintf.3 curl_multi_add_handle.3 curl_multi_assign.3 curl_multi_cleanup.3 curl_multi_fdset.3 curl_multi_info_read.3 curl_multi_init.3 curl_multi_perform.3 curl_multi_poll.3 curl_multi_remove_handle.3 curl_multi_setopt.3 curl_multi_socket.3 curl_multi_socket_action.3 curl_multi_socket_all.3 curl_multi_strerror.3 curl_multi_timeout.3 curl_multi_wakeup.3 curl_multi_wait.3 curl_share_cleanup.3 curl_share_init.3 curl_share_setopt.3 curl_share_strerror.3 curl_slist_append.3 curl_slist_free_all.3 curl_strequal.3 curl_strnequal.3 curl_unescape.3 curl_url.3 curl_url_cleanup.3 curl_url_dup.3 curl_url_get.3 curl_url_set.3 curl_url_strerror.3 curl_version.3 curl_version_info.3 curl_ws_meta.3 curl_ws_recv.3 curl_ws_send.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+ /usr/bin/install -c -m 644 libcurl-easy.3 libcurl-env.3 libcurl-errors.3 libcurl-multi.3 libcurl-security.3 libcurl-share.3 libcurl-symbols.3 libcurl-thread.3 libcurl-tutorial.3 libcurl-url.3 libcurl.3 '/tmp/attestation-sdk/nv-attestation-cli/build/curl-install/share/man/man3'
+[ 47%] Completed 'curl_external'
+[ 47%] Built target curl_external
+[ 48%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/nvat.cpp.o
+[ 50%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/attestation.cpp.o
+[ 51%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/claims.cpp.o
+[ 52%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/claims_evaluator.cpp.o
+[ 54%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/gpu/evidence.cpp.o
+[ 55%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/gpu/claims.cpp.o
+[ 56%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/gpu/nvml_client.cpp.o
+[ 58%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/gpu/corelib_client.cpp.o
+[ 59%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/gpu/verify.cpp.o
+[ 61%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/spdm/spdm_measurement_records.cpp.o
+[ 62%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/spdm/spdm_opaque_data_parser.cpp.o
+[ 63%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/gpu/spdm/gpu_opaque_data_parser.cpp.o
+[ 65%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/spdm/spdm_req.cpp.o
+[ 66%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/spdm/spdm_resp.cpp.o
+[ 68%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/init.cpp.o
+[ 69%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/log.cpp.o
+[ 70%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/nv_x509.cpp.o
+[ 72%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/rego_engine/regorus_rego_engine.cpp.o
+[ 73%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/rim.cpp.o
+[ 75%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/switch/evidence.cpp.o
+[ 76%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/switch/nscq_client.cpp.o
+[ 77%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/switch/claims.cpp.o
+[ 79%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/switch/verify.cpp.o
+[ 80%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/verify.cpp.o
+[ 81%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/switch/spdm/switch_opaque_data_parser.cpp.o
+[ 83%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/nv_http.cpp.o
+[ 84%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/nv_jwt.cpp.o
+[ 86%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/nv_ocsp.cpp.o
+[ 87%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/utils.cpp.o
+[ 88%] Building CXX object nv-attestation-sdk-build/CMakeFiles/nvat.dir/src/nv_cache.cpp.o
+[ 90%] Linking CXX shared library libnvat.so
+[ 90%] Built target nvat
+[ 90%] Built target CLI11
+[ 91%] Building CXX object CMakeFiles/nvattest.dir/src/main.cpp.o
+[ 93%] Building CXX object CMakeFiles/nvattest.dir/src/version.cpp.o
+[ 94%] Building CXX object CMakeFiles/nvattest.dir/src/attest.cpp.o
+[ 95%] Building CXX object CMakeFiles/nvattest.dir/src/collect_evidence.cpp.o
+[ 97%] Building CXX object CMakeFiles/nvattest.dir/src/utils.cpp.o
+[ 98%] Building CXX object CMakeFiles/nvattest.dir/src/logging.cpp.o
+[100%] Linking CXX executable nvattest
+[100%] Built target nvattest
+-- Install configuration: "Release"
+-- Installing: /usr/local/bin/nvattest
+-- Set runtime path of "/usr/local/bin/nvattest" to ""
+-- Installing: /usr/local/lib/libnvat.so.1.2.2
+-- Installing: /usr/local/lib/libnvat.so.1
+-- Installing: /usr/local/lib/libnvat.so
+-- Installing: /usr/local/include/nvat.h
+-- Installing: /usr/local/share/cmake/nvat/nvatTargets.cmake
+-- Installing: /usr/local/share/cmake/nvat/nvatTargets-release.cmake
+-- Installing: /usr/local/share/cmake/nvat/Modules/FindLibXml2.cmake
+-- Installing: /usr/local/share/cmake/nvat/Modules/Findxmlsec.cmake
+-- Installing: /usr/local/share/cmake/nvat/nvatConfig.cmake
+-- Installing: /usr/local/share/cmake/nvat/nvatConfigVersion.cmake
+/home/ubuntu
+The following argument was not expected: --version
+Run with --help for more information.
+version flag unsupported
+
+=== Step 3: Check RIM availability for this VBIOS ===
+VBIOS: 96.00.D9.00.01
+H100 RIM entries found: 36
+  NV_GPU_DRIVER_GH100_535.104.05
+  NV_GPU_DRIVER_GH100_535.104.12
+  NV_GPU_DRIVER_GH100_535.129.03
+  NV_GPU_DRIVER_GH100_535.274.02
+  NV_GPU_DRIVER_GH100_535.86.10
+  NV_GPU_DRIVER_GH100_550.113
+  NV_GPU_DRIVER_GH100_550.127.05
+  NV_GPU_DRIVER_GH100_550.127.08
+  NV_GPU_DRIVER_GH100_550.144.03
+  NV_GPU_DRIVER_GH100_550.163.01
+
+=== Step 4: Nonce custody ===
+relying-party-supplied nonces (3)
+
+=== Step 5: Repeat nonce-bound attestation runs (3) ===
+--- run 1: nvattest attest --device gpu --verifier remote --gpu-evidence-source=corelib --nonce 2850c198390b3441ab7c108f0be55ee4 --output-format json
+run 1 exited nonzero; see remote_attest_log.txt
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  h100_spike/run_1/real_attestation_claims.json
+Traceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+  File "/usr/lib/python3.10/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+  File "/usr/lib/python3.10/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+  File "/usr/lib/python3.10/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)

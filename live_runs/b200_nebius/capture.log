@@ -1,0 +1,133 @@
+=== Step 1: Record CC mode, GPU info, tool version, environment ===
+CC status: OFF
+CPU CC capabilities: None
+GPU CC capabilities: CC Capable
+CC Environment: UNAVAILABLE
+DevTools Mode: OFF
+0, NVIDIA B200, 1654924103855, GPU-74aeb111-7ef2-0a83-162c-73084210fd1d, 580.159.04, 97.00.D9.00.35
+captured_at_utc: 2026-06-11T02:21:01Z
+uname: Linux computeinstance-u00h5s0gc9gpr28nve 6.11.0-1016-nvidia #16-Ubuntu SMP PREEMPT_DYNAMIC Sun Sep 21 17:06:33 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux
+uptime_seconds: 736.14
+os: Ubuntu 24.04.4 LTS
+nvidia_driver: 580.159.04
+gpu_name: NVIDIA B200 / arch: blackwell / cc: OFF
+evidence_source: corelib
+
+=== Step 2: Install attestation SDK ===
+nvattest already installed
+nvattest 1.2.2 (Linux/x86_64)
+Installing libcorelib1...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following packages were automatically installed and are no longer required:
+  linux-image-6.8.0-117-generic linux-modules-6.8.0-117-generic
+  linux-tools-6.8.0-117 linux-tools-6.8.0-117-generic
+Use 'sudo apt autoremove' to remove them.
+The following NEW packages will be installed:
+  libcorelib1
+0 upgraded, 1 newly installed, 0 to remove and 23 not upgraded.
+Need to get 827 kB of archives.
+After this operation, 3492 kB of additional disk space will be used.
+Get:1 https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64  libcorelib1 1.0.0.1772474517-1 [827 kB]
+Fetched 827 kB in 0s (1911 kB/s)
+Selecting previously unselected package libcorelib1.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 171632 files and directories currently installed.)
+Preparing to unpack .../libcorelib1_1.0.0.1772474517-1_amd64.deb ...
+Unpacking libcorelib1 (1.0.0.1772474517-1) ...
+Setting up libcorelib1 (1.0.0.1772474517-1) ...
+
+Running kernel seems to be up-to-date.
+
+Restarting services...
+
+Service restarts being deferred:
+ systemctl restart systemd-logind.service
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+
+=== Step 3: Check RIM availability for this GPU family ===
+VBIOS: 97.00.D9.00.35
+B200 RIM entries found: 0
+
+=== Step 4: Nonce custody ===
+relying-party-supplied nonces (3)
+
+=== Step 5: Repeat nonce-bound attestation runs (3) ===
+--- run 1 (collect): sudo nvattest --format json collect-evidence --device gpu --gpu-evidence-source corelib --gpu-architecture blackwell --nonce 1183d7c1dc69bd7f8ed554f4e7b7b4a10fb3e388cb70fef18e306f700abff223
+67cfc713b23c34578fee8ddb541997d5b00632f7d4875a76fe2e91121af9120a  b200_nebius/run_1/gpu_evidence.json
+--- run 1: nvattest --format json attest --device gpu --verifier remote --gpu-evidence-source file --gpu-evidence-file b200_nebius/run_1/gpu_evidence.json --nonce 1183d7c1dc69bd7f8ed554f4e7b7b4a10fb3e388cb70fef18e306f700abff223
+run 1 exited nonzero; see remote_attest_log.txt
+908004299cd739d87d3350159ea1dbc0da821e792d834c97bd1f2d771d61e8d2  b200_nebius/run_1/attest_response.json
+  result_code=2 result_message='Internal Error'
+  WARNING: no detached_eat in response; raw token unavailable
+  WARNING: no per-GPU claim dicts with 'ueid' found — inspect attest_response.json shape
+--- run 2 (collect): sudo nvattest --format json collect-evidence --device gpu --gpu-evidence-source corelib --gpu-architecture blackwell --nonce 04ed8f1a0a9cf69108d258b99413aaa084ec67b416bf4411e0517828302e660c
+81a3b92394f111c095f56413f076244ca9e4cdee36903d9ef7bbeefe21ac1c05  b200_nebius/run_2/gpu_evidence.json
+--- run 2: nvattest --format json attest --device gpu --verifier remote --gpu-evidence-source file --gpu-evidence-file b200_nebius/run_2/gpu_evidence.json --nonce 04ed8f1a0a9cf69108d258b99413aaa084ec67b416bf4411e0517828302e660c
+run 2 exited nonzero; see remote_attest_log.txt
+908004299cd739d87d3350159ea1dbc0da821e792d834c97bd1f2d771d61e8d2  b200_nebius/run_2/attest_response.json
+  result_code=2 result_message='Internal Error'
+  WARNING: no detached_eat in response; raw token unavailable
+  WARNING: no per-GPU claim dicts with 'ueid' found — inspect attest_response.json shape
+--- run 3 (collect): sudo nvattest --format json collect-evidence --device gpu --gpu-evidence-source corelib --gpu-architecture blackwell --nonce 8f22f786fb3ded500ddebf58b233f1e594af73d9dc98cfab6b2051a2923ffd64
+8673435d6415f40d522179ac680a6df3919e0626060352898229b781bfe1011b  b200_nebius/run_3/gpu_evidence.json
+--- run 3: nvattest --format json attest --device gpu --verifier remote --gpu-evidence-source file --gpu-evidence-file b200_nebius/run_3/gpu_evidence.json --nonce 8f22f786fb3ded500ddebf58b233f1e594af73d9dc98cfab6b2051a2923ffd64
+run 3 exited nonzero; see remote_attest_log.txt
+908004299cd739d87d3350159ea1dbc0da821e792d834c97bd1f2d771d61e8d2  b200_nebius/run_3/attest_response.json
+  result_code=2 result_message='Internal Error'
+  WARNING: no detached_eat in response; raw token unavailable
+  WARNING: no per-GPU claim dicts with 'ueid' found — inspect attest_response.json shape
+
+=== Step 6: UEID stability across runs (same boot) ===
+run_1: no UEIDs captured
+run_2: no UEIDs captured
+run_3: no UEIDs captured
+no ueids captured in any run — stability is NO-DATA, not STABLE
+stability check failed (earlier runs may have failed)
+
+=== Step 7: Emit identity bridge template + import command ===
+./import_nvattest run_1/real_attestation_claims.json \
+  --nonce 1183d7c1dc69bd7f8ed554f4e7b7b4a10fb3e388cb70fef18e306f700abff223 \
+  --identity-bridge identity_bridge.template.json \
+  --contract-id FILL-IN --window-start FILL-IN --window-end FILL-IN \
+  --declared-gpu-id FILL-IN \
+  --expected-gpu-class B200 --operator FILL-IN \
+  --tool-version 'nvattest 1.2.2 (Linux/x86_64)' \
+  --command 'sudo nvattest --format json collect-evidence --device gpu --gpu-evidence-source corelib --gpu-architecture blackwell --nonce 1183d7c1dc69bd7f8ed554f4e7b7b4a10fb3e388cb70fef18e306f700abff223\nnvattest --format json attest --device gpu --verifier remote --gpu-evidence-source file --gpu-evidence-file b200_nebius/run_1/gpu_evidence.json --nonce 1183d7c1dc69bd7f8ed554f4e7b7b4a10fb3e388cb70fef18e306f700abff223' \
+  --collected-at 2026-06-11T02:21:07Z --out evidence/
+
+=== Spike complete ===
+Output directory: b200_nebius/
+total 64
+drwxrwxr-x 5 ubuntu ubuntu 4096 Jun 11 02:21 .
+drwxr-x--- 8 ubuntu ubuntu 4096 Jun 11 02:19 ..
+-rw-rw-r-- 1 ubuntu ubuntu  105 Jun 11 02:21 cc_capability_queries.txt
+-rw-rw-r-- 1 ubuntu ubuntu   15 Jun 11 02:21 cc_status.txt
+-rw-rw-r-- 1 ubuntu ubuntu  293 Jun 11 02:21 environment_notes.txt
+-rw-rw-r-- 1 ubuntu ubuntu  100 Jun 11 02:21 gpu_info.txt
+-rw-rw-r-- 1 ubuntu ubuntu  294 Jun 11 02:21 identity_bridge.template.json
+-rw-rw-r-- 1 ubuntu ubuntu  862 Jun 11 02:21 import_command.txt
+-rw-rw-r-- 1 ubuntu ubuntu   34 Jun 11 02:21 nonce_custody.txt
+-rw-rw-r-- 1 ubuntu ubuntu 3532 Jun 11 02:21 nvattest_attest_help.txt
+-rw-rw-r-- 1 ubuntu ubuntu   30 Jun 11 02:21 nvattest_version.txt
+-rw-rw-r-- 1 ubuntu ubuntu   26 Jun 11 02:21 rim_check.txt
+drwxrwxr-x 2 ubuntu ubuntu 4096 Jun 11 02:21 run_1
+drwxrwxr-x 2 ubuntu ubuntu 4096 Jun 11 02:21 run_2
+drwxrwxr-x 2 ubuntu ubuntu 4096 Jun 11 02:21 run_3
+-rw-rw-r-- 1 ubuntu ubuntu    8 Jun 11 02:21 ueid_stability.txt
+
+Next steps:
+  1. Review run_*/extracted_fields.json — fields non-null, eat_nonce_exact true
+  2. Check ueid_stability.txt — confirm UEIDs are stable same-boot
+  3. Confirm whether the EAT nonce echo is exact (expected with 64-hex nonces)
+     or zero-padded; gpu_pass_utils.nonce_bound encodes the rule
+  4. run_*/detached_eat.* is the raw signed token — import with --raw-token
+  5. Optional: reboot, re-run, compare ueids.txt for cross-boot stability
+  6. Fill in identity_bridge.template.json from the asset register (NOT from this box)
+  7. Copy run dirs to your laptop and run the command in import_command.txt
+  8. Compile: ./compile evidence/ --claim-type gpu_attested_identity_window -v

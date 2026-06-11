@@ -1,0 +1,5 @@
+captured_at_utc: 2026-06-11T00:47:59Z
+uname: Linux 68-209-73-162 6.8.0-1046-nvidia #49~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Wed Jan 28 22:29:18 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
+uptime_seconds: 419.09
+os: Ubuntu 22.04.5 LTS
+nvidia_driver: 580.105.08

@@ -1,0 +1,5 @@
+2026-06-11 02:23:00.565 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/attestation.cpp:278 attest_device] [info] Attesting GPUs
+2026-06-11 02:23:00.569 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/spdm/spdm_resp.cpp:165 parse] [error] OpaqueData is empty but is required for SPDM GET_MEASUREMENTS response.
+2026-06-11 02:23:00.569 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/gpu/evidence.cpp:363 create] [error] Failed to parse SPDM response
+2026-06-11 02:23:00.569 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/attestation.cpp:323 attest_gpus] [error] Failed to verify GPU evidence
+2026-06-11 02:23:00.569 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/nvat.cpp:668 nvat_attest_device] [error] Error while performing device attestation

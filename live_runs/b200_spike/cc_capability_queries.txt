@@ -1,0 +1,4 @@
+CPU CC capabilities: None
+GPU CC capabilities: CC Capable
+CC Environment: UNAVAILABLE
+DevTools Mode: OFF

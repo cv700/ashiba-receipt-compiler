@@ -1,0 +1,15 @@
+{
+  "identity_bridge": {
+    "schedule_id": "ARC-SPIKE-2026-06-11-B200-NEBIUS",
+    "mapping_source": "Nebius console instance computeinstance-u00h5s0gc9gpr28nve (us-central1, preemptible) + on-box nvidia-smi readout (serial 1654924103855, uuid GPU-74aeb111-7ef2-0a83-162c-73084210fd1d)",
+    "mapping_time": "2026-06-11T02:45:00Z",
+    "mapper": "coopveit@gmail.com",
+    "mappings": [
+      {
+        "contract_gpu_id": "NEBIUS-USC1-B200-0",
+        "provider_asset_id": "serial:1654924103855",
+        "ueid": "FILL_FROM_ATTESTATION_RUN_1"
+      }
+    ]
+  }
+}

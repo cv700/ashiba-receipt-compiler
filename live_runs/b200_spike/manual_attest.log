@@ -1,0 +1,12 @@
+2026-06-11 01:31:02.782 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/include/nv_attestation/utils.h:364 deserialize_from_json] [error] Failed to deserialize from JSON: 
+{
+    "evidences": null,
+    "result_code": 608,
+    "result_message": "Corelib Error"
+}
+
+The exception was: [json.exception.type_error.302] type must be array, but is object
+2026-06-11 01:31:02.782 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/gpu/evidence.cpp:653 create] [error] Failed to deserialize gpu evidence from JSON string
+2026-06-11 01:31:02.782 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/gpu/evidence.cpp:691 create] [error] Failed to deserialize gpu evidence from file: manual_evidence.json
+2026-06-11 01:31:02.782 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/attestation.cpp:212 set_gpu_evidence_source_json_file] [error] Failed to create GPU evidence source from JSON file
+2026-06-11 01:31:02.782 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/nvat.cpp:581 nvat_attestation_ctx_set_gpu_evidence_source_json_file] [error] Failed to set GPU evidence source from JSON file

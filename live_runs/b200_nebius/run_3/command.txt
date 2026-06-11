@@ -1,0 +1,2 @@
+sudo nvattest --format json collect-evidence --device gpu --gpu-evidence-source corelib --gpu-architecture blackwell --nonce 8f22f786fb3ded500ddebf58b233f1e594af73d9dc98cfab6b2051a2923ffd64
+nvattest --format json attest --device gpu --verifier remote --gpu-evidence-source file --gpu-evidence-file b200_nebius/run_3/gpu_evidence.json --nonce 8f22f786fb3ded500ddebf58b233f1e594af73d9dc98cfab6b2051a2923ffd64

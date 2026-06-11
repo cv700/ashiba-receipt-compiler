@@ -1,0 +1,8 @@
+2026-06-11 02:26:10.079 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/attestation.cpp:278 attest_device] [info] Attesting GPUs
+2026-06-11 02:26:10.545 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/verify.cpp:139 handle_nras_error_claim] [error] NRAS error details: 
+NRAS code: 5006
+HTTP code: 400 BAD_REQUEST
+Message: GPU_DRIVER_VERSION_NOT_AVAILABLE
+Description: GPU Driver Version not available in evidence , please provide it
+2026-06-11 02:26:10.545 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/attestation.cpp:323 attest_gpus] [error] Failed to verify GPU evidence
+2026-06-11 02:26:10.545 [/tmp/attestation-sdk/nv-attestation-sdk-cpp/src/nvat.cpp:668 nvat_attest_device] [error] Error while performing device attestation
