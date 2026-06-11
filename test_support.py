@@ -99,6 +99,10 @@ def run_import_siem_process(*args: str, input_text: str | None = None) -> subpro
     return run_script("import_siem_jsonl", *args, input_text=input_text)
 
 
+def run_import_nvattest_process(*args: str, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+    return run_script("import_nvattest", *args, input_text=input_text)
+
+
 def assert_receipt(receipt: dict, status: str, pass_count: int | None = None, absence_count: int = 0) -> None:
     assert receipt["verdict"]["status"] == status, receipt
     assert len(receipt.get("absence", [])) == absence_count, receipt

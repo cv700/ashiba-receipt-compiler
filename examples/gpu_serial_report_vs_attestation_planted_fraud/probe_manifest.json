@@ -1,0 +1,24 @@
+{
+  "challenge_nonce": "7f3a91c45be208d6",
+  "committed_at": "2026-05-20T11:45:00Z",
+  "committed_by": "ashiba",
+  "probe_hash": "sha256:nvattest-corelib-evidence-collection",
+  "probe_id": "gpu_attestation_nvattest_v0",
+  "probe_version": "0.2.0",
+  "claim_ref": "claim.gpu_attested_identity_window",
+  "contract_id": "LOAN-2026-PLANTED-FRAUD",
+  "window_start": "2026-05-18T00:00:00Z",
+  "window_end": "2026-05-25T00:00:00Z",
+  "declared_gpu_ids": [
+    "GPU-H100-SXM-0001",
+    "GPU-H100-SXM-0002",
+    "GPU-H100-SXM-0003"
+  ],
+  "expected_gpu_class": "H100",
+  "tool_version": "nvattest 1.2.0 (synthetic fixture)",
+  "driver_version": "590.12",
+  "command": "nvattest attest --device gpu --verifier remote --gpu-evidence-source=corelib --nonce 7f3a91c45be208d6 --output-format json",
+  "operator": "lender-ops@example.com",
+  "raw_evidence_sha256": "sha256:1c34f00d5e6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c",
+  "parsed_evidence_sha256": "sha256:2d45a11e6f7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d"
+}

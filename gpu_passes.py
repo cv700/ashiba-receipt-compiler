@@ -20,6 +20,7 @@ from evidence_paths import evidence_is_present, get_path
 from gpu_impairment_watch import gpu_sustained_capacity_impairment_watch
 from gpu_pass_utils import (
     integer as _integer,
+    nonce_bound as _nonce_bound,
     number as _number,
     string_list as _string_list,
     utc_timestamp as _utc_timestamp,
@@ -804,4 +805,236 @@ def gpu_power_utilization_consistency(ir: ReceiptIR, params: dict[str, Any] | No
         ),
         verdict_effect=SUPPORTED,
         metadata=metadata,
+    )
+
+
+def gpu_attestation_binding(ir: ReceiptIR, params: dict[str, Any] | None = None) -> PassResult:
+    """Bind contract GPU identities to fresh, nonce-bound attestation evidence.
+
+    The binding chain is: probe_manifest.declared_gpu_ids (contract identity)
+    -> identity_bridge.mappings (contract_gpu_id -> UEID) ->
+    gpu_attestation.attested_ueids (token identity). UEIDs are
+    device-cert-derived identifiers, not board serials or schedule IDs, so a
+    receipt without the bridge cannot resolve contract identity and stays
+    UNKNOWN. Nonce binding compares the operator challenge nonce against the
+    EAT nonce read from the token; the two values come from different sources,
+    so a mismatch is a contradiction, not a formatting defect.
+    """
+    required_paths = (
+        "probe_manifest.challenge_nonce",
+        "probe_manifest.declared_gpu_ids",
+        "gpu_attestation.attested_ueids",
+        "gpu_attestation.attestation_nonce",
+        "gpu_attestation.cert_chain_verified",
+        "identity_bridge.mappings",
+        "identity_bridge.mapping_source",
+        "identity_bridge.mapping_time",
+        "identity_bridge.mapper",
+    )
+    missing = sorted(path for path in required_paths if not evidence_is_present(get_path(ir.artifacts, path)))
+    if missing:
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_UNKNOWN,
+            detail="GPU attestation binding could not be determined; missing field(s): " + ", ".join(missing),
+            verdict_effect=UNKNOWN,
+            metadata={"missing_expected_paths": missing},
+        )
+
+    cert_verified = get_path(ir.artifacts, "gpu_attestation.cert_chain_verified")
+    if cert_verified is False:
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_CONTRADICTED,
+            detail="GPU attestation certificate chain failed verification (expired or revoked).",
+            verdict_effect=CONTRADICTED,
+            metadata={"cert_chain_verified": cert_verified},
+        )
+    if cert_verified is not True:
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_UNKNOWN,
+            detail="GPU attestation certificate-chain verification is not a boolean true/false value.",
+            verdict_effect=UNKNOWN,
+            metadata={"cert_chain_verified": cert_verified},
+        )
+
+    challenge_nonce = get_path(ir.artifacts, "probe_manifest.challenge_nonce")
+    eat_nonce = get_path(ir.artifacts, "gpu_attestation.attestation_nonce")
+    importer_nonce_match = get_path(ir.artifacts, "gpu_attestation.nonce_match")
+    if importer_nonce_match is False or not _nonce_bound(challenge_nonce, eat_nonce):
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_CONTRADICTED,
+            detail=(
+                "GPU attestation nonce is not bound to the challenge nonce: "
+                f"probe_manifest.challenge_nonce={challenge_nonce!r}; "
+                f"gpu_attestation.attestation_nonce={eat_nonce!r}; "
+                f"importer nonce_match={importer_nonce_match!r}. "
+                "The EAT nonce did not echo this challenge, which is consistent with replayed or stale attestation."
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "probe_manifest_challenge_nonce": challenge_nonce,
+                "gpu_attestation_eat_nonce": eat_nonce,
+                "importer_nonce_match": importer_nonce_match,
+            },
+        )
+
+    # A definite conflict between the parsed claims and the raw token payload
+    # is evidence tampering; absence of the raw token is a disclosed boundary,
+    # not a conflict, so only explicit False contradicts.
+    token_payload_consistent = get_path(ir.artifacts, "gpu_attestation.token_payload_consistent")
+    if token_payload_consistent is False:
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_CONTRADICTED,
+            detail=(
+                "Parsed attestation claims conflict with the raw token payload; "
+                "the parsed evidence does not faithfully represent the captured token."
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={"token_payload_consistent": token_payload_consistent},
+        )
+
+    # Token-internal verdict fields are verdict-determining: a token whose own
+    # verifier result or measurement result is negative must not support the
+    # claim even when the cert chain and nonce check out.
+    overall_result = get_path(ir.artifacts, "gpu_attestation.overall_result")
+    if overall_result is False:
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_CONTRADICTED,
+            detail="NVIDIA overall attestation result is false; the verifier rejected this attestation.",
+            verdict_effect=CONTRADICTED,
+            metadata={"overall_result": overall_result},
+        )
+    measres = get_path(ir.artifacts, "gpu_attestation.measres")
+    if measres is not None and str(measres).lower() != "success":
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_CONTRADICTED,
+            detail=f"GPU firmware measurement result is {measres!r}, not success.",
+            verdict_effect=CONTRADICTED,
+            metadata={"measres": measres},
+        )
+
+    expected_class = get_path(ir.artifacts, "probe_manifest.expected_gpu_class")
+    hwmodel = get_path(ir.artifacts, "gpu_attestation.hwmodel")
+    if (
+        isinstance(expected_class, str) and expected_class.strip()
+        and isinstance(hwmodel, str) and hwmodel.strip()
+        and expected_class.strip().lower() not in hwmodel.lower()
+    ):
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_CONTRADICTED,
+            detail=(
+                f"Attested hardware model {hwmodel!r} does not match the expected GPU class "
+                f"{expected_class!r} declared in the probe manifest."
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={"expected_gpu_class": expected_class, "hwmodel": hwmodel},
+        )
+
+    declared_ids = _string_list(get_path(ir.artifacts, "probe_manifest.declared_gpu_ids"))
+    attested_ueids = _string_list(get_path(ir.artifacts, "gpu_attestation.attested_ueids"))
+    raw_mappings = get_path(ir.artifacts, "identity_bridge.mappings")
+    mappings = [m for m in raw_mappings if isinstance(m, dict)] if isinstance(raw_mappings, list) else []
+    bridge_by_contract_id: dict[str, str] = {}
+    for mapping in mappings:
+        contract_gpu_id = mapping.get("contract_gpu_id")
+        ueid = mapping.get("ueid")
+        if isinstance(contract_gpu_id, str) and contract_gpu_id and isinstance(ueid, str) and ueid:
+            bridge_by_contract_id[contract_gpu_id] = ueid
+
+    if declared_ids is None or attested_ueids is None or not bridge_by_contract_id:
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_UNKNOWN,
+            detail=(
+                "GPU attestation binding could not be determined; declared GPU IDs, attested UEIDs, "
+                "or identity bridge mappings are not usable non-empty lists."
+            ),
+            verdict_effect=UNKNOWN,
+            metadata={
+                "declared_is_list": declared_ids is not None,
+                "attested_is_list": attested_ueids is not None,
+                "bridge_mapping_count": len(bridge_by_contract_id),
+            },
+        )
+
+    unbridged = sorted(set(declared_ids) - set(bridge_by_contract_id))
+    if unbridged:
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_UNKNOWN,
+            detail=(
+                "Identity bridge does not cover declared GPU ID(s): "
+                + ", ".join(unbridged)
+                + ". Without a bridge entry, attested UEIDs cannot be resolved to these contract identities."
+            ),
+            verdict_effect=UNKNOWN,
+            metadata={"declared_gpu_ids_without_bridge_entry": unbridged},
+        )
+
+    attested_set = set(attested_ueids)
+    mismatched = sorted(
+        f"{contract_id} -> {bridge_by_contract_id[contract_id]}"
+        for contract_id in declared_ids
+        if bridge_by_contract_id[contract_id] not in attested_set
+    )
+    if mismatched:
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_CONTRADICTED,
+            detail=(
+                "Bridged UEID(s) for declared GPU ID(s) are absent from the attested UEID set: "
+                + "; ".join(mismatched)
+                + ". The attestation token does not cover the contract GPU identity the bridge maps to."
+            ),
+            verdict_effect=CONTRADICTED,
+            metadata={
+                "declared_gpu_id_to_bridged_ueid_mismatches": mismatched,
+                "attested_ueid_count": len(attested_set),
+                "attested_ueids_not_bridged": sorted(attested_set - set(bridge_by_contract_id.values())),
+            },
+        )
+
+    window_start = _utc_timestamp(get_path(ir.artifacts, "probe_manifest.window_start"))
+    window_end = _utc_timestamp(get_path(ir.artifacts, "probe_manifest.window_end"))
+    collected_at = _utc_timestamp(get_path(ir.artifacts, "gpu_attestation.collected_at"))
+    if window_start and window_end and collected_at and not (window_start <= collected_at <= window_end):
+        return PassResult(
+            pass_id="gpu_attestation_binding",
+            status=PASS_UNKNOWN,
+            detail=(
+                "GPU attestation was collected outside the contract window "
+                f"({get_path(ir.artifacts, 'gpu_attestation.collected_at')} not within "
+                f"{get_path(ir.artifacts, 'probe_manifest.window_start')}.."
+                f"{get_path(ir.artifacts, 'probe_manifest.window_end')}); "
+                "it does not establish freshness during this window."
+            ),
+            verdict_effect=UNKNOWN,
+            metadata={
+                "collected_at": get_path(ir.artifacts, "gpu_attestation.collected_at"),
+                "window_start": get_path(ir.artifacts, "probe_manifest.window_start"),
+                "window_end": get_path(ir.artifacts, "probe_manifest.window_end"),
+            },
+        )
+
+    return PassResult(
+        pass_id="gpu_attestation_binding",
+        status=PASS_SATISFIED,
+        detail=(
+            f"All {len(set(declared_ids))} declared GPU ID(s) resolve through the identity bridge to UEIDs "
+            "present in nonce-bound, certificate-verified attestation evidence. "
+            "Attestation establishes identity and freshness only, not delivered capacity."
+        ),
+        metadata={
+            "declared_gpu_id_count": len(set(declared_ids)),
+            "attested_ueid_count": len(attested_set),
+            "challenge_nonce": challenge_nonce,
+            "mapping_source": get_path(ir.artifacts, "identity_bridge.mapping_source"),
+        },
     )

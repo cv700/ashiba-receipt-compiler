@@ -17,6 +17,28 @@ def string_list(value: Any) -> list[str] | None:
     return [str(item) for item in value]
 
 
+def nonce_bound(challenge_nonce: Any, eat_nonce: Any) -> bool:
+    """Return whether an EAT nonce is bound to the submitted challenge nonce.
+
+    NVIDIA echoes the challenge nonce into the EAT token, zero-padded on the
+    right. A bare prefix match is too loose (challenge "a1b2" must not match
+    EAT nonce "a1b2c3..."), so the remainder after the challenge must be all
+    zeros. Exact padding behavior must be confirmed against live nvattest
+    output before this rule is treated as validated.
+    """
+    if not isinstance(challenge_nonce, str) or not isinstance(eat_nonce, str):
+        return False
+    challenge = challenge_nonce.strip().lower()
+    eat = eat_nonce.strip().lower()
+    if not challenge or not eat:
+        return False
+    if eat == challenge:
+        return True
+    if len(eat) <= len(challenge) or not eat.startswith(challenge):
+        return False
+    return set(eat[len(challenge):]) == {"0"}
+
+
 def number(value: Any) -> float | None:
     """Return a numeric value without accepting booleans as numbers."""
     if isinstance(value, bool):

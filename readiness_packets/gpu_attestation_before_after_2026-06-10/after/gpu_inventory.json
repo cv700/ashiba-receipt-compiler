@@ -1,0 +1,10 @@
+{
+  "collateral_schedule_id": "UCC1-2026-PLANTED-FRAUD",
+  "declared_node_id": "node-cluster-a-042",
+  "declared_serials": [
+    "GPU-H100-SXM-0001",
+    "GPU-H100-SXM-0002",
+    "GPU-H100-SXM-0003"
+  ],
+  "schedule_effective_date": "2026-05-20T10:00:00Z"
+}

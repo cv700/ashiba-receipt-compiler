@@ -1,0 +1,9 @@
+{
+  "decision_owner": "lender-credit-ops",
+  "decision_rule": {
+    "contradicted": "hold payment and open dispute",
+    "supported": "release payment",
+    "unknown": "hold payment and issue cure request"
+  },
+  "schema_id": "gpu_lending_decision_context_v0"
+}

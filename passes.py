@@ -32,6 +32,7 @@ from execution_contexts import execution_context_disclosures as _execution_conte
 from gpu_passes import (
     dcgm_diag_result,
     ecc_threshold_check,
+    gpu_attestation_binding,
     gpu_node_id_match,
     gpu_not_mig_sliced,
     gpu_power_utilization_consistency,

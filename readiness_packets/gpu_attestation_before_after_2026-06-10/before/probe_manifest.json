@@ -1,0 +1,18 @@
+{
+  "claim_ref": "claim.gpu_attested_identity_window",
+  "committed_at": "2026-05-18T11:00:00Z",
+  "committed_by": "lender-ops@example.com",
+  "contract_id": "LOAN-2026-PLANTED-FRAUD",
+  "declared_gpu_ids": [
+    "GPU-H100-SXM-0001",
+    "GPU-H100-SXM-0002",
+    "GPU-H100-SXM-0003"
+  ],
+  "expected_gpu_class": "H100",
+  "operator": "lender-ops@example.com",
+  "probe_hash": "sha256:nvattest-corelib-evidence-collection",
+  "probe_id": "gpu_attestation_nvattest_v0",
+  "probe_version": "0.2.0",
+  "window_end": "2026-05-25T00:00:00Z",
+  "window_start": "2026-05-18T00:00:00Z"
+}

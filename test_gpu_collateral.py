@@ -12,6 +12,7 @@ from constants import (
     PASS_CONTRADICTED,
     PASS_SATISFIED,
     PASS_SKIPPED,
+    PASS_UNKNOWN,
     SUPPORTED,
     UNKNOWN,
 )
@@ -19,6 +20,7 @@ from constants import (
 from passes import (
     dcgm_diag_result,
     ecc_threshold_check,
+    gpu_attestation_binding,
     grant_binding_present,
     gpu_node_id_match,
     gpu_serial_cross_reference,
@@ -100,6 +102,20 @@ def test_gpu_collateral_gallery_fixtures() -> None:
                 "gpu_serial_cross_reference",
                 "execution_context_disclosure",
             },
+        ),
+        (
+            "gpu_serial_report_vs_attestation_planted_fraud",
+            "gpu_serial_collateral_match",
+            SUPPORTED,
+            0,
+            {"gpu_serial_set_match", "gpu_node_id_match"},
+        ),
+        (
+            "gpu_serial_report_vs_attestation_planted_fraud",
+            "gpu_attested_identity_window",
+            CONTRADICTED,
+            0,
+            {"gpu_attestation_binding"},
         ),
     ]
 
@@ -368,9 +384,131 @@ def test_gpu_collateral_pass_units() -> None:
     assert gpu_serial_cross_reference(_pass_ir({})).status == PASS_SKIPPED
 
 
+def test_gpu_attestation_binding_pass_units() -> None:
+    challenge = "a1b2c3d4e5f6a7b8"
+    eat_nonce = challenge + "0" * 50
+    ueid_a = "UEID-AAAA"
+    ueid_b = "UEID-BBBB"
+
+    def artifacts(**overrides):
+        base = {
+            "probe_manifest": {
+                "challenge_nonce": challenge,
+                "declared_gpu_ids": ["GPU-1", "GPU-2"],
+                "window_start": "2026-06-01T00:00:00Z",
+                "window_end": "2026-06-08T00:00:00Z",
+            },
+            "gpu_attestation": {
+                "attested_ueids": [ueid_a, ueid_b],
+                "attestation_nonce": eat_nonce,
+                "nonce_match": True,
+                "cert_chain_verified": True,
+                "collected_at": "2026-06-01T10:00:00Z",
+            },
+            "identity_bridge": {
+                "schedule_id": "UCC1-2026-0042",
+                "mapping_source": "provider asset register export",
+                "mapping_time": "2026-05-30T09:00:00Z",
+                "mapper": "lender-ops@example.com",
+                "mappings": [
+                    {"contract_gpu_id": "GPU-1", "ueid": ueid_a},
+                    {"contract_gpu_id": "GPU-2", "ueid": ueid_b},
+                ],
+            },
+        }
+        for key, value in overrides.items():
+            if value is None:
+                base.pop(key, None)
+            else:
+                base[key] = {**base[key], **value}
+        return base
+
+    # fresh, bridged, in-window evidence satisfies the binding
+    good = gpu_attestation_binding(_pass_ir(artifacts()))
+    assert good.status == PASS_SATISFIED, good.detail
+
+    # the EAT nonce may equal the challenge exactly (no padding)
+    exact = artifacts(gpu_attestation={"attestation_nonce": challenge})
+    assert gpu_attestation_binding(_pass_ir(exact)).status == PASS_SATISFIED
+
+    # missing attestation -> UNKNOWN
+    missing_att = gpu_attestation_binding(_pass_ir(artifacts(gpu_attestation=None)))
+    assert missing_att.status == PASS_UNKNOWN
+    assert "gpu_attestation.attested_ueids" in missing_att.metadata["missing_expected_paths"]
+
+    # missing identity bridge -> UNKNOWN, never SUPPORTED
+    missing_bridge = gpu_attestation_binding(_pass_ir(artifacts(identity_bridge=None)))
+    assert missing_bridge.status == PASS_UNKNOWN
+    assert "identity_bridge.mappings" in missing_bridge.metadata["missing_expected_paths"]
+
+    # cert chain failed -> CONTRADICTED
+    cert_failed = artifacts(gpu_attestation={"cert_chain_verified": False})
+    assert gpu_attestation_binding(_pass_ir(cert_failed)).status == PASS_CONTRADICTED
+
+    # cert chain indeterminate (non-boolean) -> UNKNOWN
+    cert_odd = artifacts(gpu_attestation={"cert_chain_verified": "valid"})
+    assert gpu_attestation_binding(_pass_ir(cert_odd)).status == PASS_UNKNOWN
+
+    # replayed attestation: EAT nonce echoes a stale challenge -> CONTRADICTED
+    replayed = artifacts(gpu_attestation={"attestation_nonce": "deadbeef" + "0" * 58, "nonce_match": False})
+    assert gpu_attestation_binding(_pass_ir(replayed)).status == PASS_CONTRADICTED
+
+    # loose prefix is not binding: remainder after the challenge must be all zeros
+    loose = artifacts(gpu_attestation={"attestation_nonce": challenge + "1" + "0" * 49})
+    assert gpu_attestation_binding(_pass_ir(loose)).status == PASS_CONTRADICTED
+
+    # importer-recorded nonce_match=False is verdict-determining even if nonces look bound
+    importer_flag = artifacts(gpu_attestation={"nonce_match": False})
+    assert gpu_attestation_binding(_pass_ir(importer_flag)).status == PASS_CONTRADICTED
+
+    # declared GPU ID with no bridge entry -> UNKNOWN (cannot resolve identity)
+    unbridged = artifacts(identity_bridge={"mappings": [{"contract_gpu_id": "GPU-1", "ueid": ueid_a}]})
+    unbridged_result = gpu_attestation_binding(_pass_ir(unbridged))
+    assert unbridged_result.status == PASS_UNKNOWN
+    assert "GPU-2" in unbridged_result.metadata["declared_gpu_ids_without_bridge_entry"]
+
+    # bridged UEID absent from attested set -> CONTRADICTED with the mismatch named
+    swapped = artifacts(gpu_attestation={"attested_ueids": [ueid_a, "UEID-PLANTED"]})
+    swapped_result = gpu_attestation_binding(_pass_ir(swapped))
+    assert swapped_result.status == PASS_CONTRADICTED
+    assert any("GPU-2" in item for item in swapped_result.metadata["declared_gpu_id_to_bridged_ueid_mismatches"])
+    assert "UEID-PLANTED" in swapped_result.metadata["attested_ueids_not_bridged"]
+
+    # attestation collected outside the contract window -> UNKNOWN
+    stale_window = artifacts(gpu_attestation={"collected_at": "2026-06-09T10:00:00Z"})
+    stale_result = gpu_attestation_binding(_pass_ir(stale_window))
+    assert stale_result.status == PASS_UNKNOWN
+    assert "outside the contract window" in stale_result.detail
+
+    # a definite parsed-vs-raw-token payload conflict is verdict-determining
+    token_conflict = artifacts(gpu_attestation={"token_payload_consistent": False})
+    assert gpu_attestation_binding(_pass_ir(token_conflict)).status == PASS_CONTRADICTED
+
+    # the token's own verifier verdict is verdict-determining
+    verifier_rejected = artifacts(gpu_attestation={"overall_result": False})
+    assert gpu_attestation_binding(_pass_ir(verifier_rejected)).status == PASS_CONTRADICTED
+
+    # a non-success firmware measurement result is verdict-determining
+    meas_failed = artifacts(gpu_attestation={"measres": "failure"})
+    assert gpu_attestation_binding(_pass_ir(meas_failed)).status == PASS_CONTRADICTED
+
+    # attested hardware model must match the expected GPU class from the manifest
+    wrong_class = artifacts(
+        probe_manifest={"expected_gpu_class": "H100"},
+        gpu_attestation={"hwmodel": "GA100 A01 GSP BROM"},
+    )
+    assert gpu_attestation_binding(_pass_ir(wrong_class)).status == PASS_CONTRADICTED
+    right_class = artifacts(
+        probe_manifest={"expected_gpu_class": "H100"},
+        gpu_attestation={"hwmodel": "GH100 A01 GSP BROM", "measres": "success", "overall_result": True},
+    )
+    assert gpu_attestation_binding(_pass_ir(right_class)).status == PASS_SATISFIED
+
+
 def run_gpu_collateral_tests() -> None:
     test_gpu_collateral_gallery_fixtures()
     test_gpu_boundary_uses_renderer_family_not_claim_id_prefix()
     test_grant_binding_cross_boundary_pass_units()
     test_inactive_grant_execution_flag_contradicts_authorization_claim()
     test_gpu_collateral_pass_units()
+    test_gpu_attestation_binding_pass_units()

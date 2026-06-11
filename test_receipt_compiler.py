@@ -12,6 +12,7 @@ from test_gpu_collateral import run_gpu_collateral_tests
 from test_gpu_impairment_watch import run_gpu_impairment_tests
 from test_gpu_power_consistency import run_gpu_power_consistency_tests
 from test_importers import run_importer_tests
+from test_nvattest_importer import run_nvattest_importer_tests
 from test_receipt_core import run_receipt_core_tests
 from test_scan import run_scan_tests
 
@@ -23,6 +24,7 @@ def main() -> int:
     run_gpu_collateral_tests()
     run_authorization_flow_tests()
     run_importer_tests()
+    run_nvattest_importer_tests()
     run_gpu_acceptance_tests()
     run_gpu_power_consistency_tests()
     run_gpu_impairment_tests()

@@ -1,0 +1,25 @@
+{
+  "identity_bridge": {
+    "schedule_id": "UCC1-2026-PLANTED-FRAUD",
+    "mapping_source": "provider asset register export, ticket OPS-2214",
+    "mapping_time": "2026-05-19T16:00:00Z",
+    "mapper": "lender-ops@example.com",
+    "mappings": [
+      {
+        "contract_gpu_id": "GPU-H100-SXM-0001",
+        "provider_asset_id": "prov-asset-8841",
+        "ueid": "4655331079044780778828634442627054552420306731401111111111111111"
+      },
+      {
+        "contract_gpu_id": "GPU-H100-SXM-0002",
+        "provider_asset_id": "prov-asset-8842",
+        "ueid": "4655331079044780778828634442627054552420306731402222222222222222"
+      },
+      {
+        "contract_gpu_id": "GPU-H100-SXM-0003",
+        "provider_asset_id": "prov-asset-8843",
+        "ueid": "4655331079044780778828634442627054552420306731403333333333333333"
+      }
+    ]
+  }
+}

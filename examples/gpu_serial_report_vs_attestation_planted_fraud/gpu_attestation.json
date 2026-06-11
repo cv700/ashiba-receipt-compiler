@@ -1,0 +1,20 @@
+{
+  "attestation_note": "Synthetic planted-fraud fixture. This is not real NVIDIA attestation evidence; field shapes follow nvattest EAT claims output.",
+  "attested_ueids": [
+    "4655331079044780778828634442627054552420306731401111111111111111",
+    "4655331079044780778828634442627054552420306731402222222222222222",
+    "9912280331077441556622990011446688335577220099889999999999999999"
+  ],
+  "attestation_nonce": "7f3a91c45be208d600000000000000000000000000000000000000000000000000",
+  "nonce_match": true,
+  "cert_chain_verified": true,
+  "collected_at": "2026-05-20T12:00:00Z",
+  "gpu_count": 3,
+  "hwmodel": "GH100 A01 GSP BROM",
+  "measres": "success",
+  "overall_result": true,
+  "debug_disabled": true,
+  "driver_version": "590.12",
+  "vbios_version": "96.00.A5.00.01",
+  "source": "nvidia_nras_v4"
+}

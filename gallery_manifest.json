@@ -2,11 +2,11 @@
   "schema_version": "receipt-gallery-manifest-v1",
   "compiler_version": "evidence-compiler-v0.6",
   "summary": {
-    "expected_directories": 46,
-    "expected_receipts": 51,
+    "expected_directories": 47,
+    "expected_receipts": 53,
     "expected_verdict_counts": {
-      "supported": 20,
-      "contradicted": 14,
+      "supported": 21,
+      "contradicted": 15,
       "unknown": 16,
       "not_applicable": 1
     },
@@ -394,6 +394,25 @@
           "absence_count": 3,
           "compiler_error_count": 0,
           "rationale": "collateral schedule and probe manifest are present, but probe observation evidence is missing"
+        }
+      ]
+    },
+    {
+      "directory": "gpu_serial_report_vs_attestation_planted_fraud",
+      "expected_receipts": [
+        {
+          "claim_type": "gpu_serial_collateral_match",
+          "verdict": "supported",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "report-vs-report serial match passes because the provider-reported serials match the declared schedule; attestation and identity-bridge evidence are outside this claim pack"
+        },
+        {
+          "claim_type": "gpu_attested_identity_window",
+          "verdict": "contradicted",
+          "absence_count": 0,
+          "compiler_error_count": 0,
+          "rationale": "attested-identity claim is contradicted because the identity bridge maps declared GPU-H100-SXM-0003 to a UEID that is absent from the nonce-bound attested UEID set"
         }
       ]
     },

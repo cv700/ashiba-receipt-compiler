@@ -1,0 +1,425 @@
+#!/usr/bin/env python3
+"""Import NVIDIA attestation EAT token claims into ARC GPU attestation artifacts.
+
+Usage:
+    ./import_nvattest real_attestation_claims.json --nonce <hex> \
+        --identity-bridge bridge.json \
+        --contract-id LOAN-2026-0042 \
+        --window-start 2026-05-20T00:00:00Z --window-end 2026-05-27T00:00:00Z \
+        --declared-gpu-id GPU-H100-SXM-0001 --declared-gpu-id GPU-H100-SXM-0002 \
+        --expected-gpu-class H100 \
+        --operator ops@lender.example --tool-version "nvattest 1.2.0" \
+        --out artifacts/
+
+The input is the JSON output from:
+    nvattest attest --device gpu --verifier remote --gpu-evidence-source=corelib --output-format json
+
+The EAT token contains per-GPU claims with ueid (device-cert-derived ID),
+hwmodel (SKU string), measres (firmware measurement result), cert chain
+status, and a nonce echo.
+
+Field semantics this importer enforces:
+
+- gpu_attestation.attestation_nonce is the EAT nonce read from the token,
+  never the challenge nonce the operator submitted. The challenge nonce is
+  recorded separately in probe_manifest.challenge_nonce so the compiler can
+  compare the two sources. Writing the challenge into both fields would make
+  the freshness check circular.
+- gpu_attestation.attested_ueids holds UEIDs. A UEID is a device-cert-derived
+  identifier; it is not a GPU board serial, a borrower schedule ID, or a
+  contract GPU ID. Mapping UEIDs to contract identities requires a separate
+  identity_bridge artifact supplied with --identity-bridge.
+- probe_manifest binds the attestation run to one bounded claim: contract and
+  window, declared contract GPU IDs, expected GPU class, challenge nonce,
+  command, operator, tool and driver versions, and raw/parsed evidence hashes.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import sys
+from typing import Any
+
+from gpu_pass_utils import nonce_bound
+from importer_common import load_json, normalize_timestamp, read_text, write_artifacts
+
+
+CLAIM_REF = "claim.gpu_attested_identity_window"
+IDENTITY_BRIDGE_FIELDS = ("schedule_id", "mapping_source", "mapping_time", "mapper", "mappings")
+IDENTITY_BRIDGE_MAPPING_FIELDS = ("contract_gpu_id", "provider_asset_id", "ueid")
+
+
+def _extract_claims(raw: Any) -> list[dict[str, Any]]:
+    """Normalize the EAT token payload into a list of per-GPU claim dicts."""
+    if isinstance(raw, list):
+        return [c for c in raw if isinstance(c, dict)]
+    if isinstance(raw, dict):
+        return [raw]
+    return []
+
+
+def _cert_chain_verified(claim: dict[str, Any]) -> bool | None:
+    """Derive cert_chain_verified from the attestation report cert chain.
+
+    Returns None when the parser cannot determine validity; the compiler
+    treats None as absent evidence (UNKNOWN), not as a pass.
+    """
+    chain = claim.get("x-nvidia-gpu-attestation-report-cert-chain")
+    if not isinstance(chain, dict):
+        return None
+    cert_status = chain.get("x-nvidia-cert-status")
+    ocsp_status = chain.get("x-nvidia-cert-ocsp-status")
+    if cert_status == "valid" and ocsp_status == "good":
+        return True
+    if cert_status in ("expired", "revoked") or ocsp_status in ("revoked",):
+        return False
+    return None
+
+
+def _overall_pass(claim: dict[str, Any]) -> bool | None:
+    """Check x-nvidia-overall-att-result for overall attestation pass."""
+    result = claim.get("x-nvidia-overall-att-result")
+    if result is True or result == "true":
+        return True
+    if result is False or result == "false":
+        return False
+    return None
+
+
+def _sha256_hex(data: bytes) -> str:
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def _decode_jwt_segments(text: str) -> tuple[Any, Any] | None:
+    """Decode a JWT's header and payload without verifying the signature.
+
+    Returns None when the input is not JWT-shaped. Signature verification is
+    deliberately out of scope here (no crypto deps); the decoded payload is
+    used only for a consistency check against the parsed claims input.
+    """
+    import base64
+
+    parts = text.strip().split(".")
+    if len(parts) != 3:
+        return None
+    decoded = []
+    for part in parts[:2]:
+        padded = part + "=" * (-len(part) % 4)
+        try:
+            decoded.append(json.loads(base64.urlsafe_b64decode(padded.encode("ascii"))))
+        except Exception:
+            return None
+    if not isinstance(decoded[0], dict) or "alg" not in decoded[0]:
+        return None
+    return decoded[0], decoded[1]
+
+
+def _collect_dicts(obj: Any, depth: int = 0) -> list[dict[str, Any]]:
+    """Flatten nested token payload structures into candidate claim dicts."""
+    if depth > 6:
+        return []
+    found: list[dict[str, Any]] = []
+    if isinstance(obj, dict):
+        found.append(obj)
+        for value in obj.values():
+            found.extend(_collect_dicts(value, depth + 1))
+    elif isinstance(obj, list):
+        for item in obj:
+            found.extend(_collect_dicts(item, depth + 1))
+    return found
+
+
+def _payload_consistent(claims: list[dict[str, Any]], payload: Any) -> bool | None:
+    """Compare parsed claims against the raw token payload.
+
+    Returns False only on a definite conflict: a payload entry carrying the
+    same UEID reports a different value for a field the parsed claims also
+    carry. Returns None when nothing comparable was found (parser cannot
+    decide), True when at least one field was compared and all matched.
+    """
+    entries = _collect_dicts(payload)
+    determined = False
+    for claim in claims:
+        ueid = claim.get("ueid")
+        if not ueid:
+            continue
+        matches = [entry for entry in entries if str(entry.get("ueid", "")) == str(ueid)]
+        for entry in matches:
+            for key, value in claim.items():
+                if key not in entry or isinstance(value, (dict, list)) or isinstance(entry[key], (dict, list)):
+                    continue
+                determined = True
+                if entry[key] != value and str(entry[key]) != str(value):
+                    return False
+    return True if determined else None
+
+
+def load_identity_bridge(path_arg: str) -> dict[str, Any]:
+    """Load and shape-check an identity bridge mapping file.
+
+    The bridge is operator-supplied evidence that maps contract GPU IDs to
+    attested UEIDs. The importer checks shape only; whether the mapped
+    identities agree with the attestation is decided by compiler passes.
+    """
+    raw = load_json(path_arg, "identity bridge")
+    bridge = raw.get("identity_bridge") if isinstance(raw, dict) and "identity_bridge" in raw else raw
+    if not isinstance(bridge, dict):
+        raise ValueError("identity bridge JSON root must be an object")
+
+    mappings = bridge.get("mappings")
+    if not isinstance(mappings, list) or not mappings:
+        raise ValueError("identity bridge must contain a non-empty mappings list")
+    for idx, mapping in enumerate(mappings):
+        if not isinstance(mapping, dict):
+            raise ValueError(f"identity bridge mappings[{idx}] must be an object")
+        for field in ("contract_gpu_id", "ueid"):
+            if not isinstance(mapping.get(field), str) or not mapping[field]:
+                raise ValueError(f"identity bridge mappings[{idx}] is missing {field}")
+
+    shaped = {key: bridge[key] for key in IDENTITY_BRIDGE_FIELDS if key in bridge}
+    shaped["mappings"] = [
+        {key: mapping[key] for key in IDENTITY_BRIDGE_MAPPING_FIELDS if key in mapping}
+        for mapping in mappings
+    ]
+    if "mapping_time" in shaped:
+        normalized = normalize_timestamp(shaped["mapping_time"])
+        if normalized:
+            shaped["mapping_time"] = normalized
+    return shaped
+
+
+def build_attestation_artifacts(
+    claims: list[dict[str, Any]],
+    challenge_nonce: str,
+    collected_at: str = "",
+    raw_evidence_bytes: bytes | None = None,
+    raw_token_bytes: bytes | None = None,
+    identity_bridge: dict[str, Any] | None = None,
+    manifest_fields: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build gpu_attestation, probe_manifest, and identity_bridge artifacts."""
+    if not claims:
+        raise ValueError("no GPU claims found in attestation token")
+
+    attested_ueids = []
+    cert_verified_values = []
+    overall_values = []
+    eat_nonces = []
+
+    for claim in claims:
+        ueid = claim.get("ueid")
+        if ueid:
+            attested_ueids.append(str(ueid))
+
+        cv = _cert_chain_verified(claim)
+        if cv is not None:
+            cert_verified_values.append(cv)
+
+        ov = _overall_pass(claim)
+        if ov is not None:
+            overall_values.append(ov)
+
+        en = claim.get("eat_nonce")
+        if en:
+            eat_nonces.append(str(en))
+
+    if not attested_ueids:
+        raise ValueError("no ueid found in any GPU claim — cannot build attested UEID list")
+
+    cert_chain_verified = all(cert_verified_values) if cert_verified_values else None
+    overall_result = all(overall_values) if overall_values else None
+
+    # The EAT nonce comes from the token. nonce_match holds only when every
+    # per-GPU claim carries a nonce bound to the challenge.
+    distinct_eat_nonces = sorted(set(eat_nonces))
+    attestation_nonce = eat_nonces[0] if eat_nonces else None
+    nonce_match = (
+        len(eat_nonces) == len(claims)
+        and bool(eat_nonces)
+        and all(nonce_bound(challenge_nonce, en) for en in eat_nonces)
+    )
+
+    gpu_attestation: dict[str, Any] = {
+        "attested_ueids": attested_ueids,
+        "cert_chain_verified": cert_chain_verified,
+        "nonce_match": nonce_match,
+        "gpu_count": len(claims),
+        "source": "nvidia_nras_v4",
+    }
+    if attestation_nonce is not None:
+        gpu_attestation["attestation_nonce"] = attestation_nonce
+    if len(distinct_eat_nonces) > 1:
+        gpu_attestation["eat_nonces"] = distinct_eat_nonces
+
+    if overall_result is not None:
+        gpu_attestation["overall_result"] = overall_result
+    first = claims[0]
+    if first.get("hwmodel"):
+        gpu_attestation["hwmodel"] = first["hwmodel"]
+    if first.get("measres"):
+        gpu_attestation["measres"] = first["measres"]
+    if first.get("x-nvidia-gpu-driver-version"):
+        gpu_attestation["driver_version"] = first["x-nvidia-gpu-driver-version"]
+    if first.get("x-nvidia-gpu-vbios-version"):
+        gpu_attestation["vbios_version"] = first["x-nvidia-gpu-vbios-version"]
+    if first.get("dbgstat"):
+        gpu_attestation["debug_disabled"] = first["dbgstat"] == "disabled"
+
+    probe_manifest: dict[str, Any] = {
+        "challenge_nonce": challenge_nonce,
+        "probe_id": "gpu_attestation_nvattest_v0",
+        "probe_version": "0.2.0",
+        "probe_hash": "sha256:nvattest-corelib-evidence-collection",
+        "claim_ref": CLAIM_REF,
+    }
+    if collected_at:
+        probe_manifest["committed_at"] = collected_at
+        gpu_attestation["collected_at"] = collected_at
+
+    for key, value in (manifest_fields or {}).items():
+        if value not in (None, "", []):
+            probe_manifest[key] = value
+    if "driver_version" not in probe_manifest and gpu_attestation.get("driver_version"):
+        probe_manifest["driver_version"] = gpu_attestation["driver_version"]
+
+    # When the raw signed token is supplied, it becomes the raw evidence of
+    # record and the parsed claims are cross-checked against its payload.
+    # Signature verification is not performed here; a payload conflict is a
+    # definite tampering signal, payload absence is undetermined.
+    if raw_token_bytes is not None:
+        probe_manifest["raw_evidence_sha256"] = _sha256_hex(raw_token_bytes)
+        if raw_evidence_bytes is not None:
+            probe_manifest["claims_input_sha256"] = _sha256_hex(raw_evidence_bytes)
+        try:
+            token_text = raw_token_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            token_text = ""
+        segments = _decode_jwt_segments(token_text) if token_text else None
+        if segments is not None:
+            _, payload = segments
+            consistent = _payload_consistent(claims, payload)
+            if consistent is not None:
+                gpu_attestation["token_payload_consistent"] = consistent
+    elif raw_evidence_bytes is not None:
+        probe_manifest["raw_evidence_sha256"] = _sha256_hex(raw_evidence_bytes)
+    parsed_canonical = json.dumps(gpu_attestation, sort_keys=True, separators=(",", ":"))
+    probe_manifest["parsed_evidence_sha256"] = _sha256_hex(parsed_canonical.encode("utf-8"))
+
+    merged = {
+        "gpu_attestation": gpu_attestation,
+        "probe_manifest": probe_manifest,
+    }
+    if identity_bridge:
+        merged["identity_bridge"] = identity_bridge
+    return merged
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "attestation_claims_json",
+        help="EAT claims JSON from nvattest attest --output-format json, or - for stdin",
+    )
+    parser.add_argument(
+        "--nonce", "-n",
+        required=True,
+        help="The challenge nonce hex string submitted to nvattest via --nonce",
+    )
+    parser.add_argument(
+        "--identity-bridge", "-b",
+        help="JSON file mapping contract GPU IDs to attested UEIDs "
+             "(schedule_id, mapping_source, mapping_time, mapper, mappings[])",
+    )
+    parser.add_argument(
+        "--raw-token",
+        help="Raw signed attestation token file (e.g. the EAT JWT). Hashed as the raw evidence of "
+             "record; when JWT-shaped, the parsed claims are cross-checked against its payload",
+    )
+    parser.add_argument("--contract-id", help="Contract or loan identifier the attestation window belongs to")
+    parser.add_argument("--window-start", help="Contract window start (ISO 8601 UTC)")
+    parser.add_argument("--window-end", help="Contract window end (ISO 8601 UTC)")
+    parser.add_argument(
+        "--declared-gpu-id",
+        action="append",
+        default=[],
+        help="Contract GPU ID this attestation run is declared to cover (repeatable)",
+    )
+    parser.add_argument("--expected-gpu-class", help="Expected GPU class for the contract, e.g. H100")
+    parser.add_argument("--operator", help="Person or service account that ran the attestation")
+    parser.add_argument("--command", help="Exact nvattest command line used to produce the claims JSON")
+    parser.add_argument("--tool-version", help="nvattest tool version string")
+    parser.add_argument("--driver-version", help="NVIDIA driver version (default: read from EAT claims)")
+    parser.add_argument(
+        "--collected-at", "-t",
+        help="ISO 8601 UTC timestamp when evidence was collected (default: now)",
+    )
+    parser.add_argument(
+        "--out", "-o",
+        type=Path,
+        help="Write artifact files to this directory",
+    )
+    args = parser.parse_args()
+
+    try:
+        raw_text = read_text(args.attestation_claims_json, "attestation claims")
+        try:
+            raw = json.loads(raw_text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"invalid JSON in attestation claims: {exc}") from exc
+        claims = _extract_claims(raw)
+
+        identity_bridge = load_identity_bridge(args.identity_bridge) if args.identity_bridge else None
+
+        collected_at = args.collected_at or ""
+        if not collected_at:
+            from datetime import datetime, timezone
+            collected_at = datetime.now(timezone.utc).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        manifest_fields = {
+            "contract_id": args.contract_id,
+            "window_start": normalize_timestamp(args.window_start) if args.window_start else None,
+            "window_end": normalize_timestamp(args.window_end) if args.window_end else None,
+            "declared_gpu_ids": args.declared_gpu_id,
+            "expected_gpu_class": args.expected_gpu_class,
+            "operator": args.operator,
+            "command": args.command,
+            "tool_version": args.tool_version,
+            "driver_version": args.driver_version,
+        }
+
+        raw_token_bytes = None
+        if args.raw_token:
+            token_path = Path(args.raw_token)
+            if not token_path.is_file():
+                raise ValueError(f"raw token file {args.raw_token} not found")
+            raw_token_bytes = token_path.read_bytes()
+
+        merged = build_attestation_artifacts(
+            claims,
+            args.nonce,
+            collected_at,
+            raw_evidence_bytes=raw_text.encode("utf-8"),
+            raw_token_bytes=raw_token_bytes,
+            identity_bridge=identity_bridge,
+            manifest_fields=manifest_fields,
+        )
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    if args.out:
+        write_artifacts(args.out, merged)
+        print(f"gpu attestation artifacts -> {args.out}/", file=sys.stderr)
+    else:
+        print(json.dumps(merged, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

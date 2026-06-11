@@ -170,9 +170,33 @@ def test_v7_execution_context_file_loaded_outside_artifacts() -> None:
     assert any("Receipt covers 64/256" in line for line in receipt["boundary"]["does_not_support"])
 
 
+def test_gpu_lending_decision_context_disclosures() -> None:
+    from execution_contexts import execution_context_disclosures
+
+    rule_context = {
+        "schema_id": "gpu_lending_decision_context_v0",
+        "decision_owner": "lender-credit-ops",
+        "decision_rule": {
+            "supported": "release payment",
+            "unknown": "hold payment and issue cure request",
+            "contradicted": "hold payment and open dispute",
+        },
+    }
+    disclosures = execution_context_disclosures(rule_context)
+    joined = "\n".join(disclosures)
+    assert "Lender decision rule bound to this receipt" in joined
+    assert "supported -> release payment" in joined
+    assert "contradicted -> hold payment and open dispute" in joined
+    assert "identity and freshness only" in joined
+
+    bare = execution_context_disclosures({"schema_id": "gpu_lending_decision_context_v0"})
+    assert any("No lender decision rule supplied" in line for line in bare)
+
+
 def run_execution_context_tests() -> None:
     test_v7_execution_context_absent_is_noop()
     test_v7_execution_context_round_trip_and_unknown_schema()
     test_v7_gpu_execution_context_disclosures()
     test_v7_complete_gpu_execution_context_adds_no_negative_context_disclosures()
     test_v7_execution_context_file_loaded_outside_artifacts()
+    test_gpu_lending_decision_context_disclosures()

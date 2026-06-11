@@ -1,0 +1,63 @@
+{
+  "schema_version": "receipt-claim-pack-v0.1",
+  "name": "gpu_attested_identity_window",
+  "description": "Checks whether each contract GPU identity, resolved through an operator-supplied identity bridge to an NVIDIA device UEID, produced a fresh nonce-bound attestation during the contract window. This claim covers attested identity and freshness only; it does not cover delivered capacity, utilization, or performance.",
+  "renderer_family": "gpu_collateral",
+  "claim": {
+    "id": "claim.gpu_attested_identity_window",
+    "text": "Each GPU identity bridged from the contract schedule produced a fresh, nonce-bound NVIDIA attestation during the contract window."
+  },
+  "expected_evidence": [
+    "probe_manifest.challenge_nonce",
+    "probe_manifest.committed_at",
+    "probe_manifest.probe_id",
+    "probe_manifest.probe_hash",
+    "probe_manifest.claim_ref",
+    "probe_manifest.contract_id",
+    "probe_manifest.window_start",
+    "probe_manifest.window_end",
+    "probe_manifest.declared_gpu_ids",
+    "probe_manifest.expected_gpu_class",
+    "probe_manifest.tool_version",
+    "probe_manifest.driver_version",
+    "probe_manifest.command",
+    "probe_manifest.operator",
+    "probe_manifest.raw_evidence_sha256",
+    "probe_manifest.parsed_evidence_sha256",
+    "gpu_attestation.attested_ueids",
+    "gpu_attestation.attestation_nonce",
+    "gpu_attestation.cert_chain_verified",
+    "gpu_attestation.collected_at",
+    "identity_bridge.schedule_id",
+    "identity_bridge.mappings",
+    "identity_bridge.mapping_source",
+    "identity_bridge.mapping_time",
+    "identity_bridge.mapper"
+  ],
+  "applicability_evidence": [
+    "gpu_attestation",
+    "identity_bridge.mappings",
+    "probe_manifest.claim_ref"
+  ],
+  "evidence_guidance": {
+    "gpu_attestation.attestation_nonce": {
+      "probe": "import nvattest EAT claims with ./import_nvattest so the EAT nonce from the token is stored, not the challenge nonce",
+      "why": "If the challenge nonce is copied into the attestation artifact, the freshness comparison becomes circular and replay cannot be detected."
+    },
+    "identity_bridge.mappings": {
+      "probe": "export the provider asset register entry that maps each contract GPU ID to the device UEID, with mapping_source, mapping_time, and mapper",
+      "why": "A UEID is a device-cert-derived identifier, not a board serial or schedule ID. Without the bridge, attestation evidence cannot be resolved to the contract identity and the claim stays UNKNOWN."
+    },
+    "probe_manifest.declared_gpu_ids": {
+      "probe": "commit the contract GPU IDs this attestation run is declared to cover into the probe manifest before running nvattest",
+      "why": "Without pre-declared GPU IDs, the receipt cannot say which contract identities the attestation was supposed to cover."
+    }
+  },
+  "passes": [
+    "utc_timestamp_format",
+    "expected_evidence_absence",
+    "no_future_evidence",
+    "gpu_attestation_binding"
+  ],
+  "pass_params": {}
+}

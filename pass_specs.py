@@ -367,6 +367,41 @@ PASS_SPECS: dict[str, PassSpec] = {
         ),
         boundary_role=BOUNDARY_ROLE_SUPPORT_DETAIL,
     ),
+    "gpu_attestation_binding": PassSpec(
+        pass_id="gpu_attestation_binding",
+        family="gpu_collateral",
+        scope="claim",
+        readiness=(
+            "requires declared contract GPU IDs and challenge nonce in the probe manifest, "
+            "attestation evidence (attested_ueids, cert_chain_verified, EAT attestation_nonce), "
+            "and an identity bridge mapping contract GPU IDs to UEIDs"
+        ),
+        required_paths=(
+            "probe_manifest.challenge_nonce",
+            "probe_manifest.declared_gpu_ids",
+            "gpu_attestation.attested_ueids",
+            "gpu_attestation.attestation_nonce",
+            "gpu_attestation.cert_chain_verified",
+            "identity_bridge.mappings",
+            "identity_bridge.mapping_source",
+            "identity_bridge.mapping_time",
+            "identity_bridge.mapper",
+        ),
+        contradiction_paths=(
+            "gpu_attestation.attested_ueids",
+            "gpu_attestation.cert_chain_verified",
+            "gpu_attestation.attestation_nonce",
+            "gpu_attestation.token_payload_consistent",
+            "gpu_attestation.overall_result",
+            "gpu_attestation.measres",
+            "gpu_attestation.hwmodel",
+            "identity_bridge.mappings",
+            "probe_manifest.challenge_nonce",
+            "probe_manifest.declared_gpu_ids",
+            "probe_manifest.expected_gpu_class",
+        ),
+        boundary_role=BOUNDARY_ROLE_SUPPORT_DETAIL,
+    ),
     # Prefix continuity
     "prefix_continuity": PassSpec(
         pass_id="prefix_continuity",

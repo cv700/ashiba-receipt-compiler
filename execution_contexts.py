@@ -58,8 +58,41 @@ def _gpu_goodput_context_v0_disclosures(execution_context: dict[str, Any]) -> li
     return disclosures
 
 
+def _gpu_lending_decision_context_v0_disclosures(execution_context: dict[str, Any]) -> list[str]:
+    """Disclose the lender decision rule bound to an attestation receipt.
+
+    The rule maps receipt verdicts to lender actions (release payment, hold
+    payment, haircut, cure request, dispute). The receipt does not execute the
+    action; it discloses which rule the verdict feeds.
+    """
+    disclosures: list[str] = []
+
+    decision_rule = execution_context.get("decision_rule")
+    if isinstance(decision_rule, dict) and decision_rule:
+        rule_parts = [
+            f"{verdict} -> {action}"
+            for verdict, action in sorted(decision_rule.items())
+            if isinstance(action, str) and action
+        ]
+        if rule_parts:
+            owner = execution_context.get("decision_owner")
+            owner_label = f" (owner: {owner})" if isinstance(owner, str) and owner else ""
+            disclosures.append(
+                "Lender decision rule bound to this receipt" + owner_label + ": " + "; ".join(rule_parts)
+            )
+    if not disclosures:
+        disclosures.append("No lender decision rule supplied; verdict-to-action mapping is not on record")
+
+    disclosures.append(
+        "Attestation evidence decides identity and freshness only; this receipt does not show "
+        "that contracted capacity was delivered. Capacity claims require delivery/probe evidence."
+    )
+    return disclosures
+
+
 EXECUTION_CONTEXT_DISCLOSURES: dict[str, ContextDisclosureHandler] = {
     "gpu_goodput_context_v0": _gpu_goodput_context_v0_disclosures,
+    "gpu_lending_decision_context_v0": _gpu_lending_decision_context_v0_disclosures,
 }
 
 
