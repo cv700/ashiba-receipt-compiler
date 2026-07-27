@@ -61,7 +61,7 @@ asking a deployment-review claim of a packet with no deployment evidence.
 
 ## Why Boundary Language Matters
 
-Receipts are designed to stop overreading. A receipt can say:
+Receipts stop overreading. A receipt can say:
 
 ```text
 This action was contradicted by active-grant evidence.
