@@ -1,7 +1,6 @@
 # Ashiba Receipt Compiler
 
-Private technical preview. This repository contains local-first prototype
-software for scanning operational logs, identifying missing evidence, and
+Local-first prototype software for scanning operational logs, identifying missing evidence, and
 compiling bounded receipts for narrow operational claims.
 
 It does not call models. It does not send logs to a server. It does not certify
@@ -274,7 +273,8 @@ claim consumes yet.
 - This is a local prototype, not a packaged service. Use the root-level scripts
   directly.
 
-## Private Preview Notice
+## Status
 
-This is prototype research software for private review. See `LICENSE` and
-`PRIVATE_PREVIEW_NOTICE.md`.
+Prototype research software. MIT license. The examples are synthetic or
+customer-style fixtures. Do not present receipts as security or compliance
+certifications.
